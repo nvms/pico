@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
@@ -13,11 +14,12 @@ import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
+import { completionContext, applyCompletion } from './completion.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, McpPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -32,6 +34,7 @@ const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
+  { name: 'new', desc: 'Start a new session in this project' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
@@ -92,7 +95,12 @@ export function App({ boot }) {
   const [resumeSessions, setResumeSessions] = createSignal([])
   const [resumeLoading, setResumeLoading] = createSignal(false)
   const [showMcpPanel, setShowMcpPanel] = createSignal(false)
+  const [showProjectPanel, setShowProjectPanel] = createSignal(false)
+  const [projects, setProjects] = createSignal([])
+  const [projectsLoading, setProjectsLoading] = createSignal(false)
   const [mcpServers, setMcpServers] = createSignal(mcp.list())
+  const [completing, setCompleting] = createSignal(false)
+  const [compIndex, setCompIndex] = createSignal(0)
   const [rewindStep, setRewindStep] = createSignal(null)
   const [rewindTarget, setRewindTarget] = createSignal(null)
   const [offset, setOffset] = createSignal(0)
@@ -106,7 +114,7 @@ export function App({ boot }) {
   refs.rewindUndo = refs.rewindUndo || null
   refs.quitAt ??= 0
 
-  boot.setMcpNotify(() => setMcpServers(mcp.list()))
+  boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
 
   const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
   const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command · ${c.description || c.source}`, command: true }))
@@ -257,9 +265,29 @@ export function App({ boot }) {
     }
   }
 
+  function completionSource(name) {
+    if (name === 'color') return Object.keys(SESSION_COLORS)
+    if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
+    if (name === 'model') return models.map((m) => m.name)
+    const cmd = allCommands.find((c) => c.name === name)
+    if (cmd?.skill || cmd?.command) return fileList()
+    return null
+  }
+
+  function dismissCompletion() {
+    setCompleting(false)
+    setCompIndex(0)
+  }
+
+  function acceptCompletion(value, ctx, candidate) {
+    setInput(applyCompletion(value, ctx, candidate))
+    dismissCompletion()
+  }
+
   function send(text) {
     const value = text.trim()
     if (!value) return
+    dismissCompletion()
     if (value.startsWith('/')) {
       const [name, ...rest] = value.slice(1).split(/\s+/)
       const match = allCommands.find((c) => c.name === name.toLowerCase())
@@ -325,16 +353,47 @@ export function App({ boot }) {
       send(text)
       return
     }
-    if (c.name === 'model') return setShowModelPanel(true)
+    if (c.name === 'model') {
+      if (!args) return setShowModelPanel(true)
+      const exact = models.find((m) => m.name === args)
+      const scored = models
+        .map((m) => [fuzzyScore(args, m.name), m])
+        .filter(([score]) => score >= 0)
+        .sort((a, b) => b[0] - a[0])
+      const pick = exact || scored[0]?.[1]
+      if (!pick) return flash(`no available model matches "${args}"`)
+      persist(makeEvent('model_switch', { from: model().name, to: pick.name }))
+      setModel(pick)
+      flash(`model set to ${pick.name}`)
+      return
+    }
     if (c.name === 'effort') {
       if (!effortApplies()) return flash(`${model().name} does not support effort control`)
-      return setShowEffortPanel(true)
+      if (!args) return setShowEffortPanel(true)
+      const level = args.toLowerCase()
+      if (level === 'default') return setSessionEffort(null)
+      if (!EFFORT_LEVELS.some((l) => l.key === level)) return flash('usage: /effort <default|low|medium|high|max>')
+      return setSessionEffort(level)
     }
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
     if (c.name === 'resume') {
       setShowResumePanel(true)
       refreshSessions(resumeScope())
+      return
+    }
+    if (c.name === 'new') {
+      if (busy()) return flash('finish or interrupt the current turn first')
+      refs.session = null
+      refs.allEvents = []
+      refs.persisted = 0
+      refs.rewindUndo = null
+      setQueued([])
+      setSent([])
+      setModel(defaultModel())
+      setEffort(defaultEffort())
+      reDerive()
+      flash('new session')
       return
     }
     if (c.name === 'rewind') {
@@ -390,8 +449,59 @@ export function App({ boot }) {
       .finally(() => setResumeLoading(false))
   }
 
+  function shortenPath(path) {
+    const home = homedir()
+    return path.startsWith(home) ? path.replace(home, '~') : path
+  }
+
+  function openProjectPanel() {
+    setShowProjectPanel(true)
+    setProjectsLoading(true)
+    listSessions({ scope: 'everywhere', root })
+      .then((metas) => {
+        const byRoot = new Map()
+        for (const m of metas) {
+          const entry = byRoot.get(m.header.root)
+          if (!entry) {
+            byRoot.set(m.header.root, {
+              root: m.header.root,
+              path: shortenPath(m.header.root),
+              latest: m,
+              count: 1,
+              current: m.header.root === boot.root,
+            })
+          } else {
+            entry.count++
+          }
+        }
+        setProjects([...byRoot.values()])
+      })
+      .finally(() => setProjectsLoading(false))
+  }
+
+  async function switchProject(meta) {
+    if (busy()) return flash('finish or interrupt the current turn first')
+    try {
+      const previousMcp = boot.mcp
+      const next = await boot.rebuild(meta.header.root)
+      previousMcp.closeAll().catch(() => {})
+      process.chdir(next.cwd)
+      Object.assign(boot, next)
+      next.mcp.connectAll()
+      setMcpServers(next.mcp.list())
+      setQueued([])
+      setFileList([])
+      await resumeSession(meta)
+      flash(`switched to ${next.displayCwd}`)
+    } catch (err) {
+      flash(`switch failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
   async function resumeSession(meta) {
     setShowResumePanel(false)
+    setShowProjectPanel(false)
+    if (meta.header.root !== boot.root) return switchProject(meta)
     try {
       const { header, events } = await loadSession(meta.file)
       refs.session = openSession({ file: meta.file, header })
@@ -492,7 +602,8 @@ export function App({ boot }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() || rewindStep() !== null
+    showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showProjectPanel() || rewindStep() !== null
 
   const effortApplies = () => !!model().effort
 
@@ -549,6 +660,11 @@ export function App({ boot }) {
     }
     if (event.ctrl && event.key === 't' && view() === 'chat' && !anyPanel()) {
       setShowModelPanel(true)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'p' && view() === 'chat' && !anyPanel()) {
+      openProjectPanel()
       event.stopPropagation()
       return
     }
@@ -609,6 +725,9 @@ export function App({ boot }) {
     setInput(v.slice(0, at + 1) + f + ' ')
     setFileIndex(0)
   }
+
+  const compCtx = completing() ? completionContext({ value: input(), resolve: completionSource }) : null
+  const showCompletion = !!compCtx && compCtx.matches.length > 0 && !showCommands && !showFiles && !anyPanel()
 
   const rewindEntries = () => userEntries(derived())
   const rewindOptions = (() => {
@@ -683,6 +802,20 @@ export function App({ boot }) {
           onCancel={() => { if (busy()) interrupt(); else setInput('') }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (e.key === 'tab' && !e.ctrl && !e.meta) {
+              const ctx = completionContext({ value: e.value, resolve: completionSource })
+              if (!ctx) return false
+              if (!completing()) {
+                setCompleting(true)
+                setCompIndex(0)
+                listFiles(cwd).then((files) => {
+                  if (files !== fileList()) setFileList(files)
+                })
+              } else if (ctx.matches.length > 0) {
+                acceptCompletion(e.value, ctx, ctx.matches[Math.min(compIndex(), ctx.matches.length - 1)])
+              }
+              return true
+            }
             if (e.ctrl || e.meta || showCommands || showFiles) return false
             if (e.key === 'up' && e.value === '' && queued().length > 0) {
               setInput(queued().join('\n'))
@@ -759,6 +892,27 @@ export function App({ boot }) {
         </box>
       )}
 
+      {showCompletion && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          <Menu
+            items={compCtx.matches}
+            selected={compIndex()}
+            onSelect={setCompIndex}
+            onSubmit={(candidate) => acceptCompletion(input(), compCtx, candidate)}
+            onCancel={dismissCompletion}
+            focused={showCompletion}
+            maxVisible={5}
+            scrolloff={2}
+            renderItem={(candidate, { active }) => (
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                <text style={{ color: active ? accent() : FG_SOFT }}>{candidate}</text>
+              </box>
+            )}
+          />
+        </box>
+      )}
+
       {showModelPanel() && (
         <ModelPanel
           models={models}
@@ -821,6 +975,16 @@ export function App({ boot }) {
           focused={showResumePanel()}
           onPick={resumeSession}
           onClose={() => setShowResumePanel(false)}
+        />
+      )}
+
+      {showProjectPanel() && (
+        <ProjectPanel
+          projects={projects()}
+          loading={projectsLoading()}
+          focused={showProjectPanel()}
+          onPick={(p) => resumeSession(p.latest)}
+          onClose={() => setShowProjectPanel(false)}
         />
       )}
 

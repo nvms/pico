@@ -24,22 +24,27 @@ if (models.length === 0) {
   process.exit(1)
 }
 
-const cwd = process.cwd()
-const root = findProjectRoot(cwd)
 const home = homedir()
-const displayCwd = cwd.startsWith(home) ? cwd.replace(home, '~') : cwd
-
-const startupContext = loadStartupContext(cwd)
-const tracker = createContextTracker({
-  stopDir: startupContext.stopDir,
-  loaded: new Set(startupContext.files.map((f) => f.path)),
-})
-
-const skills = await createSkillIndex(root)
-const commands = await createCommandIndex(root)
-
 let mcpNotify = () => {}
-const mcp = await createMcpRuntime({ root, onChange: () => mcpNotify() })
+
+async function buildProjectBoot(cwd) {
+  const root = findProjectRoot(cwd)
+  const startupContext = loadStartupContext(cwd)
+  const tracker = createContextTracker({
+    stopDir: startupContext.stopDir,
+    loaded: new Set(startupContext.files.map((f) => f.path)),
+  })
+  return {
+    cwd,
+    root,
+    displayCwd: cwd.startsWith(home) ? cwd.replace(home, '~') : cwd,
+    startupContext,
+    tracker,
+    skills: await createSkillIndex(root),
+    commands: await createCommandIndex(root),
+    mcp: await createMcpRuntime({ root, onChange: () => mcpNotify() }),
+  }
+}
 
 const config = await readConfig()
 const configuredDefault = config.defaultModel && models.find((m) => m.name === config.defaultModel)
@@ -47,22 +52,16 @@ const configuredDefault = config.defaultModel && models.find((m) => m.name === c
 const theme = { accent: DEFAULT_ACCENT }
 
 const boot = {
-  cwd,
-  root,
-  displayCwd,
+  ...(await buildProjectBoot(process.cwd())),
   theme,
   version: pkg.version,
   models,
-  commands,
   initialModel: configuredDefault || defaultModel(providers),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
-  skills,
-  mcp,
-  tracker,
-  startupContext,
   refs: {},
   setMcpNotify: (fn) => { mcpNotify = fn },
+  rebuild: buildProjectBoot,
 }
 
 mount(() => <App boot={boot} />, { title: 'pico', theme })
-mcp.connectAll()
+boot.mcp.connectAll()

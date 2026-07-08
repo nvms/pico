@@ -315,6 +315,58 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   )
 }
 
+export function ProjectPanel({ projects, loading, focused, onPick, onClose }) {
+  const [preview, setPreview] = createSignal(projects[0] || null)
+  useEscape(() => focused, onClose)
+
+  return (
+    <PanelFrame title="Switch project" hint="type to filter · ↑↓ to move · enter to jump to its last session · esc to close">
+      <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
+        <box style={{ flexDirection: 'column', width: '50%' }}>
+          {loading ? (
+            <text style={{ color: MUTED }}>loading projects...</text>
+          ) : projects.length === 0 ? (
+            <text style={{ color: FAINT }}>no known projects yet</text>
+          ) : (
+            <PickList
+              items={projects}
+              focused={focused && !loading}
+              placeholder="filter projects..."
+              filter={(q, p) => fuzzyScore(q, p.path) >= 0}
+              onCursorChange={(p) => setPreview(p)}
+              onSubmit={onPick}
+              onCancel={onClose}
+              scrollbar
+              gap={1}
+              renderItem={(p, { selected, focused: f }) => (
+                <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
+                  {p.latest.color && <text style={{ color: selected ? 'black' : p.latest.color }}>{'▪ '}</text>}
+                  <box style={{ flexGrow: 1, height: 1 }}>
+                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{p.path}</text>
+                  </box>
+                  <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${p.current ? 'current · ' : ''}${timeAgo(p.latest.at)}`}</text>
+                </box>
+              )}
+            />
+          )}
+        </box>
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
+          {preview() ? (
+            <box style={{ flexDirection: 'column' }}>
+              <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
+              <text> </text>
+              <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{`last: ${preview().latest.title.replace(/\n/g, ' ')}`}</text>
+              <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
+            </box>
+          ) : (
+            <text style={{ color: FAINT }}>no projects</text>
+          )}
+        </box>
+      </box>
+    </PanelFrame>
+  )
+}
+
 const MCP_STATUS = {
   connected: { icon: '▪', color: accent() },
   connecting: { icon: '◌', color: '#fbbf24' },
