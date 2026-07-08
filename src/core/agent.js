@@ -1,0 +1,86 @@
+import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
+
+const STALL_MS = 90000
+
+export async function summarizeText({ text, modelName }) {
+  const out = await compose(
+    model({
+      model: modelName,
+      system: 'Summarize the following conversation excerpt in 2-4 dense sentences. Capture decisions, changes made, and open questions. Output only the summary.',
+    }),
+  )(text.slice(0, 30000))
+  return getText(out.lastResponse?.content || '').trim()
+}
+
+export async function runTurn({ history, tools, recorder, modelName, effort, system, signal, onStream, stallMs = STALL_MS }) {
+  const collected = []
+  let roundText = ''
+  let usageSeen = null
+  let stalled = false
+
+  const internal = new AbortController()
+  const onUserAbort = () => internal.abort()
+  if (signal?.aborted) internal.abort()
+  else signal?.addEventListener('abort', onUserAbort, { once: true })
+
+  let watchdog = null
+  const arm = () => {
+    clearTimeout(watchdog)
+    watchdog = setTimeout(() => {
+      stalled = true
+      internal.abort()
+    }, stallMs)
+  }
+
+  const stream = (event) => {
+    arm()
+    if (event.type === 'content') {
+      roundText += event.content
+    } else if (event.type === 'tool_calls_ready') {
+      collected.push({ role: 'assistant', content: roundText, tool_calls: event.calls })
+      roundText = ''
+    } else if (event.type === 'tool_executing') {
+      recorder.currentCall = event.call
+    } else if (event.type === 'tool_complete') {
+      collected.push({ role: 'tool', tool_call_id: event.call.id, content: JSON.stringify(event.result) })
+    } else if (event.type === 'tool_error') {
+      collected.push({ role: 'tool', tool_call_id: event.call.id, content: JSON.stringify({ error: event.error }) })
+    } else if (event.type === 'usage') {
+      usageSeen = event.usage
+    }
+    onStream?.(event)
+  }
+
+  const base = history.length
+  const step = compose(
+    scope(
+      { inherit: Inherit.Conversation, system, tools, until: noToolsCalled(), stream },
+      (ctx) => model({ model: modelName, ...(effort && { effort }) })({ ...ctx, abortSignal: internal.signal }),
+    ),
+  )
+
+  const partialMessages = () => {
+    const messages = [...collected]
+    if (roundText) messages.push({ role: 'assistant', content: roundText })
+    return messages
+  }
+
+  arm()
+  try {
+    const out = await step({ history: [...history], tools: [] })
+    const interrupted = !!signal?.aborted || stalled
+    if (interrupted) {
+      return { messages: partialMessages(), usage: usageSeen, interrupted, stalled }
+    }
+    const messages = out.history.filter((m) => m.role !== 'system').slice(base)
+    return { messages, usage: out.usage || null, interrupted: false, stalled: false }
+  } catch (err) {
+    if (err.name === 'AbortError' || internal.signal.aborted) {
+      return { messages: partialMessages(), usage: usageSeen, interrupted: true, stalled }
+    }
+    throw err
+  } finally {
+    clearTimeout(watchdog)
+    signal?.removeEventListener('abort', onUserAbort)
+  }
+}

@@ -1,0 +1,71 @@
+import { Markdown, ScrollBox, useInput } from '@trendr/core'
+import { accent, FAINT } from './theme.js'
+
+const HELP_TEXT = (commands) => `pico is a coding agent in your terminal. It reads, edits, and searches files, runs commands, and streams its work into this transcript.
+
+## Commands
+
+Type \`/\` in the composer to filter these as you type.
+
+${commands.map((c) => `- \`/${c.name}\` - ${c.desc}`).join('\n')}
+
+Two kinds of user-defined entries join this menu:
+
+- **commands** (\`~/.pico/commands/<name>.md\` or \`.pico/commands/<name>.md\`): prompt templates you invoke as \`/<name> [args]\`. \`$ARGUMENTS\` in the body is replaced with whatever follows the command; without a placeholder, args are appended. The model never sees these until you run one.
+- **skills** (\`~/.pico/skills/<name>/SKILL.md\` or \`.pico/skills/<name>/SKILL.md\`): capabilities with a name and description. You can invoke them like commands, and the agent can also discover and load them itself via the skill tool.
+
+In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` reconnects, \`a\` adds, \`d\` removes. Unfiltered lists (effort, rewind options, MCP) also move with \`j\`/\`k\` and jump with \`g\`/\`G\`.
+
+## Composer
+
+- \`enter\` sends, \`shift+enter\` inserts a newline
+- \`@\` opens a fuzzy file picker; enter inserts the selected path
+- \`up\` and \`down\` on an empty composer recall messages you already sent
+- \`ctrl+r\` fuzzy-searches your prompt history with a preview; enter puts the match back in the composer
+- \`ctrl+s\` opens the session picker (same as \`/resume\`); \`ctrl+t\` opens the model picker
+- \`ctrl+b\` cycles thinking effort (default, low, medium, high, max) on models that support it; \`/effort\` opens the full picker
+- inside a search panel, \`ctrl+s\` cycles the scope instead: this session, this project, or everywhere
+- \`/rewind\` restores the conversation to an earlier message; a rewind can be undone with \`ctrl+z\`
+- messages sent while the agent is responding queue up above the composer and are delivered as one message when the turn finishes; \`up\` pulls them back for editing
+- \`esc\` interrupts a streaming response, or clears the composer when idle
+
+## Moving around
+
+- \`tab\` switches focus between the transcript and the composer
+- with the transcript focused, \`up\`/\`down\`/\`j\`/\`k\` scroll and \`g\`/\`G\` jump to the ends
+- \`ctrl+o\` expands and collapses tool output in the transcript
+- the mouse wheel scrolls; click-drag selects text and copies it on release
+- \`ctrl+c\` twice exits
+
+## Context
+
+pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree.
+
+Sessions are stored under ~/.pico as jsonl event logs; \`/resume\` folds one back into exactly this view.
+
+---
+
+*esc takes you back to the conversation*`
+
+export function Help({ commands, onClose }) {
+  useInput((event) => {
+    if (event.key === 'escape') {
+      onClose()
+      event.stopPropagation()
+    }
+  })
+
+  return (
+    <box style={{ flexDirection: 'column', height: '100%', paddingX: 2, paddingY: 1 }}>
+      <box style={{ flexDirection: 'row' }}>
+        <text style={{ color: accent(), bold: true }}>pico · help</text>
+        <box style={{ flexGrow: 1 }} />
+        <text style={{ color: FAINT }}>↑↓ scroll · esc back</text>
+      </box>
+      <text> </text>
+      <ScrollBox style={{ flexGrow: 1 }} focused scrollbar>
+        <Markdown text={HELP_TEXT(commands)} codeBg={null} />
+      </ScrollBox>
+    </box>
+  )
+}

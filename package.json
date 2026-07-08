@@ -1,0 +1,32 @@
+{
+  "name": "pico",
+  "version": "0.1.0",
+  "description": "a TUI coding agent built on trend and @prsm/ai",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "pico": "./bin/pico"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "test": "node --test 'test/**/*.test.js'",
+    "start": "node dist/pico.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@prsm/ai": "file:../vigil/tend/prsmjs/ai",
+    "@shikijs/cli": "^3.0.0",
+    "@trendr/core": "file:../trend",
+    "diff": "^7.0.0",
+    "fast-glob": "^3.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}

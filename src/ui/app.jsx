@@ -1,0 +1,883 @@
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection } from '@trendr/core'
+import { makeEvent } from '../core/events.js'
+import { createSession, openSession, loadSession, listSessions } from '../core/session.js'
+import { deriveState, userEntries, rewindStats } from '../core/derive.js'
+import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
+import { runTurn, summarizeText } from '../core/agent.js'
+import { createToolset } from '../core/tools/index.js'
+import { revertEdits, reapplyEdits } from '../core/rewind.js'
+import { buildSystemPrompt } from '../core/system-prompt.js'
+import { transcriptToMarkdown } from '../core/export.js'
+import { findModel, estimateCost } from '../core/models.js'
+import { writeConfig } from '../core/config.js'
+import { fuzzyScore } from './fuzzy.js'
+import { listFiles } from './files.js'
+import { highlightVersion } from './highlight.js'
+import { Message, Banner, uiTitle } from './transcript.jsx'
+import { Help } from './help.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, McpPanel, timeAgo } from './panels.jsx'
+import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
+
+const EFFORT_LEVELS = [
+  { key: null, desc: 'let the provider decide how much to think' },
+  { key: 'low', desc: 'quick answers, minimal thinking' },
+  { key: 'medium', desc: 'moderate thinking budget' },
+  { key: 'high', desc: 'generous thinking budget' },
+  { key: 'max', desc: 'maximum thinking budget' },
+]
+
+const COMMANDS = [
+  { name: 'model', desc: 'Switch the active model for this session' },
+  { name: 'effort', desc: 'Set the thinking effort for this session' },
+  { name: 'resume', desc: 'Pick up a previous session where you left off' },
+  { name: 'rewind', desc: 'Restore the conversation to a previous message' },
+  { name: 'rename', desc: 'Name this session: /rename <name>' },
+  { name: 'color', desc: 'Color this session: /color <name or #hex>' },
+  { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
+  { name: 'compact', desc: 'Summarize the conversation to free the context window' },
+  { name: 'clear', desc: 'Clear the conversation and free the context window' },
+  { name: 'cost', desc: 'Show token usage and estimated cost so far' },
+  { name: 'export', desc: 'Save the current conversation to a markdown file' },
+  { name: 'help', desc: 'List every command and what it does' },
+]
+
+const SESSION_COLORS = {
+  red: '#f87171',
+  orange: '#fb923c',
+  yellow: '#facc15',
+  green: '#6BE795',
+  teal: '#2dd4bf',
+  cyan: '#22d3ee',
+  blue: '#60a5fa',
+  purple: '#a78bfa',
+  pink: '#f472b6',
+  gray: '#9ca3af',
+}
+
+const HISTORY_SCOPES = ['session', 'project', 'everywhere']
+const RESUME_SCOPES = ['project', 'everywhere']
+
+export function App({ boot }) {
+  const { cwd, root, version, models, skills, mcp, tracker, startupContext } = boot
+
+  const [derived, setDerived] = createSignal(deriveState([]))
+  const [overlay, setOverlay] = createSignal([])
+  const [streaming, setStreaming] = createSignal(null)
+  const [busy, setBusy] = createSignal(false)
+  const [startedAt, setStartedAt] = createSignal(0)
+  const [input, setInput] = createSignal('')
+  const [notice, setNotice] = createSignal('')
+  const [model, setModel] = createSignal(boot.initialModel)
+  const [defaultModel, setDefaultModel] = createSignal(boot.initialModel)
+  const [effort, setEffort] = createSignal(boot.initialEffort)
+  const [defaultEffort, setDefaultEffort] = createSignal(boot.initialEffort)
+  const [showEffortPanel, setShowEffortPanel] = createSignal(false)
+  const [queued, setQueued] = createSignal([])
+  const [sent, setSent] = createSignal([])
+  const [histIdx, setHistIdx] = createSignal(-1)
+  const [cmdIndex, setCmdIndex] = createSignal(0)
+  const [fileIndex, setFileIndex] = createSignal(0)
+  const [fileList, setFileList] = createSignal([])
+  const [filesDismissed, setFilesDismissed] = createSignal(false)
+  const [view, setView] = createSignal('chat')
+  const [verbose, setVerbose] = createSignal(false)
+  const [showModelPanel, setShowModelPanel] = createSignal(false)
+  const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
+  const [histScope, setHistScope] = createSignal(0)
+  const [histPrompts, setHistPrompts] = createSignal([])
+  const [showResumePanel, setShowResumePanel] = createSignal(false)
+  const [resumeScope, setResumeScope] = createSignal(0)
+  const [resumeSessions, setResumeSessions] = createSignal([])
+  const [resumeLoading, setResumeLoading] = createSignal(false)
+  const [showMcpPanel, setShowMcpPanel] = createSignal(false)
+  const [mcpServers, setMcpServers] = createSignal(mcp.list())
+  const [rewindStep, setRewindStep] = createSignal(null)
+  const [rewindTarget, setRewindTarget] = createSignal(null)
+  const [offset, setOffset] = createSignal(0)
+  const [follow, setFollow] = createSignal(true)
+
+  const refs = boot.refs
+  refs.session ??= null
+  refs.allEvents ??= []
+  refs.persisted ??= 0
+  refs.abort = refs.abort || null
+  refs.rewindUndo = refs.rewindUndo || null
+  refs.quitAt ??= 0
+
+  boot.setMcpNotify(() => setMcpServers(mcp.list()))
+
+  const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
+  const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command · ${c.description || c.source}`, command: true }))
+  const byName = new Map()
+  const shadowed = []
+  for (const c of [...COMMANDS, ...skillCommands, ...userCommands]) {
+    if (byName.has(c.name)) shadowed.push(`${c.skill ? 'skill' : 'command'} "${c.name}"`)
+    else byName.set(c.name, c)
+  }
+  const allCommands = [...byName.values()]
+  if (shadowed.length && !refs.warnedShadowed) {
+    refs.warnedShadowed = true
+    setTimeout(() => flash(`shadowed by an earlier name, rename to use: ${shadowed.join(', ')}`), 0)
+  }
+
+  function flash(msg) {
+    setNotice(msg)
+    setTimeout(() => setNotice((n) => (n === msg ? '' : n)), 2500)
+  }
+
+  function ensureSession() {
+    if (!refs.session) refs.session = createSession({ cwd, root })
+    while (refs.persisted < refs.allEvents.length) {
+      refs.session.append(refs.allEvents[refs.persisted])
+      refs.persisted++
+    }
+  }
+
+  function persist(event) {
+    refs.allEvents.push(event)
+    if (refs.session) {
+      refs.session.append(event)
+      refs.persisted = refs.allEvents.length
+    }
+  }
+
+  function reDerive() {
+    const state = deriveState(refs.allEvents)
+    setDerived(state)
+    setAccent(state.color)
+    boot.theme.accent = state.color || DEFAULT_ACCENT
+  }
+
+  function flushStream(items) {
+    const text = streaming()
+    if (text) items.push({ kind: 'assistant', text })
+    setStreaming(null)
+  }
+
+  async function executeTurn(text) {
+    persist(makeEvent('message', { message: { role: 'user', content: text } }))
+    ensureSession()
+    reDerive()
+    setFollow(true)
+    setBusy(true)
+    setStartedAt(Date.now())
+
+    const controller = new AbortController()
+    refs.abort = controller
+    const loadedBefore = new Set(tracker.loaded)
+    const { tools, recorder } = createToolset({
+      cwd,
+      tracker,
+      skills,
+      mcpTools: mcp.tools(),
+      signal: controller.signal,
+    })
+
+    const onStream = (event) => {
+      if (event.type === 'content') {
+        setStreaming((s) => (s || '') + event.content)
+      } else if (event.type === 'tool_calls_ready') {
+        setOverlay((o) => {
+          const next = [...o]
+          flushStream(next)
+          return next
+        })
+      } else if (event.type === 'tool_executing') {
+        setOverlay((o) => {
+          const next = [...o]
+          flushStream(next)
+          let args = {}
+          try {
+            args = JSON.parse(event.call.function.arguments)
+          } catch {}
+          next.push({
+            kind: 'tool',
+            callId: event.call.id,
+            name: event.call.function.name,
+            title: uiTitle(event.call.function.name, args),
+            status: 'running',
+          })
+          return next
+        })
+      } else if (event.type === 'tool_complete' || event.type === 'tool_error') {
+        const entry = recorder.entries.at(-1)
+        setOverlay((o) =>
+          o.map((item) =>
+            item.kind === 'tool' && item.callId === event.call.id
+              ? { ...item, ...(entry?.callId === event.call.id ? entry : {}), kind: 'tool', status: entry?.status || 'done' }
+              : item,
+          ),
+        )
+      }
+    }
+
+    let result
+    try {
+      result = await runTurn({
+        history: derived().providerHistory,
+        tools,
+        recorder,
+        modelName: model().name,
+        effort: effortApplies() ? effort() : null,
+        system: buildSystemPrompt({ cwd, contextFiles: startupContext.files, skills: skills.list() }),
+        signal: controller.signal,
+        onStream,
+      })
+    } catch (err) {
+      setOverlay([])
+      setStreaming(null)
+      setBusy(false)
+      refs.abort = null
+      flash(`error: ${String(err.message || err).slice(0, 120)}`)
+      return
+    }
+
+    for (const message of result.messages) persist(makeEvent('message', { message }))
+    for (const entry of recorder.entries) persist(makeEvent('tool_meta', entry))
+    for (const path of tracker.loaded) {
+      if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
+    }
+    if (result.usage) persist(makeEvent('usage', { model: model().name, usage: result.usage }))
+    if (result.interrupted) persist(makeEvent('interrupt', {}))
+
+    setOverlay([])
+    setStreaming(null)
+    reDerive()
+    setBusy(false)
+    refs.abort = null
+    if (result.stalled) flash('model stalled · turn interrupted')
+
+    const q = queued()
+    if (q.length > 0) {
+      setQueued([])
+      if (result.interrupted) setInput(q.join('\n'))
+      else executeTurn(q.join('\n'))
+    }
+  }
+
+  function send(text) {
+    const value = text.trim()
+    if (!value) return
+    if (value.startsWith('/')) {
+      const [name, ...rest] = value.slice(1).split(/\s+/)
+      const match = allCommands.find((c) => c.name === name.toLowerCase())
+      if (match) {
+        setInput('')
+        runCommand(match, rest.join(' '))
+        return
+      }
+    }
+    setSent((s) => [...s, { text: value, at: Date.now() }])
+    setHistIdx(-1)
+    appendPrompt(root, value).catch(() => {})
+    if (busy()) {
+      setQueued((q) => [...q, value])
+      return
+    }
+    executeTurn(value)
+  }
+
+  function interrupt() {
+    if (!busy()) return
+    refs.abort?.abort()
+  }
+
+  async function runCommand(c, args = '') {
+    setInput('')
+    if (c.name === 'rename') {
+      if (!args) return flash('usage: /rename <new name>')
+      persist(makeEvent('title', { text: args }))
+      ensureSession()
+      reDerive()
+      flash(`session renamed to "${args}"`)
+      return
+    }
+    if (c.name === 'color') {
+      const names = Object.keys(SESSION_COLORS)
+      const values = Object.values(SESSION_COLORS)
+      let value
+      if (!args) {
+        const next = (values.indexOf(derived().color) + 1) % values.length
+        value = values[next]
+      } else {
+        value = SESSION_COLORS[args.toLowerCase()] || (/^#[0-9a-fA-F]{6}$/.test(args) ? args : null)
+        if (!value) return flash(`usage: /color to cycle, or /color <${names.join('|')}|#hex>`)
+      }
+      persist(makeEvent('color', { value }))
+      ensureSession()
+      reDerive()
+      const name = names[values.indexOf(value)]
+      flash(`session color: ${name || value}`)
+      return
+    }
+    if (c.skill) {
+      const body = await skills.load(c.name)
+      if (!body) return flash(`could not load skill ${c.name}`)
+      persist(makeEvent('skill', { name: c.name, source: 'user' }))
+      send(`Follow these skill instructions now.\n\n${body}`)
+      return
+    }
+    if (c.command) {
+      const text = await boot.commands.load(c.name, args)
+      if (!text) return flash(`could not load command ${c.name}`)
+      send(text)
+      return
+    }
+    if (c.name === 'model') return setShowModelPanel(true)
+    if (c.name === 'effort') {
+      if (!effortApplies()) return flash(`${model().name} does not support effort control`)
+      return setShowEffortPanel(true)
+    }
+    if (c.name === 'help') return setView('help')
+    if (c.name === 'mcp') return setShowMcpPanel(true)
+    if (c.name === 'resume') {
+      setShowResumePanel(true)
+      refreshSessions(resumeScope())
+      return
+    }
+    if (c.name === 'rewind') {
+      if (busy()) return flash('finish or interrupt the current turn first')
+      if (userEntries(derived()).length === 0) return flash('nothing to rewind yet')
+      setRewindStep('pick')
+      return
+    }
+    if (c.name === 'clear') {
+      if (busy()) return flash('finish or interrupt the current turn first')
+      persist(makeEvent('clear', {}))
+      reDerive()
+      flash('conversation cleared')
+      return
+    }
+    if (c.name === 'compact') {
+      if (busy()) return flash('finish or interrupt the current turn first')
+      const history = derived().providerHistory
+      if (history.length === 0) return flash('nothing to compact yet')
+      flash('compacting...')
+      try {
+        const text = history.map((m) => `${m.role}: ${typeof m.content === 'string' ? m.content : ''}`).join('\n')
+        const summary = await summarizeText({ text, modelName: model().name })
+        persist(makeEvent('compact', { summary }))
+        reDerive()
+        flash('conversation compacted')
+      } catch (err) {
+        flash(`compact failed: ${String(err.message || err).slice(0, 80)}`)
+      }
+      return
+    }
+    if (c.name === 'cost') {
+      const byModel = derived().usageByModel
+      const entries = Object.entries(byModel)
+      if (entries.length === 0) return flash('no usage yet')
+      const total = entries.reduce((sum, [name, usage]) => sum + estimateCost(findModel(name), usage), 0)
+      const { promptTokens, completionTokens } = derived().usage
+      flash(`$${total.toFixed(4)} · ${promptTokens.toLocaleString()} in · ${completionTokens.toLocaleString()} out`)
+      return
+    }
+    if (c.name === 'export') {
+      const file = join(cwd, `pico-export-${Date.now()}.md`)
+      await writeFile(file, transcriptToMarkdown(derived().transcript, { title: `pico session · ${cwd}` }))
+      flash(`exported to ${file}`)
+      return
+    }
+  }
+
+  function refreshSessions(scopeIndex) {
+    setResumeLoading(true)
+    listSessions({ scope: RESUME_SCOPES[scopeIndex], root })
+      .then((sessions) => setResumeSessions(sessions.filter((s) => s.header.id !== refs.session?.id)))
+      .finally(() => setResumeLoading(false))
+  }
+
+  async function resumeSession(meta) {
+    setShowResumePanel(false)
+    try {
+      const { header, events } = await loadSession(meta.file)
+      refs.session = openSession({ file: meta.file, header })
+      refs.allEvents = [...events]
+      refs.persisted = events.length
+      refs.rewindUndo = null
+      reDerive()
+      const restored = derived().model && models.find((m) => m.name === derived().model)
+      if (restored) {
+        setModel(restored)
+      } else {
+        setModel(defaultModel())
+        if (derived().model) flash(`model ${derived().model} unavailable, using ${defaultModel().name}`)
+      }
+      setEffort(derived().effort === undefined ? defaultEffort() : derived().effort)
+      setSent(userEntries(derived()).map((e) => ({ text: e.text, at: header.createdAt })))
+      setFollow(true)
+      flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`)
+    } catch (err) {
+      flash(`resume failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
+  function openHistorySearch() {
+    const session = sent()
+    setHistPrompts(dedupePrompts(session))
+    setShowHistoryPanel(true)
+    setHistScope(0)
+  }
+
+  function dedupePrompts(pool) {
+    const seen = new Set()
+    const out = []
+    for (const entry of [...pool].sort((a, b) => b.at - a.at)) {
+      if (seen.has(entry.text)) continue
+      seen.add(entry.text)
+      out.push(entry)
+    }
+    return out
+  }
+
+  async function switchHistScope(next) {
+    setHistScope(next)
+    if (next === 0) return setHistPrompts(dedupePrompts(sent()))
+    const project = await loadProjectPrompts(root)
+    if (next === 1) return setHistPrompts(dedupePrompts([...sent(), ...project]))
+    const global = await loadGlobalPrompts()
+    setHistPrompts(dedupePrompts([...sent(), ...project, ...global]))
+  }
+
+  async function performRewind(opt) {
+    const target = rewindTarget()
+    const state = derived()
+    const { edits } = rewindStats(state, target.index)
+    const editsLabel = `${edits.length} ${edits.length === 1 ? 'edit' : 'edits'}`
+    let reverted = []
+    let skipped = []
+
+    if (opt.key === 'both' || opt.key === 'code') {
+      const result = await revertEdits(edits)
+      reverted = result.reverted
+      skipped = result.skipped
+    }
+
+    let summaryText = null
+    if (opt.key === 'summary') {
+      const tail = state.transcript.slice(target.index)
+      const text = tail.filter((m) => m.text).map((m) => `${m.kind}: ${m.text}`).join('\n')
+      flash('summarizing...')
+      summaryText = await summarizeText({ text, modelName: model().name }).catch(() =>
+        tail.filter((m) => m.text).slice(0, 3).map((m) => m.text.split(/\s+/).slice(0, 6).join(' ')).join(' · '),
+      )
+    }
+
+    const event = makeEvent('rewind', { target: target.eventId, mode: opt.key, summaryText, reverted, skipped })
+    persist(event)
+    refs.rewindUndo = { rewindId: event.id, edits: edits.filter((e) => reverted.includes(e.callId)) }
+    reDerive()
+    if (opt.key !== 'code') setInput(target.text)
+
+    const skippedNote = skipped.length ? ` · skipped ${skipped.length} drifted` : ''
+    if (opt.key === 'code') flash(`reverted ${editsLabel}, conversation kept${skippedNote} · ctrl+z to undo`)
+    else if (opt.key === 'summary') flash(`rewound and summarized${skippedNote} · ctrl+z to undo`)
+    else if (opt.key === 'both') flash(`rewound, ${editsLabel} reverted${skippedNote} · ctrl+z to undo`)
+    else flash(`rewound, file changes kept · ctrl+z to undo`)
+    setRewindStep(null)
+    setRewindTarget(null)
+  }
+
+  async function undoRewind() {
+    const undo = refs.rewindUndo
+    if (!undo) return
+    const { skipped } = await reapplyEdits(undo.edits)
+    persist(makeEvent('rewind_undo', { rewindId: undo.rewindId }))
+    refs.rewindUndo = null
+    reDerive()
+    flash(skipped.length ? `rewind undone · ${skipped.length} file(s) drifted` : 'rewind undone')
+  }
+
+  const anyPanel = () =>
+    showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() || rewindStep() !== null
+
+  const effortApplies = () => !!model().effort
+
+  function setSessionEffort(next, { asDefault = false } = {}) {
+    persist(makeEvent('effort', { to: next }))
+    setEffort(next)
+    if (asDefault) {
+      setDefaultEffort(next)
+      writeConfig({ defaultEffort: next }).catch(() => {})
+    }
+    flash(`effort: ${next ?? 'default'}${asDefault ? ' · saved as default' : ''}`)
+  }
+
+  const fm = useFocus({ initial: 'input' })
+  fm.item('feed')
+  fm.item('input')
+  useFocusTrap(anyPanel() || view() === 'help')
+  useSelection({
+    onCopy: (text) => flash(`copied ${text.length} ${text.length === 1 ? 'character' : 'characters'}`),
+  })
+
+  useInput((event) => {
+    if (event.key === 'escape' && busy() && !anyPanel()) {
+      interrupt()
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'c') {
+      const now = Date.now()
+      if (now - refs.quitAt < 1500) {
+        mcp.closeAll().catch(() => {}).finally(() => process.exit(0))
+      } else {
+        refs.quitAt = now
+        flash('ctrl+c again to exit')
+      }
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'o') {
+      setVerbose((v) => !v)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'r' && view() === 'chat' && !anyPanel()) {
+      openHistorySearch()
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 's' && view() === 'chat' && !anyPanel()) {
+      setShowResumePanel(true)
+      refreshSessions(resumeScope())
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 't' && view() === 'chat' && !anyPanel()) {
+      setShowModelPanel(true)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'b' && view() === 'chat' && !anyPanel()) {
+      if (!effortApplies()) flash(`${model().name} does not support effort control`)
+      else {
+        const order = [null, 'low', 'medium', 'high', 'max']
+        const next = order[(order.indexOf(effort() ?? null) + 1) % order.length]
+        setSessionEffort(next)
+      }
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 's' && showHistoryPanel()) {
+      switchHistScope((histScope() + 1) % HISTORY_SCOPES.length)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 's' && showResumePanel()) {
+      const next = (resumeScope() + 1) % RESUME_SCOPES.length
+      setResumeScope(next)
+      refreshSessions(next)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 'z' && refs.rewindUndo && !busy() && view() === 'chat') {
+      undoRewind()
+      event.stopPropagation()
+    }
+  })
+
+  const elapsed = busy() ? Math.max(0, Math.floor((Date.now() - startedAt()) / 1000)) : 0
+
+  const slashQuery = input().startsWith('/') ? input().slice(1) : null
+  const showCommands = slashQuery !== null && !slashQuery.includes(' ') && !anyPanel()
+  const matchedCommands = showCommands
+    ? allCommands.filter((c) => c.name.toLowerCase().startsWith(slashQuery.toLowerCase()))
+    : []
+
+  const atMatch = input().match(/(^|[\s(])@([^\s@]*)$/)
+  const showFiles = atMatch !== null && !showCommands && !filesDismissed() && !anyPanel()
+  if (showFiles) {
+    listFiles(cwd).then((files) => {
+      if (files !== fileList()) setFileList(files)
+    })
+  }
+  const matchedFiles = showFiles
+    ? fileList()
+        .map((f) => [fuzzyScore(atMatch[2], f), f])
+        .filter(([score]) => score >= 0)
+        .sort((a, b) => b[0] - a[0])
+        .map(([, f]) => f)
+    : []
+
+  function pickFile(f) {
+    const v = input()
+    const at = v.lastIndexOf('@')
+    setInput(v.slice(0, at + 1) + f + ' ')
+    setFileIndex(0)
+  }
+
+  const rewindEntries = () => userEntries(derived())
+  const rewindOptions = (() => {
+    const target = rewindTarget()
+    if (!target) return []
+    const { msgs, edits } = rewindStats(derived(), target.index)
+    const e = edits.length
+    const editsLabel = `${e} ${e === 1 ? 'edit' : 'edits'}`
+    const opts = []
+    if (e > 0) opts.push({ key: 'both', label: 'restore code and conversation', desc: `chat returns to this message · ${editsLabel} reverted` })
+    opts.push({
+      key: 'chat',
+      label: e > 0 ? 'restore conversation only' : 'restore conversation',
+      desc: e > 0 ? 'chat returns to this message · file changes kept' : `chat returns to this message · drops ${msgs} entries`,
+    })
+    if (e > 0) opts.push({ key: 'code', label: 'restore code only', desc: `conversation kept · ${editsLabel} reverted` })
+    opts.push({ key: 'summary', label: 'rewind and keep a summary', desc: 'dropped entries collapse into a one-line note' })
+    return opts
+  })()
+
+  const { usage } = derived()
+
+  if (view() === 'help') {
+    return <Help commands={COMMANDS} onClose={() => setView('chat')} />
+  }
+
+  highlightVersion()
+
+  const items = [...derived().transcript, ...overlay()]
+
+  return (
+    <box style={{ flexDirection: 'column', height: '100%' }}>
+      <ScrollBox
+        style={{ flexGrow: 1 }}
+        focused={fm.is('feed')}
+        scrollOffset={follow() ? 1e9 : offset()}
+        onScroll={(next) => { setFollow(false); setOffset(next) }}
+        scrollbar
+      >
+        {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
+        {items.map((item, i) => <Message key={i} item={item} verbose={verbose()} />)}
+        {streaming() !== null && streaming() !== '' && (
+          <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
+        )}
+      </ScrollBox>
+
+      {queued().length > 0 && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          {queued().map((q, i) => (
+            <box key={i} style={{ flexDirection: 'row' }}>
+              <text style={{ color: FAINT }}>{'› '}</text>
+              <box style={{ flexGrow: 1, height: 1 }}>
+                <text style={{ overflow: 'truncate', color: MUTED }}>{q.replace(/\n/g, ' ')}</text>
+              </box>
+              {i === 0 && <text style={{ color: FAINT, dim: true }}>{'  pending · ↑ to edit'}</text>}
+            </box>
+          ))}
+        </box>
+      )}
+
+      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: 1 }}>
+        <text style={{ color: accent(), bold: true }}>{'❯'}</text>
+        <text> </text>
+        {derived().title && (
+          <box style={{ position: 'absolute', top: 0, right: 0 }}>
+            <text style={{ bg: accent(), color: 'black', bold: true }}>{` ${derived().title} `}</text>
+          </box>
+        )}
+        <TextArea
+          value={input()}
+          onChange={(v) => { setInput(v); setCmdIndex(0); setFileIndex(0); setHistIdx(-1); setFilesDismissed(false) }}
+          onCancel={() => { if (busy()) interrupt(); else setInput('') }}
+          onSubmit={send}
+          onKeyDown={(e) => {
+            if (e.ctrl || e.meta || showCommands || showFiles) return false
+            if (e.key === 'up' && e.value === '' && queued().length > 0) {
+              setInput(queued().join('\n'))
+              setQueued([])
+              return true
+            }
+            const browsing = histIdx() >= 0
+            if (e.key === 'up' && (browsing || e.value === '') && histIdx() < sent().length - 1) {
+              const n = histIdx() + 1
+              setHistIdx(n)
+              setInput(sent()[sent().length - 1 - n].text)
+              return true
+            }
+            if (e.key === 'down' && browsing) {
+              const n = histIdx() - 1
+              setHistIdx(n)
+              setInput(n < 0 ? '' : sent()[sent().length - 1 - n].text)
+              return true
+            }
+            return false
+          }}
+          submitOnEnter
+          clearOnSubmit
+          focused={fm.is('input') && !anyPanel()}
+          maxHeight={8}
+          placeholder="enter to send · / commands · @ files · tab to scroll"
+          cursor={{ blink: true, bg: accent(), color: 'black' }}
+        />
+      </box>
+
+      {showCommands && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          {matchedCommands.length === 0 ? (
+            <text style={{ color: FAINT }}>no matching commands</text>
+          ) : (
+            <Menu
+              items={matchedCommands}
+              selected={cmdIndex()}
+              onSelect={setCmdIndex}
+              onSubmit={runCommand}
+              focused={showCommands}
+              maxVisible={5}
+              scrolloff={2}
+              renderItem={(c, { active }) => (
+                <box style={{ flexDirection: 'row' }}>
+                  <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                  <text style={{ color: active ? accent() : MUTED }}>{`/${c.name}`.padEnd(12)}</text>
+                  <text style={{ color: active ? '#cbd5e1' : FAINT }}>{c.desc}</text>
+                </box>
+              )}
+            />
+          )}
+        </box>
+      )}
+
+      {showFiles && matchedFiles.length > 0 && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          <Menu
+            items={matchedFiles}
+            selected={fileIndex()}
+            onSelect={setFileIndex}
+            onSubmit={pickFile}
+            onCancel={() => setFilesDismissed(true)}
+            focused={showFiles}
+            maxVisible={5}
+            scrolloff={2}
+            renderItem={(f, { active }) => (
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                <text style={{ color: active ? accent() : FG_SOFT }}>{f}</text>
+              </box>
+            )}
+          />
+        </box>
+      )}
+
+      {showModelPanel() && (
+        <ModelPanel
+          models={models}
+          current={model().name}
+          defaultName={defaultModel().name}
+          focused={showModelPanel()}
+          onPick={(m) => {
+            persist(makeEvent('model_switch', { from: model().name, to: m.name }))
+            setModel(m)
+            setShowModelPanel(false)
+            flash(`model set to ${m.name}`)
+          }}
+          onPickDefault={(m) => {
+            persist(makeEvent('model_switch', { from: model().name, to: m.name }))
+            setModel(m)
+            setDefaultModel(m)
+            writeConfig({ defaultModel: m.name }).catch(() => {})
+            setShowModelPanel(false)
+            flash(`model set to ${m.name} · saved as default`)
+          }}
+          onClose={() => setShowModelPanel(false)}
+        />
+      )}
+
+      {showEffortPanel() && (
+        <EffortPanel
+          levels={EFFORT_LEVELS}
+          current={effort() ?? null}
+          defaultLevel={defaultEffort() ?? null}
+          focused={showEffortPanel()}
+          onPick={(l) => {
+            setSessionEffort(l.key)
+            setShowEffortPanel(false)
+          }}
+          onPickDefault={(l) => {
+            setSessionEffort(l.key, { asDefault: true })
+            setShowEffortPanel(false)
+          }}
+          onClose={() => setShowEffortPanel(false)}
+        />
+      )}
+
+      {showHistoryPanel() && (
+        <HistoryPanel
+          prompts={histPrompts()}
+          scopes={HISTORY_SCOPES}
+          scopeIndex={histScope()}
+          focused={showHistoryPanel()}
+          onPick={(text) => { setInput(text); setShowHistoryPanel(false) }}
+          onClose={() => setShowHistoryPanel(false)}
+        />
+      )}
+
+      {showResumePanel() && (
+        <ResumePanel
+          sessions={resumeSessions()}
+          scopes={RESUME_SCOPES}
+          scopeIndex={resumeScope()}
+          loading={resumeLoading()}
+          focused={showResumePanel()}
+          onPick={resumeSession}
+          onClose={() => setShowResumePanel(false)}
+        />
+      )}
+
+      {showMcpPanel() && (
+        <McpPanel
+          servers={mcpServers()}
+          focused={showMcpPanel()}
+          onToggle={(name) => mcp.toggle(name)}
+          onReconnect={(name) => mcp.reconnect(name)}
+          onRemove={(name) => mcp.remove(name)}
+          onAdd={(name, command) => {
+            mcp.add(name, command)
+            flash(`added ${name}`)
+          }}
+          onClose={() => setShowMcpPanel(false)}
+        />
+      )}
+
+      {rewindStep() === 'pick' && (
+        <RewindPickPanel
+          entries={[...rewindEntries()].reverse()}
+          stats={(index) => rewindStats(derived(), index)}
+          focused={rewindStep() === 'pick'}
+          onPick={(entry) => { setRewindTarget(entry); setRewindStep('action') }}
+          onClose={() => setRewindStep(null)}
+        />
+      )}
+
+      {rewindStep() === 'action' && rewindTarget() && (
+        <RewindActionPanel
+          target={rewindTarget()}
+          options={rewindOptions}
+          focused={rewindStep() === 'action'}
+          onSubmit={performRewind}
+          onBack={() => setRewindStep('pick')}
+        />
+      )}
+
+      <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
+        {notice()
+          ? <text style={{ color: accent() }}>{notice()}</text>
+          : busy()
+            ? (
+              <box style={{ flexDirection: 'row' }}>
+                <Shimmer color={accent()} highlight="white" duration={1500} reverse>Responding</Shimmer>
+                <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
+              </box>
+            )
+            : null}
+        <box style={{ flexGrow: 1 }} />
+        <text style={{ color: accent() }}>{model().name}</text>
+        {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
+        <text style={{ color: FAINT }}>↑</text>
+        <text style={{ color: MUTED }}>{`${usage.promptTokens.toLocaleString()} in`}</text>
+        <text style={{ color: FAINT }}>↓</text>
+        <text style={{ color: MUTED }}>{`${usage.completionTokens.toLocaleString()} out`}</text>
+      </box>
+    </box>
+  )
+}
