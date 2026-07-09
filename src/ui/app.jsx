@@ -1267,6 +1267,10 @@ export function App({ boot }) {
           onCancel={(w) => {
             boot.wakeups.cancel(w.id)
             flash(`cancelled wake-up ${w.id}`)
+            noteSystem(
+              `[system notification] the user cancelled scheduled wake-up ${w.id} (note was: ${w.note.replace(/\n/g, ' ')}). This was deliberate; do not reschedule it unless asked.`,
+              { wake: false },
+            )
           }}
           onClose={() => setShowWakeupsPanel(false)}
         />

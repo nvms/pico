@@ -63,6 +63,19 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, mcpTools 
         },
         execute: ({ id }) => wakeups.cancel(id),
       },
+      {
+        name: 'list_wakeups',
+        description: 'List your pending scheduled wake-ups: id, when each fires, and its note.',
+        schema: {},
+        execute: () => ({
+          wakeups: wakeups.list().map((w) => ({
+            id: w.id,
+            firesAt: new Date(w.at).toString(),
+            inSeconds: Math.max(0, Math.round((w.at - Date.now()) / 1000)),
+            note: w.note,
+          })),
+        }),
+      },
     )
   }
 
