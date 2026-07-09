@@ -260,7 +260,7 @@ export function App({ boot }) {
         tools,
         recorder,
         modelName: model().name,
-        effort: effortApplies() ? effort() : null,
+        effort: effortApplies() ? effort() ?? 'auto' : null,
         system: buildSystemPrompt({ cwd, contextFiles: startupContext.files, skills: freshSkills.list() }),
         signal: controller.signal,
         onStream,
