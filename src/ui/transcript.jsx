@@ -36,7 +36,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, verbos
       {failed && error && (
         <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${error}`}</text>
       )}
-      {revert && !running && !reverted && (
+      {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
         <box style={{ flexDirection: 'column', height: Math.min((diff?.hunks || []).reduce((a, h) => a + h.lines.length, 2) + 1, 12), marginTop: 1 }}>
           <Diff
             before={revert.before}

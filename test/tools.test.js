@@ -59,6 +59,15 @@ test('edit records error status on missing text', async () => {
   assert.equal(recorder.entries[0].status, 'error')
 })
 
+test('write with identical content is a recorded no-op', async () => {
+  const { byName, recorder } = await fixture()
+  const content = 'const a = 1\nconst b = 2\nconsole.log(a + b)\n'
+  const result = await byName.write.execute({ path: 'hello.js', content })
+  assert.equal(result.unchanged, true)
+  assert.equal(recorder.entries[0].revert, undefined)
+  assert.equal(recorder.entries[0].diff, undefined)
+})
+
 test('write creates files with parents and diffs overwrites', async () => {
   const { cwd, byName, recorder } = await fixture()
   const created = await byName.write.execute({ path: 'deep/new.js', content: 'hi\n' })

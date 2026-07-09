@@ -18,6 +18,10 @@ export function createWrite({ cwd, recorder, tracker }) {
       try {
         before = await readFile(full, 'utf-8')
       } catch {}
+
+      if (before === content) {
+        return { ok: true, path, unchanged: true, note: 'file already had exactly this content' }
+      }
       await writeFile(full, content, 'utf-8')
 
       const result = { ok: true, path }
