@@ -136,27 +136,37 @@ export function App({ boot }) {
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
   boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
   boot.setShellsExit((shell) => {
-    if (shell.killedBy) {
+    if (shell.killedBy === 'model') {
       flash(`shell ${shell.id} killed`)
+      return
+    }
+    if (shell.killedBy === 'user') {
+      flash(`shell ${shell.id} killed`)
+      noteShell(`[system notification] the user killed background shell ${shell.id} (${shell.command}).`, { wake: false })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
     const tail = boot.shells.output(shell.id, { tail: 30 }).output
-    refs.pendingShellNotes ??= []
-    refs.pendingShellNotes.push(
+    noteShell(
       `[system notification] background shell ${shell.id} (${shell.command}) exited with code ${shell.exitCode}.` +
         (tail ? `\nRecent output:\n${tail}` : ''),
+      { wake: true },
     )
-    maybeDeliverShellNotes()
   })
 
-  function maybeDeliverShellNotes() {
+  function noteShell(text, { wake }) {
+    refs.pendingShellNotes ??= []
+    refs.pendingShellNotes.push({ text, wake })
+    flushShellNotes()
+  }
+
+  function flushShellNotes() {
     if (!refs.pendingShellNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    const text = refs.pendingShellNotes.join('\n\n')
+    const notes = refs.pendingShellNotes
     refs.pendingShellNotes = []
-    persist(makeEvent('shell_note', { text }))
+    persist(makeEvent('shell_note', { text: notes.map((n) => n.text).join('\n\n') }))
     reDerive()
-    runAgentTurn()
+    if (notes.some((n) => n.wake)) runAgentTurn()
   }
 
   const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
@@ -336,7 +346,7 @@ export function App({ boot }) {
         return
       }
     }
-    maybeDeliverShellNotes()
+    flushShellNotes()
   }
 
   function completionSource(name) {
