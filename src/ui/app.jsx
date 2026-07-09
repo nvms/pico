@@ -14,6 +14,7 @@ import { createSkillIndex } from '../core/skills.js'
 import { createCommandIndex } from '../core/commands.js'
 import { revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
+import { memoryIndex } from '../core/memory.js'
 import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
 import { adhocModel } from '../core/catalog.js'
@@ -52,6 +53,7 @@ const COMMANDS = [
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
+  { name: 'memory', desc: 'List saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
   { name: 'clear', desc: 'Clear the conversation and free the context window' },
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
@@ -260,6 +262,7 @@ export function App({ boot }) {
       skills: freshSkills,
       shells: boot.shells,
       wakeups: boot.wakeups,
+      memory: boot.memory,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -317,7 +320,12 @@ export function App({ boot }) {
         recorder,
         modelName: model().name,
         effort: effortApplies() ? effort() ?? 'auto' : null,
-        system: buildSystemPrompt({ cwd, contextFiles: startupContext.files, skills: freshSkills.list() }),
+        system: buildSystemPrompt({
+          cwd,
+          contextFiles: startupContext.files,
+          skills: freshSkills.list(),
+          memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
+        }),
         signal: controller.signal,
         onStream,
       })
@@ -479,6 +487,13 @@ export function App({ boot }) {
     if (c.name === 'mcp') return setShowMcpPanel(true)
     if (c.name === 'shells') return setShowShellsPanel(true)
     if (c.name === 'wakeups') return setShowWakeupsPanel(true)
+    if (c.name === 'memory') {
+      const memories = await boot.memory.list().catch(() => [])
+      return setInfoPanel({
+        title: `Memory · ${shortenPath(boot.root)}`,
+        rows: memories.map((m) => ({ name: m.name, desc: m.description, note: m.scope })),
+      })
+    }
     if (c.name === 'resume') {
       setShowResumePanel(true)
       refreshSessions(resumeScope())

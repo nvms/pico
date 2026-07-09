@@ -12,6 +12,7 @@ import { deriveState } from './core/derive.js'
 import { createToolset } from './core/tools/index.js'
 import { runTurn } from './core/agent.js'
 import { buildSystemPrompt } from './core/system-prompt.js'
+import { memoryIndex } from './core/memory.js'
 import { fuzzyScore } from './ui/fuzzy.js'
 import { finalizeUserContent } from './ui/attachments.js'
 
@@ -95,6 +96,7 @@ export async function runHeadless(opts) {
     tracker: boot.tracker,
     skills: boot.skills,
     shells,
+    memory: boot.memory,
     mcpTools: boot.mcp.tools(),
     userTools: [],
     maxToolCalls: opts.maxToolCalls ?? 50,
@@ -108,7 +110,12 @@ export async function runHeadless(opts) {
     recorder,
     modelName: model.name,
     effort,
-    system: buildSystemPrompt({ cwd: boot.cwd, contextFiles: boot.startupContext.files, skills: boot.skills.list() }),
+    system: buildSystemPrompt({
+      cwd: boot.cwd,
+      contextFiles: boot.startupContext.files,
+      skills: boot.skills.list(),
+      memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
+    }),
     onStream: (event) => {
       if (event.type === 'thinking') thoughts += event.content
       if (event.type === 'tool_complete') {

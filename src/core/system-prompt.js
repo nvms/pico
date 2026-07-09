@@ -6,7 +6,7 @@ const PLATFORM_NOTES = {
   win32: `Windows (${arch()}). Commands run through a POSIX-style shell; prefer portable forms.`,
 }
 
-export function buildSystemPrompt({ cwd, contextFiles = [], skills = [] }) {
+export function buildSystemPrompt({ cwd, contextFiles = [], skills = [], memoryIndexText = '' }) {
   const now = new Date()
   const parts = [
     `You are pico, a coding agent running in a terminal.`,
@@ -23,6 +23,10 @@ export function buildSystemPrompt({ cwd, contextFiles = [], skills = [] }) {
     `Tools are yours alone: the user cannot invoke them, so never suggest the user run a tool. Do it yourself, or describe the outcome instead.`,
     `Be direct and concise. Use markdown. Never invent file contents you have not read.`,
   ]
+
+  if (memoryIndexText) {
+    parts.push(``, memoryIndexText)
+  }
 
   if (skills.length) {
     parts.push(

@@ -6,7 +6,7 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 
-export function createToolset({ cwd, tracker, skills, shells, wakeups, mcpTools = [], userTools = [], signal, maxToolCalls }) {
+export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, mcpTools = [], userTools = [], signal, maxToolCalls }) {
   const recorder = createRecorder()
   const deps = { cwd, recorder, tracker, signal, shells }
 
@@ -75,6 +75,38 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, mcpTools 
             note: w.note,
           })),
         }),
+      },
+    )
+  }
+
+  if (memory) {
+    local.push(
+      {
+        name: 'remember',
+        description: 'Save a durable memory for future sessions. Use for corrections, preferences, and non-obvious facts worth keeping: a flaky test, a build quirk, something the user asked you to remember. Do not save what the code or git history already records, or details that only matter this session. Project scope is for this codebase; global is for facts about the user that apply everywhere.',
+        schema: {
+          name: { type: 'string', description: 'short kebab-case identifier' },
+          description: { type: 'string', description: 'one line used to decide when to recall this; write it as a hook, not a summary' },
+          content: { type: 'string', description: 'the memory itself' },
+          scope: { type: 'string', enum: ['project', 'global'], optional: true },
+        },
+        execute: async ({ name, description, content, scope }) => {
+          const saved = await memory.remember({ name, description, content, scope })
+          recorder.extra({ title: `${saved.name} (${saved.scope})` })
+          return saved
+        },
+      },
+      {
+        name: 'recall',
+        description: 'Load the full content of a saved memory by name. Your memory index is in the system prompt.',
+        schema: {
+          name: { type: 'string', description: 'the memory name from the index' },
+        },
+        execute: async ({ name }) => {
+          const found = await memory.recall(name)
+          recorder.extra({ title: found.name })
+          return found
+        },
       },
     )
   }

@@ -4,6 +4,7 @@ import { loadStartupContext, createContextTracker } from './context.js'
 import { createSkillIndex } from './skills.js'
 import { createCommandIndex } from './commands.js'
 import { createMcpRuntime } from './mcp.js'
+import { createMemory } from './memory.js'
 
 export async function buildProjectBoot(cwd, { onMcpChange = () => {} } = {}) {
   const home = homedir()
@@ -22,5 +23,6 @@ export async function buildProjectBoot(cwd, { onMcpChange = () => {} } = {}) {
     skills: await createSkillIndex(root),
     commands: await createCommandIndex(root),
     mcp: await createMcpRuntime({ root, onChange: onMcpChange }),
+    memory: createMemory(root),
   }
 }
