@@ -51,6 +51,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
     <PanelFrame title="Select model" hint="type to filter · ↑↓ to move · enter for this session · ctrl+s to make it the default · esc to keep current">
       <box style={{ flexDirection: 'column', height: 12, marginTop: 1 }}>
         <PickList
+          counter
           items={models}
           focused={focused}
           placeholder="filter models..."
@@ -99,6 +100,7 @@ export function HistoryPanel({ prompts, scopes, scopeIndex, focused, onPick, onC
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           <PickList
+            counter
             items={prompts}
             focused={focused}
             placeholder="filter prompts..."
@@ -139,6 +141,7 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           <PickList
+            counter
             items={entries}
             focused={focused}
             placeholder="filter messages..."
@@ -189,6 +192,7 @@ export function RewindActionPanel({ target, options, focused, onSubmit, onBack }
       </box>
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
+          counter
           items={options}
           focused={focused}
           maxVisible={4}
@@ -248,6 +252,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
             <text style={{ color: FAINT }}>no sessions here yet</text>
           ) : (
             <PickList
+              counter
               items={sessions}
               focused={focused && !loading}
               placeholder="filter sessions..."
@@ -304,6 +309,7 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
     <PanelFrame title="Thinking effort" hint="j/k or ↑↓ to move · enter for this session · ctrl+s to make it the default · esc to keep current">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
+          counter
           items={items}
           selected={cursor()}
           onSelect={setCursor}
@@ -368,6 +374,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onClose }) {
             <text style={{ color: FAINT }}>no known projects yet</text>
           ) : (
             <PickList
+              counter
               items={projects}
               focused={focused && !loading}
               placeholder="filter projects..."
@@ -465,6 +472,7 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
           <text style={{ color: FAINT }}>no background shells · the agent starts them with bash background: true</text>
         ) : (
           <Menu
+            counter
             items={shells}
             selected={index()}
             onSelect={setIndex}
@@ -526,6 +534,7 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
           <text style={{ color: FAINT }}>no pending wake-ups · the agent schedules them with schedule_wakeup</text>
         ) : (
           <Menu
+            counter
             items={wakeups}
             selected={index()}
             onSelect={setIndex}
@@ -707,6 +716,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
           <text style={{ color: FAINT }}>no MCP servers configured · press a to add one</text>
         ) : (
           <Menu
+            counter
             items={servers}
             selected={index()}
             onSelect={setIndex}

@@ -1113,6 +1113,7 @@ export function App({ boot }) {
             <text style={{ color: FAINT }}>no matching commands</text>
           ) : (
             <Menu
+              counter
               items={matchedCommands}
               selected={cmdIndex()}
               onSelect={setCmdIndex}
@@ -1135,6 +1136,7 @@ export function App({ boot }) {
       {showFiles && matchedFiles.length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
           <Menu
+            counter
             items={matchedFiles}
             selected={fileIndex()}
             onSelect={setFileIndex}
@@ -1156,6 +1158,7 @@ export function App({ boot }) {
       {showCompletion && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
           <Menu
+            counter
             items={compCtx.matches}
             selected={compIndex()}
             onSelect={setCompIndex}
