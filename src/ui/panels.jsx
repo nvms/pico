@@ -1,4 +1,4 @@
-import { createSignal, Menu, PickList, ScrollBox, TextInput, useInput } from '@trendr/core'
+import { createSignal, Menu, PickList, ScrollBox, TextInput, useInput, useInterval } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
 import { fuzzyScore } from './fuzzy.js'
 
@@ -484,6 +484,70 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
                   <text style={{ overflow: 'truncate', color: active ? FG : FG_SOFT }}>{s.command}</text>
                 </box>
                 <text style={{ color: FAINT }}>{`  ${s.status === 'running' ? `up ${uptime(s)}` : `exit ${s.exitCode} · ${uptime(s)}`}`}</text>
+              </box>
+            )}
+          />
+        )}
+      </box>
+    </PanelFrame>
+  )
+}
+
+export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
+  const [index, setIndex] = createSignal(0)
+  const [tick, setTick] = createSignal(0)
+  useEscape(() => focused, onClose)
+  useInterval(() => setTick((t) => t + 1), 1000)
+  void tick()
+
+  const selected = () => wakeups[Math.min(index(), wakeups.length - 1)] || null
+
+  useInput((event) => {
+    if (!focused) return
+    const w = selected()
+    if (w && event.key === 'k' && !event.ctrl) {
+      onCancel(w)
+      event.stopPropagation()
+    }
+  })
+
+  const countdown = (at) => {
+    const secs = Math.max(0, Math.round((at - Date.now()) / 1000))
+    if (secs < 60) return `in ${secs}s`
+    const mins = Math.floor(secs / 60)
+    if (mins < 60) return `in ${mins}m ${secs % 60}s`
+    return `in ${Math.floor(mins / 60)}h ${mins % 60}m`
+  }
+
+  return (
+    <PanelFrame title="Scheduled wake-ups" hint="enter or k cancel · esc close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        {wakeups.length === 0 ? (
+          <text style={{ color: FAINT }}>no pending wake-ups · the agent schedules them with schedule_wakeup</text>
+        ) : (
+          <Menu
+            items={wakeups}
+            selected={index()}
+            onSelect={setIndex}
+            focused={focused}
+            maxVisible={5}
+            itemHeight={2}
+            gap={1}
+            onSubmit={(w) => onCancel(w)}
+            onCancel={onClose}
+            renderItem={(w, { active }) => (
+              <box style={{ flexDirection: 'column' }}>
+                <box style={{ flexDirection: 'row' }}>
+                  <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                  <text style={{ color: active ? accent() : FG }}>{`⏰ ${w.id}`}</text>
+                  <box style={{ flexGrow: 1 }} />
+                  <text style={{ color: MUTED }}>{countdown(w.at)}</text>
+                  <text style={{ color: FAINT }}>{`  ${new Date(w.at).toLocaleTimeString()}`}</text>
+                </box>
+                <box style={{ flexGrow: 1, height: 1, flexDirection: 'row' }}>
+                  <text style={{ color: FAINT }}>{'    '}</text>
+                  <text style={{ overflow: 'truncate', color: FG_SOFT }}>{w.note.replace(/\n/g, ' ')}</text>
+                </box>
               </box>
             )}
           />

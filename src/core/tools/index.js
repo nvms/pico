@@ -6,7 +6,7 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 
-export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], userTools = [], signal, maxToolCalls }) {
+export function createToolset({ cwd, tracker, skills, shells, wakeups, mcpTools = [], userTools = [], signal, maxToolCalls }) {
   const recorder = createRecorder()
   const deps = { cwd, recorder, tracker, signal, shells }
 
@@ -37,6 +37,31 @@ export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], use
           id: { type: 'string', description: 'the shell id' },
         },
         execute: ({ id }) => shells.kill(id, 'model'),
+      },
+    )
+  }
+
+  if (wakeups) {
+    local.push(
+      {
+        name: 'schedule_wakeup',
+        description: 'Schedule a one-time wake-up: after the delay you receive a system notification carrying your note and can act on it. For a recurring loop, schedule the next wake-up at the end of each one. Wake-ups are lost if pico exits.',
+        schema: {
+          delaySeconds: { type: 'number', description: 'seconds from now, minimum 5' },
+          note: { type: 'string', description: 'what to do when you wake up; written to your future self' },
+        },
+        execute: ({ delaySeconds, note }) => {
+          const { id, at, seconds } = wakeups.schedule(delaySeconds, note)
+          return { wakeupId: id, firesAt: new Date(at).toString(), inSeconds: seconds }
+        },
+      },
+      {
+        name: 'cancel_wakeup',
+        description: 'Cancel a pending wake-up by id.',
+        schema: {
+          id: { type: 'string', description: 'the wake-up id' },
+        },
+        execute: ({ id }) => wakeups.cancel(id),
       },
     )
   }

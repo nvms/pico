@@ -45,6 +45,10 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 
 The agent can run long-lived processes (dev servers, watchers) with \`bash background: true\`, then read their output and stop them itself. \`/shells\` lists them: enter opens a live output view, \`k\` kills (press twice), \`d\` dismisses a dead one. A \`⚙ N\` in the footer shows how many are running. When a shell exits on its own, the agent is notified and responds; shells die with pico, and quitting warns you if any are still up.
 
+## Wake-ups
+
+The agent can schedule one-time wake-ups for itself with the schedule_wakeup tool: after the delay it receives its own note as a system notification and acts on it. Recurring loops are just the agent rescheduling at the end of each wake-up. \`/wakeups\` lists pending ones with live countdowns; enter or \`k\` cancels. A \`⏰ N\` in the footer shows how many are pending. Wake-ups live in memory and are lost when pico exits.
+
 ## Context
 
 pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree.

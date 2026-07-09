@@ -7,6 +7,7 @@ import { loadCatalog, extractModels } from './core/catalog.js'
 import { readConfig } from './core/config.js'
 import { buildProjectBoot } from './core/boot.js'
 import { createShellManager } from './core/shells.js'
+import { createWakeupManager } from './core/wakeups.js'
 import { App } from './ui/app.jsx'
 import { DEFAULT_ACCENT } from './ui/theme.js'
 
@@ -56,6 +57,13 @@ const shells = createShellManager({
 })
 process.on('exit', () => shells.killAll())
 
+let wakeupsNotify = () => {}
+let wakeupsFire = () => {}
+const wakeups = createWakeupManager({
+  onChange: () => wakeupsNotify(),
+  onFire: (wakeup) => wakeupsFire(wakeup),
+})
+
 const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotify() })
 
 const config = await readConfig()
@@ -73,9 +81,12 @@ const boot = {
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   refs: {},
   shells,
+  wakeups,
   setMcpNotify: (fn) => { mcpNotify = fn },
   setShellsNotify: (fn) => { shellsNotify = fn },
   setShellsExit: (fn) => { shellsExit = fn },
+  setWakeupsNotify: (fn) => { wakeupsNotify = fn },
+  setWakeupsFire: (fn) => { wakeupsFire = fn },
   rebuild: bootProject,
 }
 

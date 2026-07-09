@@ -25,7 +25,7 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -51,6 +51,7 @@ const COMMANDS = [
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
+  { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
   { name: 'clear', desc: 'Clear the conversation and free the context window' },
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
@@ -112,6 +113,7 @@ export function App({ boot }) {
   const [showProjectPanel, setShowProjectPanel] = createSignal(false)
   const [infoPanel, setInfoPanel] = createSignal(null)
   const [showShellsPanel, setShowShellsPanel] = createSignal(false)
+  const [showWakeupsPanel, setShowWakeupsPanel] = createSignal(false)
   const [shellsVersion, setShellsVersion] = createSignal(0)
   const [projects, setProjects] = createSignal([])
   const [projectsLoading, setProjectsLoading] = createSignal(false)
@@ -135,6 +137,14 @@ export function App({ boot }) {
 
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
   boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
+  boot.setWakeupsNotify(() => setShellsVersion((v) => v + 1))
+  boot.setWakeupsFire((wakeup) => {
+    flash(`wake-up ${wakeup.id} fired`)
+    noteSystem(
+      `[system notification] scheduled wake-up ${wakeup.id} fired. Your note to yourself:\n${wakeup.note}`,
+      { wake: true },
+    )
+  })
   boot.setShellsExit((shell) => {
     if (shell.killedBy === 'model') {
       flash(`shell ${shell.id} killed`)
@@ -142,29 +152,29 @@ export function App({ boot }) {
     }
     if (shell.killedBy === 'user') {
       flash(`shell ${shell.id} killed`)
-      noteShell(`[system notification] the user manually killed background shell ${shell.id} (${shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
+      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
     const tail = boot.shells.output(shell.id, { tail: 30 }).output
-    noteShell(
+    noteSystem(
       `[system notification] background shell ${shell.id} (${shell.command}) exited with code ${shell.exitCode}.` +
         (tail ? `\nRecent output:\n${tail}` : ''),
       { wake: true },
     )
   })
 
-  function noteShell(text, { wake }) {
-    refs.pendingShellNotes ??= []
-    refs.pendingShellNotes.push({ text, wake })
-    flushShellNotes()
+  function noteSystem(text, { wake }) {
+    refs.pendingSystemNotes ??= []
+    refs.pendingSystemNotes.push({ text, wake })
+    flushSystemNotes()
   }
 
-  function flushShellNotes() {
-    if (!refs.pendingShellNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    const notes = refs.pendingShellNotes
-    refs.pendingShellNotes = []
-    persist(makeEvent('shell_note', { text: notes.map((n) => n.text).join('\n\n') }))
+  function flushSystemNotes() {
+    if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
+    const notes = refs.pendingSystemNotes
+    refs.pendingSystemNotes = []
+    persist(makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
     reDerive()
     if (notes.some((n) => n.wake)) runAgentTurn()
   }
@@ -249,6 +259,7 @@ export function App({ boot }) {
       tracker,
       skills: freshSkills,
       shells: boot.shells,
+      wakeups: boot.wakeups,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -346,7 +357,7 @@ export function App({ boot }) {
         return
       }
     }
-    flushShellNotes()
+    flushSystemNotes()
   }
 
   function completionSource(name) {
@@ -467,6 +478,7 @@ export function App({ boot }) {
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
     if (c.name === 'shells') return setShowShellsPanel(true)
+    if (c.name === 'wakeups') return setShowWakeupsPanel(true)
     if (c.name === 'resume') {
       setShowResumePanel(true)
       refreshSessions(resumeScope())
@@ -760,7 +772,7 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || showShellsPanel() || infoPanel() !== null || rewindStep() !== null
+    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || infoPanel() !== null || rewindStep() !== null
 
   function killShell(shell) {
     if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
@@ -931,6 +943,7 @@ export function App({ boot }) {
   const { usageActive: usage } = derived()
   shellsVersion()
   const runningShells = boot.shells.running()
+  const pendingWakeups = boot.wakeups.pending()
 
   if (view() === 'help') {
     return <Help commands={COMMANDS} onClose={() => setView('chat')} />
@@ -1247,6 +1260,18 @@ export function App({ boot }) {
         />
       )}
 
+      {showWakeupsPanel() && (
+        <WakeupsPanel
+          wakeups={(shellsVersion(), boot.wakeups.list())}
+          focused={showWakeupsPanel()}
+          onCancel={(w) => {
+            boot.wakeups.cancel(w.id)
+            flash(`cancelled wake-up ${w.id}`)
+          }}
+          onClose={() => setShowWakeupsPanel(false)}
+        />
+      )}
+
       {showMcpPanel() && (
         <McpPanel
           servers={mcpServers()}
@@ -1295,6 +1320,7 @@ export function App({ boot }) {
             : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
         {runningShells > 0 && <text style={{ color: MUTED }}>{`⚙ ${runningShells}`}</text>}
+        {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
         <text style={{ color: FAINT }}>↑</text>

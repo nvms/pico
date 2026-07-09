@@ -1,12 +1,19 @@
-import { platform } from 'node:os'
+import { platform, arch, release } from 'node:os'
+
+const PLATFORM_NOTES = {
+  darwin: `macOS (darwin ${arch()}, kernel ${release()}). BSD userland: GNU-only tools like timeout, tac, gdate, or sed -i without a suffix argument are absent or behave differently. Prefer portable POSIX forms, and check a tool exists before relying on it.`,
+  linux: `Linux (${arch()}, kernel ${release()}). GNU userland.`,
+  win32: `Windows (${arch()}). Commands run through a POSIX-style shell; prefer portable forms.`,
+}
 
 export function buildSystemPrompt({ cwd, contextFiles = [], skills = [] }) {
+  const now = new Date()
   const parts = [
     `You are pico, a coding agent running in a terminal.`,
     ``,
     `Working directory: ${cwd}`,
-    `Platform: ${platform()}`,
-    `Date: ${new Date().toDateString()}`,
+    `Platform: ${PLATFORM_NOTES[platform()] || platform()}`,
+    `Current date and time: ${now.toString()}`,
     ``,
     `Use the available tools to read, search, and modify files, and to run commands.`,
     `Prefer the built-in tools for file and shell work: read, write, edit, bash, glob, grep.`,
