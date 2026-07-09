@@ -44,6 +44,7 @@ const COMMANDS = [
   { name: 'cwd', desc: 'Show the current working directory and project root' },
   { name: 'skills', desc: 'List every skill: builtin, global, and project' },
   { name: 'commands', desc: 'List every command: builtin, global, and project' },
+  { name: 'tools', desc: 'List builtin and user-defined tools; MCP tools live in /mcp' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
@@ -440,6 +441,20 @@ export function App({ boot }) {
           ...boot.commands.list().map((cmd) => ({ name: `/${cmd.name}`, desc: cmd.description, note: cmd.source })),
         ],
       })
+    }
+    if (c.name === 'tools') {
+      const scan = await scanUserTools({ cwd: boot.cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
+      const { tools: builtins } = createToolset({ cwd: boot.cwd, tracker, skills })
+      const mcpCount = mcp.tools().length
+      setInfoPanel({
+        title: `Tools${mcpCount ? ` · plus ${mcpCount} MCP (see /mcp)` : ''}`,
+        rows: [
+          ...builtins.map((t) => ({ name: t.name, desc: t.description.split('\n')[0], note: 'builtin' })),
+          ...scan.tools.map((t) => ({ name: t.name, desc: t.description, note: `${t.source} · ${t._file.split('/').pop()}` })),
+          ...scan.errors.map((e) => ({ name: e.file.split('/').pop(), desc: e.error, note: 'broken' })),
+        ],
+      })
+      return
     }
     if (c.name === 'new') {
       if (busy()) return flash('finish or interrupt the current turn first')
