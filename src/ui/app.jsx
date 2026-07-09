@@ -441,12 +441,14 @@ export function App({ boot }) {
     if (c.name === 'model') {
       if (!args) return setShowModelPanel(true)
       const exact = models.find((m) => m.name === args)
-      const scored = models
-        .map((m) => [fuzzyScore(args, m.name), m])
-        .filter(([score]) => score >= 0)
-        .sort((a, b) => b[0] - a[0])
-      const adhoc = !exact && scored.length === 0 ? adhocModel(args, boot.providers) : null
-      const pick = exact || scored[0]?.[1] || adhoc
+      const adhoc = !exact && args.includes('/') ? adhocModel(args, boot.providers) : null
+      const scored = exact || adhoc
+        ? []
+        : models
+            .map((m) => [fuzzyScore(args, m.name), m])
+            .filter(([score]) => score >= 0)
+            .sort((a, b) => b[0] - a[0])
+      const pick = exact || adhoc || scored[0]?.[1]
       if (!pick) return flash(`no available model matches "${args}"`)
       if (pick.available === false) return flash(`set ${pick.keyHint} in your environment to use ${pick.name}`)
       persist(makeEvent('model_switch', { from: model().name, to: pick.name }))

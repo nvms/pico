@@ -6,7 +6,7 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 
-export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], userTools = [], signal }) {
+export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], userTools = [], signal, maxToolCalls }) {
   const recorder = createRecorder()
   const deps = { cwd, recorder, tracker, signal, shells }
 
@@ -66,7 +66,12 @@ export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], use
   }
   const tools = [...byName.values()].map((tool) => ({
     ...tool,
-    execute: recorded(recorder, tool.name, tool.execute),
+    execute: recorded(recorder, tool.name, async (args) => {
+      if (maxToolCalls && recorder.entries.length >= maxToolCalls) {
+        throw new Error('tool call limit reached for this run; do not call more tools, summarize what you have and finish')
+      }
+      return tool.execute(args)
+    }),
   }))
 
   return { tools, recorder }

@@ -102,9 +102,11 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
 
   return {
     connectAll() {
+      const pending = []
       for (const server of servers.values()) {
-        if (server.enabled) connect(server.name)
+        if (server.enabled) pending.push(connect(server.name))
       }
+      return Promise.allSettled(pending)
     },
     async add(name, command) {
       const registry = await readRegistry()
