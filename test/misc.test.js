@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseLine, parseLines, makeEvent } from '../src/core/events.js'
-import { parseCommand } from '../src/core/mcp.js'
+import { parseCommand, parseServerSpec } from '../src/core/mcp.js'
 import { parseFrontmatter, createSkillIndex } from '../src/core/skills.js'
 import { discoverKeys } from '../src/core/keys.js'
 import { defaultModel, estimateCost, findModel } from '../src/core/models.js'
@@ -38,6 +38,26 @@ test('parseCommand handles quotes and env prefixes', () => {
     env: { API_KEY: 'abc' },
   })
   assert.throws(() => parseCommand('KEY=only'), /empty command/)
+})
+
+test('parseServerSpec routes urls to http and commands to stdio', () => {
+  assert.deepEqual(parseServerSpec('npx -y @modelcontextprotocol/server-filesystem /tmp'), {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+    env: {},
+  })
+  assert.deepEqual(parseServerSpec('https://mcp.linear.app/mcp'), {
+    type: 'http',
+    url: 'https://mcp.linear.app/mcp',
+    headers: {},
+  })
+  assert.deepEqual(parseServerSpec('https://mcp.example.com/mcp Authorization="Bearer abc==" X-Team=core'), {
+    type: 'http',
+    url: 'https://mcp.example.com/mcp',
+    headers: { Authorization: 'Bearer abc==', 'X-Team': 'core' },
+  })
+  assert.throws(() => parseServerSpec('https://x.dev extra-token'), /Header=value/)
 })
 
 test('parseFrontmatter extracts meta and body', () => {

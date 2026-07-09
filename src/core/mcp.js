@@ -2,11 +2,19 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { connectMCP } from '@prsm/ai'
 import { globalMcpFile, projectMcpFile, projectDir, ensureDir, picoHome } from './paths.js'
 
-export function parseCommand(str) {
+function tokenize(str) {
   const tokens = []
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g
+  const re = /([A-Za-z0-9_-]+=)?"([^"]*)"|([A-Za-z0-9_-]+=)?'([^']*)'|(\S+)/g
   let m
-  while ((m = re.exec(str))) tokens.push(m[1] ?? m[2] ?? m[3])
+  while ((m = re.exec(str))) {
+    if (m[1] !== undefined || m[3] !== undefined) tokens.push((m[1] ?? m[3]) + (m[2] ?? m[4]))
+    else tokens.push(m[2] ?? m[4] ?? m[5])
+  }
+  return tokens
+}
+
+export function parseCommand(str) {
+  const tokens = tokenize(str)
 
   const env = {}
   while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) {
@@ -16,6 +24,21 @@ export function parseCommand(str) {
   }
   if (!tokens.length) throw new Error('empty command')
   return { command: tokens[0], args: tokens.slice(1), env }
+}
+
+export function parseServerSpec(str) {
+  const tokens = tokenize(str)
+  const url = tokens.find((t) => /^https?:\/\//.test(t))
+  if (!url) return { type: 'stdio', ...parseCommand(str) }
+
+  const headers = {}
+  for (const token of tokens) {
+    if (token === url) continue
+    const sep = token.indexOf('=')
+    if (sep < 1) throw new Error(`http server spec only takes a url and Header=value pairs, got "${token}"`)
+    headers[token.slice(0, sep)] = token.slice(sep + 1)
+  }
+  return { type: 'http', url, headers }
 }
 
 async function readJson(file, fallback) {
@@ -60,7 +83,24 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     })
   }
 
-  let StdioClientTransport = null
+  async function transportFactory(command) {
+    const spec = parseServerSpec(command)
+    if (spec.type === 'http') {
+      const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+      return () =>
+        new StreamableHTTPClientTransport(new URL(spec.url), {
+          requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
+        })
+    }
+    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
+    return () =>
+      new StdioClientTransport({
+        command: spec.command,
+        args: spec.args,
+        env: { ...process.env, ...spec.env },
+        stderr: 'pipe',
+      })
+  }
 
   async function connect(name) {
     const server = servers.get(name)
@@ -69,19 +109,9 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     server.error = null
     onChange()
     try {
-      if (!StdioClientTransport) {
-        ({ StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js'))
-      }
-      const parsed = parseCommand(server.command)
       server.connection = await connectMCP({
         name,
-        transport: () =>
-          new StdioClientTransport({
-            command: parsed.command,
-            args: parsed.args,
-            env: { ...process.env, ...parsed.env },
-            stderr: 'pipe',
-          }),
+        transport: await transportFactory(server.command),
       })
       server.status = 'connected'
     } catch (err) {

@@ -604,7 +604,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
     <PanelFrame
       title="MCP servers"
       hint={adding()
-        ? 'format: <name> <command...>   e.g. fs npx -y @modelcontextprotocol/server-filesystem /tmp'
+        ? 'stdio: <name> <command...> · http: <name> <url> [Header="value"...]'
         : 'space/enter toggle · t tools · r reconnect · a add · d remove · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
