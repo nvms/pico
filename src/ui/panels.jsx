@@ -48,7 +48,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
   })
 
   return (
-    <PanelFrame title="Select model" hint="type to filter · ↑↓ to move · enter for this session · ctrl+s to make it the default · esc to keep current">
+    <PanelFrame title="Select model" hint="type to filter · enter: this session · ctrl+s: set as default · esc: close">
       <box style={{ flexDirection: 'column', height: 12, marginTop: 1 }}>
         <PickList
           counter
@@ -306,7 +306,7 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   const label = (l) => (l.key === null ? 'default' : l.key)
 
   return (
-    <PanelFrame title="Thinking effort" hint="j/k or ↑↓ to move · enter for this session · ctrl+s to make it the default · esc to keep current">
+    <PanelFrame title="Thinking effort" hint="j/k to move · enter: this session · ctrl+s: set as default · esc: close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
           counter
