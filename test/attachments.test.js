@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths, placeholderizeImagePaths } from '../src/ui/attachments.js'
+import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths, placeholderizeImagePaths, inputTextFromContent } from '../src/ui/attachments.js'
 import { hydrateImages } from '../src/core/agent.js'
 
 const yes = () => true
@@ -82,6 +82,22 @@ test('placeholderizeImagePaths swaps completed paths for placeholders', () => {
   const untouched = placeholderizeImagePaths('just words', { attachments, nextId: () => ++id, exists: yes })
   assert.equal(untouched.changed, false)
   assert.equal(untouched.text, 'just words')
+})
+
+test('inputTextFromContent rebuilds placeholders from persisted content', () => {
+  const attachments = new Map()
+  let id = 10
+  const text = inputTextFromContent(
+    [
+      { type: 'text', text: 'what is ' },
+      { type: 'image', source: { kind: 'path', path: '/Users/x/shot.png', mediaType: 'image/png' } },
+      { type: 'text', text: ' about' },
+    ],
+    { attachments, nextId: () => ++id },
+  )
+  assert.equal(text, 'what is [Image #11] about')
+  assert.equal(attachments.get('[Image #11]').path, '/Users/x/shot.png')
+  assert.equal(inputTextFromContent('plain text', { attachments, nextId: () => ++id }), 'plain text')
 })
 
 test('hydrateImages converts path parts to base64 and degrades gracefully', async () => {

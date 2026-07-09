@@ -106,6 +106,23 @@ export function placeholderizeImagePaths(text, { attachments, nextId, exists = e
   return { text: out, changed: true }
 }
 
+export function inputTextFromContent(content, { attachments, nextId }) {
+  if (!Array.isArray(content)) return String(content)
+  let out = ''
+  for (const part of content) {
+    if (part.type === 'text') {
+      out += part.text
+    } else if (part.type === 'image' && part.source?.path) {
+      const placeholder = `[Image #${nextId()}]`
+      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType })
+      out += placeholder
+    } else {
+      out += '[image]'
+    }
+  }
+  return out
+}
+
 export function finalizeUserContent(text, attachments, exists = existsSync) {
   const { content, used } = buildUserContent(text, attachments)
   const parts = Array.isArray(content) ? content : [{ type: 'text', text: content }]

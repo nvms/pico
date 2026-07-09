@@ -19,7 +19,7 @@ import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
-import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths } from './attachments.js'
+import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths, inputTextFromContent } from './attachments.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
@@ -178,8 +178,7 @@ export function App({ boot }) {
   }
 
   async function executeTurn(text) {
-    const { content, used } = finalizeUserContent(text, refs.attachments)
-    for (const placeholder of used) refs.attachments.delete(placeholder)
+    const { content } = finalizeUserContent(text, refs.attachments)
     persist(makeEvent('message', { message: { role: 'user', content } }))
     ensureSession()
     reDerive()
@@ -578,7 +577,7 @@ export function App({ boot }) {
         if (derived().model) flash(`model ${derived().model} unavailable, using ${defaultModel().name}`)
       }
       setEffort(derived().effort === undefined ? defaultEffort() : derived().effort)
-      setSent(userEntries(derived()).map((e) => ({ text: e.text, at: header.createdAt })))
+      setSent(userEntries(derived()).map((e) => ({ text: recallText(e), at: header.createdAt })))
       setFollow(true)
       flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`)
     } catch (err) {
@@ -641,7 +640,7 @@ export function App({ boot }) {
     persist(event)
     refs.rewindUndo = { rewindId: event.id, edits: edits.filter((e) => reverted.includes(e.callId)) }
     reDerive()
-    if (opt.key !== 'code') setInput(target.text)
+    if (opt.key !== 'code') setInput(recallText(target))
 
     const skippedNote = skipped.length ? ` · skipped ${skipped.length} drifted` : ''
     if (opt.key === 'code') flash(`reverted ${editsLabel}, conversation kept${skippedNote} · ctrl+z to undo`)
@@ -660,6 +659,13 @@ export function App({ boot }) {
     refs.rewindUndo = null
     reDerive()
     flash(skipped.length ? `rewind undone · ${skipped.length} file(s) drifted` : 'rewind undone')
+  }
+
+  function recallText(entry) {
+    return inputTextFromContent(entry.content ?? entry.text, {
+      attachments: refs.attachments,
+      nextId: () => ++refs.imageCount,
+    })
   }
 
   const anyPanel = () =>

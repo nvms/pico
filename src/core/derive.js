@@ -52,7 +52,7 @@ function foldMessage(state, event) {
           .map((p) => (p.type === 'text' ? p.text : `[image: ${String(p.source?.path || '').split('/').pop() || 'attached'}]`))
           .join('')
       : String(message.content)
-    state.transcript.push({ kind: 'user', text, eventId: event.id })
+    state.transcript.push({ kind: 'user', text, content: message.content, eventId: event.id })
     return
   }
   if (message.role === 'assistant') {
@@ -188,7 +188,7 @@ export function deriveState(events) {
 export function userEntries(state) {
   const entries = []
   state.transcript.forEach((item, index) => {
-    if (item.kind === 'user') entries.push({ text: item.text, index, eventId: item.eventId })
+    if (item.kind === 'user') entries.push({ text: item.text, content: item.content, index, eventId: item.eventId })
   })
   return entries
 }
