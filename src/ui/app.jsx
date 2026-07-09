@@ -141,7 +141,7 @@ export function App({ boot }) {
   boot.setWakeupsFire((wakeup) => {
     flash(`wake-up ${wakeup.id} fired`)
     noteSystem(
-      `[system notification] scheduled wake-up ${wakeup.id} fired. Your note to yourself:\n${wakeup.note}`,
+      `[system notification] scheduled wake-up ${wakeup.id} fired. Note to self: ${wakeup.note}`,
       { wake: true },
     )
   })
