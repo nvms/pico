@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -831,7 +832,15 @@ export function App({ boot }) {
   function pickFile(f) {
     const v = input()
     const at = v.lastIndexOf('@')
-    setInput(v.slice(0, at + 1) + f + ' ')
+    const mediaType = mediaTypeFor(f)
+    const full = join(boot.cwd, f)
+    if (mediaType && existsSync(full)) {
+      const placeholder = `[Image #${++refs.imageCount}]`
+      refs.attachments.set(placeholder, { path: full, mediaType })
+      setInput(v.slice(0, at) + placeholder + ' ')
+    } else {
+      setInput(v.slice(0, at + 1) + f + ' ')
+    }
     setFileIndex(0)
   }
 
