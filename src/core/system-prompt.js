@@ -13,6 +13,7 @@ export function buildSystemPrompt({ cwd, contextFiles = [], skills = [] }) {
     `Tools with server-prefixed names come from MCP servers: reach for them only when they provide a capability the built-in tools do not, never as a substitute for simple file access or shell commands.`,
     `Prefer reading files before editing them. Keep edits minimal and precise.`,
     `When a tool result includes context_from_agents_md, treat it as project instructions that apply from that point on.`,
+    `Tools are yours alone: the user cannot invoke them, so never suggest the user run a tool. Do it yourself, or describe the outcome instead.`,
     `Be direct and concise. Use markdown. Never invent file contents you have not read.`,
   ]
 

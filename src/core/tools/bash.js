@@ -20,11 +20,7 @@ export function createBash({ cwd, recorder, signal, shells }) {
       if (background && shells) {
         recorder.extra({ title: command, background: true })
         const { id } = shells.start(command, { cwd })
-        return {
-          shellId: id,
-          status: 'running',
-          note: 'started in the background; use shell_output to read its output and shell_kill to stop it',
-        }
+        return { shellId: id, status: 'running' }
       }
       return new Promise((resolve) => {
         recorder.extra({ title: command })

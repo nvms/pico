@@ -75,7 +75,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
 
   function get(id) {
     const shell = shells.get(String(id))
-    if (!shell) throw new Error(`no shell with id ${id}`)
+    if (!shell) throw new Error(`no shell with id ${id}; it is gone and cannot be inspected (exited shells disappear when dismissed)`)
     return shell
   }
 
