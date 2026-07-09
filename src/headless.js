@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { discoverKeys, applyKeys } from './core/keys.js'
-import { loadCatalog, extractModels, adhocModel } from './core/catalog.js'
+import { loadCatalog, extractModels, codexModels, adhocModel } from './core/catalog.js'
+import { openaiConnected, openaiCredentials } from './core/openai-auth.js'
 import { findModel, defaultModel, estimateCost } from './core/models.js'
 import { readConfig } from './core/config.js'
 import { buildProjectBoot } from './core/boot.js'
@@ -43,15 +44,20 @@ export async function runHeadless(opts) {
   const startedAt = Date.now()
   const log = opts.quiet ? () => {} : (line) => process.stderr.write(line + '\n')
 
-  const providers = applyKeys(discoverKeys())
+  const chatgpt = await openaiConnected()
+  const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : [])]
   if (providers.length === 0) {
-    process.stderr.write('pico: no API keys found in the environment\n')
+    process.stderr.write('pico: no credentials found (set a provider key or run pico --connect)\n')
     return 1
   }
-  const models = extractModels(await loadCatalog(), ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
-    ...m,
-    available: providers.includes(m.provider),
-  }))
+  const catalogData = await loadCatalog()
+  const models = [
+    ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
+      ...m,
+      available: providers.includes(m.provider),
+    })),
+    ...codexModels(catalogData).map((m) => ({ ...m, available: chatgpt })),
+  ]
   const config = await readConfig()
 
   const model = resolveModel(models, providers, opts.model)
@@ -102,6 +108,15 @@ export async function runHeadless(opts) {
     maxToolCalls: opts.maxToolCalls ?? 50,
   })
 
+  let auth = null
+  if (model.provider === 'codex') {
+    auth = await openaiCredentials().catch(() => null)
+    if (!auth) {
+      process.stderr.write('pico: codex models need a ChatGPT sign-in (run pico --connect)\n')
+      return 1
+    }
+  }
+
   log(`pico · ${model.name}${effort ? ` · ${effort}` : ''} · session ${session.id}`)
   let thoughts = ''
   const result = await runTurn({
@@ -110,6 +125,7 @@ export async function runHeadless(opts) {
     recorder,
     modelName: model.name,
     effort,
+    auth,
     system: buildSystemPrompt({
       cwd: boot.cwd,
       contextFiles: boot.startupContext.files,

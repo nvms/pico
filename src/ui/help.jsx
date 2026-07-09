@@ -45,6 +45,10 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 
 The agent can run long-lived processes (dev servers, watchers) with \`bash background: true\`, then read their output and stop them itself. \`/shells\` lists them: enter opens a live output view, \`k\` kills (press twice), \`d\` dismisses a dead one. A \`⚙ N\` in the footer shows how many are running. When a shell exits on its own, the agent is notified and responds; shells die with pico, and quitting warns you if any are still up.
 
+## Subscriptions
+
+\`/connect\` lists subscription providers you can sign in with instead of API keys. OpenAI (ChatGPT / Codex plan) signs in through your browser via OAuth; tokens are stored in \`~/.pico/auth.json\` and refreshed automatically, so you sign in once. Once connected, codex models appear in \`/model\`, billed to your plan. \`d\` in the panel disconnects.
+
 ## Memory
 
 The agent saves durable facts with the remember tool: one file per memory under \`~/.pico/memory\` (global) or the project's directory in \`~/.pico/projects\`. Only a one-line index is in its context; it loads a specific memory with the recall tool when relevant. \`/memory\` lists everything it knows. Ask it to remember, forget, or clean up its memories in plain language.

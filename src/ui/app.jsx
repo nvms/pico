@@ -19,6 +19,7 @@ import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
 import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
+import { connectOpenAI, openaiCredentials, openaiStatus, disconnectOpenAI } from '../core/openai-auth.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
 import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths, inputTextFromContent } from './attachments.js'
@@ -26,7 +27,7 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -39,6 +40,7 @@ const EFFORT_LEVELS = [
 
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
+  { name: 'connect', desc: 'Sign in with ChatGPT to use a Codex subscription' },
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
@@ -115,6 +117,8 @@ export function App({ boot }) {
   const [infoPanel, setInfoPanel] = createSignal(null)
   const [showShellsPanel, setShowShellsPanel] = createSignal(false)
   const [showWakeupsPanel, setShowWakeupsPanel] = createSignal(false)
+  const [showConnectPanel, setShowConnectPanel] = createSignal(false)
+  const [authProviders, setAuthProviders] = createSignal([])
   const [shellsVersion, setShellsVersion] = createSignal(0)
   const [projects, setProjects] = createSignal([])
   const [projectsLoading, setProjectsLoading] = createSignal(false)
@@ -242,6 +246,14 @@ export function App({ boot }) {
   }
 
   async function runAgentTurn() {
+    let auth = null
+    if (model().provider === 'codex') {
+      auth = await openaiCredentials().catch(() => null)
+      if (!auth) {
+        flash('codex models need a ChatGPT sign-in: run /connect')
+        return
+      }
+    }
     setFollow(true)
     setBusy(true)
     setStartedAt(Date.now())
@@ -324,6 +336,7 @@ export function App({ boot }) {
         recorder,
         modelName: model().name,
         effort: effortApplies() ? effort() ?? 'auto' : null,
+        auth,
         system: buildSystemPrompt({
           cwd,
           contextFiles: startupContext.files,
@@ -461,6 +474,7 @@ export function App({ boot }) {
       send(text)
       return
     }
+    if (c.name === 'connect') return openConnectPanel()
     if (c.name === 'model') {
       if (!args) return setShowModelPanel(true)
       const exact = models.find((m) => m.name === args)
@@ -599,6 +613,42 @@ export function App({ boot }) {
       flash(`exported to ${file}`)
       return
     }
+  }
+
+  async function refreshAuthProviders() {
+    const openai = await openaiStatus().catch(() => ({ connected: false, email: null }))
+    setAuthProviders([
+      { id: 'openai', label: 'OpenAI · ChatGPT / Codex plan', connected: openai.connected, email: openai.email },
+    ])
+  }
+
+  function openConnectPanel() {
+    setShowConnectPanel(true)
+    refreshAuthProviders()
+  }
+
+  function connectProvider(provider) {
+    if (provider.id !== 'openai') return
+    setShowConnectPanel(false)
+    flash('opening your browser for ChatGPT sign-in...')
+    connectOpenAI()
+      .then(({ email }) => {
+        boot.providers = [...new Set([...boot.providers, 'codex'])]
+        boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: true } : m))
+        reDerive()
+        flash(`connected as ${email || 'your ChatGPT account'} · codex models unlocked in /model`)
+      })
+      .catch((err) => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
+  }
+
+  async function disconnectProvider(provider) {
+    if (provider.id !== 'openai') return
+    await disconnectOpenAI().catch(() => {})
+    boot.providers = boot.providers.filter((p) => p !== 'codex')
+    boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: false } : m))
+    if (model().provider === 'codex') setModel(defaultModel())
+    refreshAuthProviders()
+    flash('disconnected from ChatGPT')
   }
 
   function refreshSessions(scopeIndex) {
@@ -791,7 +841,8 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || infoPanel() !== null || rewindStep() !== null
+    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
+    infoPanel() !== null || rewindStep() !== null
 
   function killShell(shell) {
     if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
@@ -1279,6 +1330,16 @@ export function App({ boot }) {
           onKill={killShell}
           onDismiss={(s) => boot.shells.dismiss(s.id)}
           onClose={() => setShowShellsPanel(false)}
+        />
+      )}
+
+      {showConnectPanel() && (
+        <ConnectPanel
+          providers={authProviders()}
+          focused={showConnectPanel()}
+          onConnect={connectProvider}
+          onDisconnect={disconnectProvider}
+          onClose={() => setShowConnectPanel(false)}
         />
       )}
 

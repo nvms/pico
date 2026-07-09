@@ -70,6 +70,21 @@ export function extractModels(providers, providerIds) {
   return models
 }
 
+export function codexModels(providers) {
+  const openai = providers.openai?.models || {}
+  return Object.entries(openai)
+    .filter(([id, m]) => m.tool_call === true && !datedDuplicate(id) && (/codex/.test(id) || /^gpt-5(\.\d+)?$/.test(id)))
+    .sort((a, b) => String(b[1].release_date || '').localeCompare(String(a[1].release_date || '')))
+    .map(([id, m]) => ({
+      name: `codex/${id}`,
+      provider: 'codex',
+      desc: `${m.description || m.name || id} · via ChatGPT plan`,
+      price: null,
+      effort: !!m.reasoning,
+      context: m.limit?.context || null,
+    }))
+}
+
 export function adhocModel(name, providerIds) {
   const match = name.match(/^([a-z0-9-]+)\/(.+)$/)
   if (!match || !providerIds.includes(match[1])) return null

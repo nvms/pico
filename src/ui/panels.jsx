@@ -73,7 +73,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
                   {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
                   <box style={{ flexGrow: 1 }} />
                   <text style={{ color: selected ? 'black' : MUTED }}>
-                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in · $${m.price.out} out` : 'price unknown'}
+                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in · $${m.price.out} out` : m.provider === 'codex' ? 'subscription' : 'price unknown'}
                   </text>
                 </box>
                 <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
@@ -496,6 +496,52 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
             )}
           />
         )}
+      </box>
+    </PanelFrame>
+  )
+}
+
+export function ConnectPanel({ providers, focused, onConnect, onDisconnect, onClose }) {
+  const [index, setIndex] = createSignal(0)
+  useEscape(() => focused, onClose)
+
+  const selected = () => providers[Math.min(index(), providers.length - 1)] || null
+
+  useInput((event) => {
+    if (!focused) return
+    const p = selected()
+    if (p && event.key === 'd' && !event.ctrl && p.connected) {
+      onDisconnect(p)
+      event.stopPropagation()
+    }
+  })
+
+  return (
+    <PanelFrame title="Connect a subscription" hint="enter sign in · d disconnect · esc close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        <Menu
+          counter
+          items={providers}
+          selected={index()}
+          onSelect={setIndex}
+          focused={focused}
+          maxVisible={5}
+          vimKeys
+          onSubmit={(p) => onConnect(p)}
+          onCancel={onClose}
+          renderItem={(p, { active }) => (
+            <box style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+              <text style={{ color: p.connected ? accent() : MUTED }}>{p.connected ? '▪' : '▫'}</text>
+              <text style={{ color: active ? accent() : FG }}>{` ${p.label.padEnd(28)}`}</text>
+              <box style={{ flexGrow: 1, height: 1 }}>
+                <text style={{ overflow: 'truncate', color: MUTED }}>
+                  {p.connected ? `connected${p.email ? ` as ${p.email}` : ''}` : 'not connected'}
+                </text>
+              </box>
+            </box>
+          )}
+        />
       </box>
     </PanelFrame>
   )

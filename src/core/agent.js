@@ -36,7 +36,7 @@ export async function summarizeText({ text, modelName }) {
   return getText(out.lastResponse?.content || '').trim()
 }
 
-export async function runTurn({ history, tools, recorder, modelName, effort, system, signal, onStream, stallMs = STALL_MS }) {
+export async function runTurn({ history, tools, recorder, modelName, effort, auth, system, signal, onStream, stallMs = STALL_MS }) {
   const collected = []
   let roundText = ''
   let usageSeen = null
@@ -79,7 +79,13 @@ export async function runTurn({ history, tools, recorder, modelName, effort, sys
   const step = compose(
     scope(
       { inherit: Inherit.Conversation, system, tools, until: noToolsCalled(), stream },
-      (ctx) => model({ model: modelName, ...(effort && { effort }) })({ ...ctx, abortSignal: internal.signal }),
+      (ctx) =>
+        model({
+          model: modelName,
+          ...(effort && { effort }),
+          ...(auth?.apiKey && { apiKey: auth.apiKey }),
+          ...(auth?.headers && { headers: auth.headers }),
+        })({ ...ctx, abortSignal: internal.signal }),
     ),
   )
 
