@@ -9,6 +9,8 @@ import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/his
 import { runTurn, summarizeText } from '../core/agent.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
+import { createSkillIndex } from '../core/skills.js'
+import { createCommandIndex } from '../core/commands.js'
 import { revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
 import { transcriptToMarkdown } from '../core/export.js'
@@ -183,6 +185,9 @@ export function App({ boot }) {
     const controller = new AbortController()
     refs.abort = controller
     const loadedBefore = new Set(tracker.loaded)
+    boot.skills = await createSkillIndex(boot.root).catch(() => boot.skills) ?? boot.skills
+    boot.commands = await createCommandIndex(boot.root).catch(() => boot.commands) ?? boot.commands
+    const freshSkills = boot.skills
     const userToolScan = await scanUserTools({ cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
     for (const failure of userToolScan.errors) {
       const key = `${failure.file}:${failure.error}`
@@ -194,7 +199,7 @@ export function App({ boot }) {
     const { tools, recorder } = createToolset({
       cwd,
       tracker,
-      skills,
+      skills: freshSkills,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -246,7 +251,7 @@ export function App({ boot }) {
         recorder,
         modelName: model().name,
         effort: effortApplies() ? effort() : null,
-        system: buildSystemPrompt({ cwd, contextFiles: startupContext.files, skills: skills.list() }),
+        system: buildSystemPrompt({ cwd, contextFiles: startupContext.files, skills: freshSkills.list() }),
         signal: controller.signal,
         onStream,
       })
