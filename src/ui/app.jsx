@@ -550,6 +550,7 @@ export function App({ boot }) {
       previousMcp.closeAll().catch(() => {})
       process.chdir(next.cwd)
       Object.assign(boot, next)
+      process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
       next.mcp.connectAll()
       setMcpServers(next.mcp.list())
       setQueued([])
@@ -1185,7 +1186,7 @@ export function App({ boot }) {
                 <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
               </box>
             )
-            : null}
+            : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
