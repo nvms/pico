@@ -11,7 +11,10 @@ link: build ## Symlink the pico bin into /opt/homebrew/bin
 	@ln -sf $(CURDIR)/bin/pico /opt/homebrew/bin/pico
 
 deps-local: ## Point @trendr/core and @prsm/ai at local working trees
-	@npm link @trendr/core @prsm/ai
+	@rm -rf node_modules/@trendr/core node_modules/@prsm/ai
+	@ln -s $(abspath ../trend) node_modules/@trendr/core
+	@ln -s $(abspath ../vigil/tend/prsmjs/ai) node_modules/@prsm/ai
+	@echo "linked local trend and prsm/ai (make deps-npm to restore)"
 
 deps-npm: ## Restore published deps from npm
 	@npm install

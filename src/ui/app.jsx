@@ -858,7 +858,7 @@ export function App({ boot }) {
         style={{ flexGrow: 1 }}
         focused={fm.is('feed')}
         scrollOffset={follow() ? 1e9 : offset()}
-        onScroll={(next) => { setFollow(false); setOffset(next) }}
+        onScroll={(next, meta) => { setFollow(!!meta?.atBottom); setOffset(next) }}
         scrollbar
       >
         {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
