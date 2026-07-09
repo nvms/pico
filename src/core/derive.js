@@ -179,6 +179,10 @@ export function deriveState(events) {
       case 'thoughts':
         state.transcript.push({ kind: 'thoughts', text: event.data.text })
         break
+      case 'shell_note':
+        state.providerHistory.push({ role: 'user', content: event.data.text })
+        state.transcript.push({ kind: 'notice', text: event.data.text.split('\n')[0] })
+        break
     }
   }
 

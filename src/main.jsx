@@ -10,6 +10,7 @@ import { loadStartupContext, createContextTracker } from './core/context.js'
 import { createSkillIndex } from './core/skills.js'
 import { createCommandIndex } from './core/commands.js'
 import { createMcpRuntime } from './core/mcp.js'
+import { createShellManager } from './core/shells.js'
 import { App } from './ui/app.jsx'
 import { DEFAULT_ACCENT } from './ui/theme.js'
 
@@ -31,6 +32,13 @@ if (providers.length === 0) {
 
 const home = homedir()
 let mcpNotify = () => {}
+let shellsNotify = () => {}
+let shellsExit = () => {}
+const shells = createShellManager({
+  onChange: () => shellsNotify(),
+  onExit: (shell) => shellsExit(shell),
+})
+process.on('exit', () => shells.killAll())
 
 async function buildProjectBoot(cwd) {
   const root = findProjectRoot(cwd)
@@ -65,7 +73,10 @@ const boot = {
   initialModel: configuredDefault || defaultModel(models),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   refs: {},
+  shells,
   setMcpNotify: (fn) => { mcpNotify = fn },
+  setShellsNotify: (fn) => { shellsNotify = fn },
+  setShellsExit: (fn) => { shellsExit = fn },
   rebuild: buildProjectBoot,
 }
 

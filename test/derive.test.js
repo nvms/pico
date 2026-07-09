@@ -134,6 +134,15 @@ test('thoughts events become collapsible transcript items', () => {
   assert.match(state.transcript[1].text, /step two/)
 })
 
+test('shell_note becomes provider context and a transcript notice', () => {
+  const note = '[system notification] background shell 2 (npm run dev) exited with code 1.\nRecent output:\nboom'
+  const state = deriveState([user('start the server'), assistant('started'), makeEvent('shell_note', { text: note })])
+  assert.equal(state.providerHistory.at(-1).role, 'user')
+  assert.match(state.providerHistory.at(-1).content, /exited with code 1/)
+  assert.equal(state.transcript.at(-1).kind, 'notice')
+  assert.doesNotMatch(state.transcript.at(-1).text, /\n/)
+})
+
 test('title and color events stick, latest wins', () => {
   const state = deriveState([
     user('hi'),

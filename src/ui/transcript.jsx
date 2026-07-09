@@ -4,7 +4,7 @@ import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
 
-function ToolCard({ name, title, status, diff, revert, fullOutput, error, verbose }) {
+function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose }) {
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'
@@ -15,6 +15,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, verbos
     : interrupted ? 'interrupted'
     : reverted ? 'reverted'
     : failed ? 'failed'
+    : background ? 'background · /shells'
     : diff ? `+${diff.additions} -${diff.deletions}`
     : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'} · ctrl+o`
     : 'done'
@@ -111,6 +112,15 @@ export function Message({ item, verbose }) {
             {lines.length > 300 && <text style={{ color: FAINT }}>{`… ${lines.length - 300} more lines`}</text>}
           </box>
         )}
+      </box>
+    )
+  }
+
+  if (item.kind === 'notice') {
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <text style={{ color: MUTED, italic: true }}>{`⚙ ${item.text.replace(/^\[system notification\]\s*/, '')}`}</text>
       </box>
     )
   }

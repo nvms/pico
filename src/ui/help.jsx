@@ -41,6 +41,10 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 - the mouse wheel scrolls; click-drag selects text and copies it on release
 - \`ctrl+c\` twice exits
 
+## Shells
+
+The agent can run long-lived processes (dev servers, watchers) with \`bash background: true\`, then read their output and stop them itself. \`/shells\` lists them: enter opens a live output view, \`k\` kills (press twice), \`d\` dismisses a dead one. A \`⚙ N\` in the footer shows how many are running. When a shell exits on its own, the agent is notified and responds; shells die with pico, and quitting warns you if any are still up.
+
 ## Context
 
 pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree.

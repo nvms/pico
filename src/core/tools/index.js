@@ -6,9 +6,9 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 
-export function createToolset({ cwd, tracker, skills, mcpTools = [], userTools = [], signal }) {
+export function createToolset({ cwd, tracker, skills, shells, mcpTools = [], userTools = [], signal }) {
   const recorder = createRecorder()
-  const deps = { cwd, recorder, tracker, signal }
+  const deps = { cwd, recorder, tracker, signal, shells }
 
   const local = [
     createRead(deps),
@@ -18,6 +18,28 @@ export function createToolset({ cwd, tracker, skills, mcpTools = [], userTools =
     createGlob(deps),
     createGrep(deps),
   ]
+
+  if (shells) {
+    local.push(
+      {
+        name: 'shell_output',
+        description: 'Read recent output from a background shell started with bash background: true.',
+        schema: {
+          id: { type: 'string', description: 'the shell id' },
+          tail: { type: 'number', description: 'how many trailing lines to return, default 100', optional: true },
+        },
+        execute: ({ id, tail = 100 }) => shells.output(id, { tail: Math.min(tail, 500) }),
+      },
+      {
+        name: 'shell_kill',
+        description: 'Stop a background shell by id.',
+        schema: {
+          id: { type: 'string', description: 'the shell id' },
+        },
+        execute: ({ id }) => shells.kill(id, 'model'),
+      },
+    )
+  }
 
   if (skills?.list().length) {
     local.push({

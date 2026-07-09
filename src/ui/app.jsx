@@ -25,7 +25,7 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -50,6 +50,7 @@ const COMMANDS = [
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
+  { name: 'shells', desc: 'View and manage background shells' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
   { name: 'clear', desc: 'Clear the conversation and free the context window' },
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
@@ -110,6 +111,8 @@ export function App({ boot }) {
   const [showMcpPanel, setShowMcpPanel] = createSignal(false)
   const [showProjectPanel, setShowProjectPanel] = createSignal(false)
   const [infoPanel, setInfoPanel] = createSignal(null)
+  const [showShellsPanel, setShowShellsPanel] = createSignal(false)
+  const [shellsVersion, setShellsVersion] = createSignal(0)
   const [projects, setProjects] = createSignal([])
   const [projectsLoading, setProjectsLoading] = createSignal(false)
   const [mcpServers, setMcpServers] = createSignal(mcp.list())
@@ -131,6 +134,30 @@ export function App({ boot }) {
   refs.imageCount ??= 0
 
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
+  boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
+  boot.setShellsExit((shell) => {
+    if (shell.killedBy) {
+      flash(`shell ${shell.id} killed`)
+      return
+    }
+    flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
+    const tail = boot.shells.output(shell.id, { tail: 30 }).output
+    refs.pendingShellNotes ??= []
+    refs.pendingShellNotes.push(
+      `[system notification] background shell ${shell.id} (${shell.command}) exited with code ${shell.exitCode}.` +
+        (tail ? `\nRecent output:\n${tail}` : ''),
+    )
+    maybeDeliverShellNotes()
+  })
+
+  function maybeDeliverShellNotes() {
+    if (!refs.pendingShellNotes?.length || busy() || view() !== 'chat' || !refs.session) return
+    const text = refs.pendingShellNotes.join('\n\n')
+    refs.pendingShellNotes = []
+    persist(makeEvent('shell_note', { text }))
+    reDerive()
+    runAgentTurn()
+  }
 
   const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
   const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command · ${c.description || c.source}`, command: true }))
@@ -185,6 +212,10 @@ export function App({ boot }) {
     persist(makeEvent('message', { message: { role: 'user', content } }))
     ensureSession()
     reDerive()
+    await runAgentTurn()
+  }
+
+  async function runAgentTurn() {
     setFollow(true)
     setBusy(true)
     setStartedAt(Date.now())
@@ -207,6 +238,7 @@ export function App({ boot }) {
       cwd,
       tracker,
       skills: freshSkills,
+      shells: boot.shells,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -299,8 +331,12 @@ export function App({ boot }) {
     if (q.length > 0) {
       setQueued([])
       if (result.interrupted) setInput(q.join('\n'))
-      else executeTurn(q.join('\n'))
+      else {
+        executeTurn(q.join('\n'))
+        return
+      }
     }
+    maybeDeliverShellNotes()
   }
 
   function completionSource(name) {
@@ -418,6 +454,7 @@ export function App({ boot }) {
     }
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
+    if (c.name === 'shells') return setShowShellsPanel(true)
     if (c.name === 'resume') {
       setShowResumePanel(true)
       refreshSessions(resumeScope())
@@ -711,7 +748,18 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || infoPanel() !== null || rewindStep() !== null
+    showProjectPanel() || showShellsPanel() || infoPanel() !== null || rewindStep() !== null
+
+  function killShell(shell) {
+    if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
+    const armed = refs.shellKillArm
+    if (!armed || armed.id !== shell.id || Date.now() - armed.at > 3000) {
+      refs.shellKillArm = { id: shell.id, at: Date.now() }
+      return flash(`k again to kill shell ${shell.id}`)
+    }
+    refs.shellKillArm = null
+    boot.shells.kill(shell.id, 'user')
+  }
 
   const effortApplies = () => !!model().effort
 
@@ -742,10 +790,12 @@ export function App({ boot }) {
     if (event.ctrl && event.key === 'c') {
       const now = Date.now()
       if (now - refs.quitAt < 1500) {
+        boot.shells.killAll()
         mcp.closeAll().catch(() => {}).finally(() => process.exit(0))
       } else {
         refs.quitAt = now
-        flash('ctrl+c again to exit')
+        const running = boot.shells.running()
+        flash(running ? `${running} ${running === 1 ? 'shell' : 'shells'} running · ctrl+c again to exit and kill ${running === 1 ? 'it' : 'them'}` : 'ctrl+c again to exit')
       }
       event.stopPropagation()
       return
@@ -867,6 +917,8 @@ export function App({ boot }) {
   })()
 
   const { usageActive: usage } = derived()
+  shellsVersion()
+  const runningShells = boot.shells.running()
 
   if (view() === 'help') {
     return <Help commands={COMMANDS} onClose={() => setView('chat')} />
@@ -1165,6 +1217,24 @@ export function App({ boot }) {
         />
       )}
 
+      {showShellsPanel() && (
+        <ShellsPanel
+          version={shellsVersion()}
+          shells={boot.shells.list()}
+          readOutput={(id) => {
+            try {
+              return boot.shells.output(id, { tail: 2000 })
+            } catch {
+              return null
+            }
+          }}
+          focused={showShellsPanel()}
+          onKill={killShell}
+          onDismiss={(s) => boot.shells.dismiss(s.id)}
+          onClose={() => setShowShellsPanel(false)}
+        />
+      )}
+
       {showMcpPanel() && (
         <McpPanel
           servers={mcpServers()}
@@ -1212,6 +1282,7 @@ export function App({ boot }) {
             )
             : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
+        {runningShells > 0 && <text style={{ color: MUTED }}>{`⚙ ${runningShells}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
         <text style={{ color: FAINT }}>↑</text>

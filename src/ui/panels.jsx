@@ -406,6 +406,93 @@ export function ProjectPanel({ projects, loading, focused, onPick, onClose }) {
   )
 }
 
+export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDismiss, onClose }) {
+  const [viewing, setViewing] = createSignal(null)
+  const [index, setIndex] = createSignal(0)
+  useEscape(() => focused, () => (viewing() ? setViewing(null) : onClose()))
+  void version
+
+  const selected = () => shells[Math.min(index(), shells.length - 1)] || null
+
+  useInput((event) => {
+    if (!focused || viewing()) return
+    const s = selected()
+    if (s && event.key === 'k' && !event.ctrl) {
+      onKill(s)
+      event.stopPropagation()
+    } else if (s && event.key === 'd' && !event.ctrl) {
+      onDismiss(s)
+      event.stopPropagation()
+    }
+  })
+
+  const uptime = (s) => {
+    const secs = Math.floor(((s.endedAt || Date.now()) - s.startedAt) / 1000)
+    return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m${secs % 60}s`
+  }
+
+  if (viewing()) {
+    const out = readOutput(viewing())
+    if (!out) {
+      setViewing(null)
+    } else {
+      const lines = out.output ? out.output.split('\n') : []
+      return (
+        <PanelFrame
+          title={`shell ${out.id} · ${out.command.slice(0, 60)}`}
+          hint={`${out.status === 'running' ? 'running' : `exited · code ${out.exitCode}`} · ${out.totalLines} lines · j/k scroll · esc back`}
+        >
+          <box style={{ flexDirection: 'column', height: 16, marginTop: 1, bg: PANEL_BG, paddingX: 1 }}>
+            {lines.length === 0 ? (
+              <text style={{ color: FAINT }}>no output yet</text>
+            ) : (
+              <ScrollBox style={{ flexGrow: 1 }} focused={focused} scrollOffset={1e9} onScroll={() => {}} scrollbar>
+                {lines.map((line, i) => (
+                  <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>
+                ))}
+              </ScrollBox>
+            )}
+          </box>
+        </PanelFrame>
+      )
+    }
+  }
+
+  return (
+    <PanelFrame title="Shells" hint="enter view output · k kill · d dismiss · esc close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        {shells.length === 0 ? (
+          <text style={{ color: FAINT }}>no background shells · the agent starts them with bash background: true</text>
+        ) : (
+          <Menu
+            items={shells}
+            selected={index()}
+            onSelect={setIndex}
+            focused={focused}
+            maxVisible={6}
+            vimKeys={false}
+            onSubmit={(s) => setViewing(s.id)}
+            onCancel={onClose}
+            renderItem={(s, { active }) => (
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                <text style={{ color: s.status === 'running' ? accent() : s.exitCode === 0 ? MUTED : RED }}>
+                  {s.status === 'running' ? '⚙' : s.exitCode === 0 ? '✓' : '✗'}
+                </text>
+                <text style={{ color: active ? accent() : FG }}>{` ${s.id.padEnd(3)}`}</text>
+                <box style={{ flexGrow: 1, height: 1 }}>
+                  <text style={{ overflow: 'truncate', color: active ? FG : FG_SOFT }}>{s.command}</text>
+                </box>
+                <text style={{ color: FAINT }}>{`  ${s.status === 'running' ? `up ${uptime(s)}` : `exit ${s.exitCode} · ${uptime(s)}`}`}</text>
+              </box>
+            )}
+          />
+        )}
+      </box>
+    </PanelFrame>
+  )
+}
+
 const MCP_STATUS = {
   connected: { icon: '▪', color: accent() },
   connecting: { icon: '◌', color: '#fbbf24' },
