@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { discoverKeys, applyKeys } from './core/keys.js'
-import { loadCatalog, extractModels, codexModels, adhocModel } from './core/catalog.js'
+import { loadCatalog, extractModels, adhocModel } from './core/catalog.js'
+import { loadCodexModels } from './core/codex-models.js'
 import { openaiConnected, openaiCredentials } from './core/openai-auth.js'
 import { findModel, defaultModel, estimateCost } from './core/models.js'
 import { readConfig } from './core/config.js'
@@ -51,12 +52,13 @@ export async function runHeadless(opts) {
     return 1
   }
   const catalogData = await loadCatalog()
+  const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
   const models = [
     ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
       ...m,
       available: providers.includes(m.provider),
     })),
-    ...codexModels(catalogData).map((m) => ({ ...m, available: chatgpt })),
+    ...(await loadCodexModels(codexCreds)).map((m) => ({ ...m, available: chatgpt })),
   ]
   const config = await readConfig()
 

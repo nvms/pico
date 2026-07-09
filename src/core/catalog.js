@@ -70,26 +70,6 @@ export function extractModels(providers, providerIds) {
   return models
 }
 
-// the ChatGPT-plan codex backend accepts a short allowlist that OpenAI rotates
-// as models ship (a rejected slug returns a clear 400). uncataloged slugs can
-// still be reached with /model codex/<slug>
-const CODEX_PLAN_MODELS = ['gpt-5.3-codex-spark']
-
-export function codexModels(providers) {
-  const openai = providers.openai?.models || {}
-  return CODEX_PLAN_MODELS.map((id) => {
-    const m = openai[id] || {}
-    return {
-      name: `codex/${id}`,
-      provider: 'codex',
-      desc: `${m.description || m.name || id} · via ChatGPT plan`,
-      price: null,
-      effort: m.reasoning !== false,
-      context: m.limit?.context || null,
-    }
-  })
-}
-
 export function adhocModel(name, providerIds) {
   const match = name.match(/^([a-z0-9-]+)\/(.+)$/)
   if (!match || !providerIds.includes(match[1])) return null

@@ -20,6 +20,7 @@ import { findModel, estimateCost } from '../core/models.js'
 import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { connectOpenAI, openaiCredentials, openaiStatus, disconnectOpenAI } from '../core/openai-auth.js'
+import { loadCodexModels } from '../core/codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
 import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths, inputTextFromContent } from './attachments.js'
@@ -632,11 +633,13 @@ export function App({ boot }) {
     setShowConnectPanel(false)
     flash('opening your browser for ChatGPT sign-in...')
     connectOpenAI()
-      .then(({ email }) => {
+      .then(async ({ email }) => {
         boot.providers = [...new Set([...boot.providers, 'codex'])]
-        boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: true } : m))
+        const creds = await openaiCredentials().catch(() => null)
+        const codex = (await loadCodexModels(creds)).map((m) => ({ ...m, available: true, keyHint: '/connect' }))
+        boot.models = [...boot.models.filter((m) => m.provider !== 'codex'), ...codex]
         reDerive()
-        flash(`connected as ${email || 'your ChatGPT account'} · codex models unlocked in /model`)
+        flash(`connected as ${email || 'your ChatGPT account'} · ${codex.length} codex models unlocked in /model`)
       })
       .catch((err) => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
   }

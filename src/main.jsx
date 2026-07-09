@@ -3,8 +3,9 @@ import { mount } from '@trendr/core'
 import { parseArgs, USAGE } from './cli-args.js'
 import { discoverKeys, applyKeys, keyHint } from './core/keys.js'
 import { defaultModel } from './core/models.js'
-import { loadCatalog, extractModels, codexModels } from './core/catalog.js'
-import { openaiConnected } from './core/openai-auth.js'
+import { loadCatalog, extractModels } from './core/catalog.js'
+import { loadCodexModels } from './core/codex-models.js'
+import { openaiConnected, openaiCredentials } from './core/openai-auth.js'
 import { readConfig } from './core/config.js'
 import { buildProjectBoot } from './core/boot.js'
 import { createShellManager } from './core/shells.js'
@@ -51,13 +52,14 @@ const keys = discoverKeys()
 const chatgpt = await openaiConnected()
 const providers = [...applyKeys(keys), ...(chatgpt ? ['codex'] : [])]
 const catalogData = await loadCatalog()
+const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
 const models = [
   ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
     ...m,
     available: providers.includes(m.provider),
     keyHint: keyHint(m.provider),
   })),
-  ...codexModels(catalogData).map((m) => ({ ...m, available: chatgpt, keyHint: '/connect' })),
+  ...(await loadCodexModels(codexCreds)).map((m) => ({ ...m, available: chatgpt, keyHint: '/connect' })),
 ]
 
 if (providers.length === 0) {
