@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection } from '@trendr/core'
+import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -87,7 +87,6 @@ export function App({ boot }) {
   const [busy, setBusy] = createSignal(false)
   const [startedAt, setStartedAt] = createSignal(0)
   const [input, setInput] = createSignal('')
-  const [notice, setNotice] = createSignal('')
   const [model, setModel] = createSignal(boot.initialModel)
   const [defaultModel, setDefaultModel] = createSignal(boot.initialModel)
   const [effort, setEffort] = createSignal(boot.initialEffort)
@@ -195,9 +194,14 @@ export function App({ boot }) {
     setTimeout(() => flash(`shadowed by an earlier name, rename to use: ${shadowed.join(', ')}`), 0)
   }
 
+  const toast = useToast({
+    duration: 3500,
+    position: 'top-right',
+    render: (message) => <text style={{ bg: accent(), color: 'black', bold: true }}>{` ${message} `}</text>,
+  })
+
   function flash(msg) {
-    setNotice(msg)
-    setTimeout(() => setNotice((n) => (n === msg ? '' : n)), 2500)
+    toast(msg)
   }
 
   function ensureSession() {
@@ -1327,16 +1331,14 @@ export function App({ boot }) {
       )}
 
       <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
-        {notice()
-          ? <text style={{ color: accent() }}>{notice()}</text>
-          : busy()
-            ? (
-              <box style={{ flexDirection: 'row' }}>
-                <Shimmer color={accent()} highlight="white" duration={1500} reverse>{thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
-                <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
-              </box>
-            )
-            : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
+        {busy()
+          ? (
+            <box style={{ flexDirection: 'row' }}>
+              <Shimmer color={accent()} highlight="white" duration={1500} reverse>{thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
+              <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
+            </box>
+          )
+          : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
         {runningShells > 0 && <text style={{ color: MUTED }}>{`⚙ ${runningShells}`}</text>}
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
