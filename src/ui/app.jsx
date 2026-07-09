@@ -142,7 +142,7 @@ export function App({ boot }) {
     }
     if (shell.killedBy === 'user') {
       flash(`shell ${shell.id} killed`)
-      noteShell(`[system notification] the user killed background shell ${shell.id} (${shell.command}).`, { wake: false })
+      noteShell(`[system notification] the user manually killed background shell ${shell.id} (${shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
