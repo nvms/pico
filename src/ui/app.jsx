@@ -1306,6 +1306,7 @@ export function App({ boot }) {
             mcp.add(name, command, scope)
             flash(`added ${name} (${scope})`)
           }}
+          onInvalid={flash}
           onClose={() => setShowMcpPanel(false)}
         />
       )}

@@ -1,4 +1,4 @@
-import { createSignal, Menu, PickList, ScrollBox, TextInput, useInput, useInterval } from '@trendr/core'
+import { createSignal, Button, Menu, PickList, Radio, ScrollBox, TextInput, useFocus, useInput, useInterval } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
 import { fuzzyScore } from './fuzzy.js'
 
@@ -565,7 +565,90 @@ const MCP_STATUS = {
   idle: { icon: '▫', color: MUTED },
 }
 
-export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, onAdd, onClose }) {
+function FormField({ label, active, children }) {
+  return (
+    <box style={{ flexDirection: 'column' }}>
+      <text style={{ color: active ? accent() : FAINT }}>{label}</text>
+      {children}
+      <text> </text>
+    </box>
+  )
+}
+
+function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
+  const fm = useFocus({ initial: 'name' })
+  fm.item('name')
+  fm.item('scope')
+  fm.item('transport')
+  fm.item('target')
+  fm.item('headers')
+  fm.item('add')
+  fm.item('cancel')
+
+  const [name, setName] = createSignal('')
+  const [scope, setScope] = createSignal('global')
+  const [transport, setTransport] = createSignal('stdio')
+  const [target, setTarget] = createSignal('')
+  const [headers, setHeaders] = createSignal('')
+
+  useInput((event) => {
+    if (!focused) return
+    if (event.key === 'escape') {
+      onCancel()
+      event.stopPropagation()
+    }
+  })
+
+  const http = transport() === 'http'
+
+  const submit = () => {
+    const serverName = name().trim()
+    const value = target().trim()
+    if (!serverName || /\s/.test(serverName)) return onInvalid('name is required and cannot contain spaces')
+    if (!value) return onInvalid(http ? 'url is required' : 'command is required')
+    if (http && !/^https?:\/\//.test(value)) return onInvalid('url must start with http:// or https://')
+    if (!http && /^https?:\/\//.test(value)) return onInvalid('a stdio command cannot start with a url; pick the http transport')
+    const extra = headers().trim()
+    onAdd(serverName, http && extra ? `${value} ${extra}` : value, scope())
+  }
+
+  return (
+    <box style={{ flexDirection: 'column', marginTop: 1 }}>
+      <FormField label="name" active={fm.is('name')}>
+        <box style={{ bg: PANEL_BG, paddingX: 1 }}>
+          <TextInput focused={focused && fm.is('name')} placeholder="linear" onChange={setName} />
+        </box>
+      </FormField>
+      <FormField label="scope" active={fm.is('scope')}>
+        <Radio options={['global', 'project']} selected={scope()} onChange={setScope} focused={focused && fm.is('scope')} />
+      </FormField>
+      <FormField label="transport" active={fm.is('transport')}>
+        <Radio options={['stdio', 'http']} selected={transport()} onChange={setTransport} focused={focused && fm.is('transport')} />
+      </FormField>
+      <FormField label={http ? 'url' : 'command'} active={fm.is('target')}>
+        <box style={{ bg: PANEL_BG, paddingX: 1 }}>
+          <TextInput
+            focused={focused && fm.is('target')}
+            placeholder={http ? 'https://mcp.linear.app/mcp' : 'npx -y @modelcontextprotocol/server-filesystem /tmp'}
+            onChange={setTarget}
+          />
+        </box>
+      </FormField>
+      <FormField label={http ? 'headers · optional' : 'headers · http only'} active={fm.is('headers')}>
+        <box style={{ bg: PANEL_BG, paddingX: 1 }}>
+          <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' onChange={setHeaders} />
+        </box>
+      </FormField>
+      <box style={{ flexDirection: 'row' }}>
+        <Button label="add" onPress={submit} focused={focused && fm.is('add')} />
+        <text>  </text>
+        <Button label="cancel" onPress={onCancel} focused={focused && fm.is('cancel')} variant="dim" />
+      </box>
+    </box>
+  )
+}
+
+export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, onAdd, onInvalid, onClose }) {
   const [adding, setAdding] = createSignal(false)
   const [index, setIndex] = createSignal(0)
   const [viewing, setViewing] = createSignal(null)
@@ -604,28 +687,20 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
     <PanelFrame
       title="MCP servers"
       hint={adding()
-        ? `adding ${adding()} server · stdio: <name> <command...> · http: <name> <url> [Header="value"...]`
-        : 'space/enter toggle · t tools · r reconnect · a add global · p add project · d remove · esc close'}
+        ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
+        : 'space/enter toggle · t tools · r reconnect · a add · d remove · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {adding() ? (
-          <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 1 }}>
-            <text style={{ color: accent() }}>{'+ '}</text>
-            <TextInput
-              focused={focused}
-              placeholder="name command-or-url..."
-              clearOnSubmit
-              onSubmit={(value) => {
-                const trimmed = value.trim()
-                const sep = trimmed.indexOf(' ')
-                if (sep > 0) {
-                  onAdd(trimmed.slice(0, sep), trimmed.slice(sep + 1).trim(), adding())
-                  setAdding(false)
-                }
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          </box>
+          <McpAddForm
+            focused={focused}
+            onAdd={(name, spec, scope) => {
+              onAdd(name, spec, scope)
+              setAdding(false)
+            }}
+            onInvalid={onInvalid}
+            onCancel={() => setAdding(false)}
+          />
         ) : servers.length === 0 ? (
           <text style={{ color: FAINT }}>no MCP servers configured · press a to add one</text>
         ) : (
@@ -663,8 +738,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
           focused={focused}
           onKey={(key) => {
             const s = selected()
-            if (key === 'a') setAdding('global')
-            else if (key === 'p') setAdding('project')
+            if (key === 'a') setAdding(true)
             else if (s && key === ' ') onToggle(s.name)
             else if (s && key === 'r') onReconnect(s.name)
             else if (s && key === 'd') onRemove(s.name)
@@ -679,7 +753,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
 function McpKeys({ focused, onKey }) {
   useInput((event) => {
     if (!focused) return
-    if ([' ', 'a', 'p', 'r', 'd', 't'].includes(event.key)) {
+    if ([' ', 'a', 'r', 'd', 't'].includes(event.key)) {
       onKey(event.key)
       event.stopPropagation()
     }
