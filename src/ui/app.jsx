@@ -41,6 +41,7 @@ const COMMANDS = [
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
   { name: 'project', desc: 'Switch projects: jump to another project, same as ctrl+p' },
+  { name: 'cwd', desc: 'Show the current working directory and project root' },
   { name: 'skills', desc: 'List every skill: builtin, global, and project' },
   { name: 'commands', desc: 'List every command: builtin, global, and project' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
@@ -421,6 +422,10 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'project') return openProjectPanel()
+    if (c.name === 'cwd') {
+      const rootNote = boot.root !== boot.cwd ? ` · project root ${shortenPath(boot.root)}` : ''
+      return flash(`${boot.displayCwd}${rootNote}`)
+    }
     if (c.name === 'skills') {
       return setInfoPanel({
         title: 'Skills',
