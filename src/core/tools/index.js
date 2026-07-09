@@ -83,7 +83,7 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, m
     local.push(
       {
         name: 'remember',
-        description: 'Save a durable memory for future sessions. Use for corrections, preferences, and non-obvious facts worth keeping: a flaky test, a build quirk, something the user asked you to remember. Do not save what the code or git history already records, or details that only matter this session. Project scope is for this codebase; global is for facts about the user that apply everywhere.',
+        description: 'Save a durable memory for future sessions. Use for corrections, preferences, and non-obvious facts worth keeping: a flaky test, a build quirk, something the user asked you to remember. Do not save what the code or git history already records, or details that only matter this session. Choose scope by applicability: if the fact would hold in a different project, use global; if it is tied to this codebase or how the user works here, use project. Always state the chosen scope in your reply so the user can correct it, and if applicability is genuinely unclear, ask before saving.',
         schema: {
           name: { type: 'string', description: 'short kebab-case identifier' },
           description: { type: 'string', description: 'one line used to decide when to recall this; write it as a hook, not a summary' },
