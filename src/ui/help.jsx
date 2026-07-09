@@ -21,7 +21,7 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 - \`enter\` sends, \`shift+enter\` inserts a newline
 - \`@\` opens a fuzzy file picker; enter inserts the selected path
 - drag an image file into the terminal to attach it: it appears inline as \`[Image #N]\`, exactly where your cursor is, so images can sit between sentences; backspace after one removes the whole attachment
-- \`tab\` after a command argument completes it: \`/model fla<tab>\`, \`/color <tab>\`, \`/effort <tab>\`; skill and command arguments complete file paths. Keep typing to narrow, tab or enter inserts
+- \`tab\` completes: \`/summ<tab>\` finishes the command name and cycles through matches on repeat; after an argument space it completes values (\`/model fla<tab>\`, \`/color <tab>\`, \`/effort <tab>\`) and file paths for skills and commands. Keep typing to narrow, tab or enter inserts
 - \`up\` and \`down\` on an empty composer recall messages you already sent
 - \`ctrl+r\` fuzzy-searches your prompt history with a preview; enter puts the match back in the composer
 - \`ctrl+s\` opens the session picker (same as \`/resume\`); \`ctrl+t\` opens the model picker

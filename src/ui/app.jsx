@@ -12,6 +12,7 @@ import { revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
 import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
+import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
@@ -82,6 +83,7 @@ export function App({ boot }) {
   const [sent, setSent] = createSignal([])
   const [histIdx, setHistIdx] = createSignal(-1)
   const [cmdIndex, setCmdIndex] = createSignal(0)
+  const [cmdCycle, setCmdCycle] = createSignal(null)
   const [fileIndex, setFileIndex] = createSignal(0)
   const [fileList, setFileList] = createSignal([])
   const [filesDismissed, setFilesDismissed] = createSignal(false)
@@ -319,6 +321,7 @@ export function App({ boot }) {
 
   async function runCommand(c, args = '') {
     setInput('')
+    setCmdCycle(null)
     if (c.name === 'rename') {
       if (!args) return flash('usage: /rename <new name>')
       persist(makeEvent('title', { text: args }))
@@ -365,11 +368,12 @@ export function App({ boot }) {
         .map((m) => [fuzzyScore(args, m.name), m])
         .filter(([score]) => score >= 0)
         .sort((a, b) => b[0] - a[0])
-      const pick = exact || scored[0]?.[1]
+      const adhoc = !exact && scored.length === 0 ? adhocModel(args, boot.providers) : null
+      const pick = exact || scored[0]?.[1] || adhoc
       if (!pick) return flash(`no available model matches "${args}"`)
       persist(makeEvent('model_switch', { from: model().name, to: pick.name }))
       setModel(pick)
-      flash(`model set to ${pick.name}`)
+      flash(adhoc ? `model set to ${pick.name} (not in catalog, pricing unknown)` : `model set to ${pick.name}`)
       return
     }
     if (c.name === 'effort') {
@@ -431,12 +435,16 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'cost') {
-      const byModel = derived().usageByModel
-      const entries = Object.entries(byModel)
+      const state = derived()
+      const entries = Object.entries(state.usageByModel)
       if (entries.length === 0) return flash('no usage yet')
-      const total = entries.reduce((sum, [name, usage]) => sum + estimateCost(findModel(name), usage), 0)
-      const { promptTokens, completionTokens } = derived().usage
-      flash(`$${total.toFixed(4)} · ${promptTokens.toLocaleString()} in · ${completionTokens.toLocaleString()} out`)
+      const costOf = (byModel) =>
+        Object.entries(byModel).reduce((sum, [name, usage]) => sum + estimateCost(findModel(models, name), usage), 0)
+      const spent = costOf(state.usageByModel)
+      const active = costOf(state.usageActiveByModel)
+      const { promptTokens, completionTokens } = state.usage
+      const base = `$${spent.toFixed(4)} spent · ${promptTokens.toLocaleString()} in · ${completionTokens.toLocaleString()} out`
+      flash(spent - active > 0.00005 ? `${base} · current conversation $${active.toFixed(4)}` : base)
       return
     }
     if (c.name === 'export') {
@@ -514,7 +522,8 @@ export function App({ boot }) {
       refs.persisted = events.length
       refs.rewindUndo = null
       reDerive()
-      const restored = derived().model && models.find((m) => m.name === derived().model)
+      const restored = derived().model
+        && (models.find((m) => m.name === derived().model) || adhocModel(derived().model, boot.providers))
       if (restored) {
         setModel(restored)
       } else {
@@ -705,9 +714,11 @@ export function App({ boot }) {
 
   const slashQuery = input().startsWith('/') ? input().slice(1) : null
   const showCommands = slashQuery !== null && !slashQuery.includes(' ') && !anyPanel()
-  const matchedCommands = showCommands
-    ? allCommands.filter((c) => c.name.toLowerCase().startsWith(slashQuery.toLowerCase()))
-    : []
+  const matchedCommands = !showCommands
+    ? []
+    : cmdCycle()
+      ? cmdCycle().matches
+      : allCommands.filter((c) => c.name.toLowerCase().startsWith(slashQuery.toLowerCase()))
 
   const atMatch = input().match(/(^|[\s(])@([^\s@]*)$/)
   const showFiles = atMatch !== null && !showCommands && !filesDismissed() && !anyPanel()
@@ -753,7 +764,7 @@ export function App({ boot }) {
     return opts
   })()
 
-  const { usage } = derived()
+  const { usageActive: usage } = derived()
 
   if (view() === 'help') {
     return <Help commands={COMMANDS} onClose={() => setView('chat')} />
@@ -803,10 +814,24 @@ export function App({ boot }) {
         )}
         <TextArea
           value={input()}
-          onChange={(v) => { setInput(v); setCmdIndex(0); setFileIndex(0); setHistIdx(-1); setFilesDismissed(false) }}
-          onCancel={() => { if (busy()) interrupt(); else setInput('') }}
+          onChange={(v) => { setInput(v); setCmdIndex(0); setCmdCycle(null); setFileIndex(0); setHistIdx(-1); setFilesDismissed(false) }}
+          onCancel={() => { if (busy()) interrupt(); else { setInput(''); setCmdCycle(null) } }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (e.key === 'tab' && !e.ctrl && !e.meta && showCommands && matchedCommands.length > 0) {
+              const cycle = cmdCycle()
+              if (!cycle) {
+                const start = Math.min(cmdIndex(), matchedCommands.length - 1)
+                setCmdCycle({ matches: matchedCommands })
+                setCmdIndex(start)
+                setInput('/' + matchedCommands[start].name)
+              } else {
+                const next = (cmdIndex() + 1) % cycle.matches.length
+                setCmdIndex(next)
+                setInput('/' + cycle.matches[next].name)
+              }
+              return true
+            }
             if (e.key === 'paste' && e.text) {
               const paths = extractImagePaths(e.text)
               if (paths.length > 0) {

@@ -107,6 +107,8 @@ export function deriveState(events) {
     effort: undefined,
     usage: emptyUsage(),
     usageByModel: {},
+    usageActive: emptyUsage(),
+    usageActiveByModel: {},
     loadedContext: new Set(),
     toolItems: new Map(),
   }
@@ -116,6 +118,11 @@ export function deriveState(events) {
       addUsageInto(state.usage, event.data.usage)
       const byModel = (state.usageByModel[event.data.model] ||= emptyUsage())
       addUsageInto(byModel, event.data.usage)
+      if (!dropped.has(event.id)) {
+        addUsageInto(state.usageActive, event.data.usage)
+        const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())
+        addUsageInto(activeByModel, event.data.usage)
+      }
       continue
     }
     if (dropped.has(event.id)) continue

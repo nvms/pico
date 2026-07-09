@@ -22,7 +22,7 @@
     "build": "node esbuild.config.js",
     "test": "node --test 'test/**/*.test.js'",
     "start": "node dist/pico.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "node scripts/snapshot-catalog.js && npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

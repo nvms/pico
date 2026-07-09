@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { mount } from '@trendr/core'
 import { discoverKeys, applyKeys } from './core/keys.js'
-import { availableModels, defaultModel } from './core/models.js'
+import { defaultModel } from './core/models.js'
+import { loadCatalog, extractModels } from './core/catalog.js'
 import { readConfig } from './core/config.js'
 import { findProjectRoot } from './core/paths.js'
 import { loadStartupContext, createContextTracker } from './core/context.js'
@@ -16,7 +17,7 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 
 const keys = discoverKeys()
 const providers = applyKeys(keys)
-const models = availableModels(providers)
+const models = extractModels(await loadCatalog(), providers)
 
 if (models.length === 0) {
   console.error('pico: no API keys found in the environment.')
@@ -56,7 +57,8 @@ const boot = {
   theme,
   version: pkg.version,
   models,
-  initialModel: configuredDefault || defaultModel(providers),
+  providers,
+  initialModel: configuredDefault || defaultModel(models),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   refs: {},
   setMcpNotify: (fn) => { mcpNotify = fn },

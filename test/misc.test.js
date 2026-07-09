@@ -7,7 +7,8 @@ import { parseLine, parseLines, makeEvent } from '../src/core/events.js'
 import { parseCommand } from '../src/core/mcp.js'
 import { parseFrontmatter, createSkillIndex } from '../src/core/skills.js'
 import { discoverKeys } from '../src/core/keys.js'
-import { availableModels, defaultModel, estimateCost, findModel } from '../src/core/models.js'
+import { defaultModel, estimateCost, findModel } from '../src/core/models.js'
+import { extractModels, adhocModel } from '../src/core/catalog.js'
 import { fuzzyScore } from '../src/ui/fuzzy.js'
 
 test('parseLine tolerates garbage and blank lines', () => {
@@ -68,13 +69,38 @@ test('discoverKeys picks up provider env vars', () => {
   assert.deepEqual(keys, { google: 'g', openai: 'o' })
 })
 
-test('model catalog filters by provider and prices usage', () => {
-  const models = availableModels(['google'])
-  assert.ok(models.length >= 3)
-  assert.ok(models.every((m) => m.provider === 'google'))
-  assert.equal(defaultModel(['google']).name, 'google/gemini-2.5-pro')
-  const cost = estimateCost(findModel('google/gemini-2.5-pro'), { promptTokens: 1e6, completionTokens: 1e6 })
-  assert.equal(cost, 11.25)
+test('extractModels filters, sorts by release, and maps fields', () => {
+  const providers = {
+    google: {
+      models: {
+        'gemini-x': { description: 'newest', tool_call: true, reasoning: true, cost: { input: 1, output: 4 }, release_date: '2026-05-01', limit: { context: 1e6 } },
+        'gemini-old': { description: 'older', tool_call: true, reasoning: false, release_date: '2025-01-01' },
+        'gemini-tts': { description: 'speech', tool_call: false, release_date: '2026-06-01' },
+        'gemini-x-20260501': { description: 'dated dupe', tool_call: true, release_date: '2026-05-01' },
+      },
+    },
+    openai: { models: { 'gpt-z': { tool_call: true, name: 'GPT Z', release_date: '2026-01-01' } } },
+  }
+  const models = extractModels(providers, ['google', 'openai'])
+  assert.deepEqual(models.map((m) => m.name), ['google/gemini-x', 'google/gemini-old', 'openai/gpt-z'])
+  const [newest, older, gpt] = models
+  assert.equal(newest.effort, true)
+  assert.deepEqual(newest.price, { in: 1, out: 4 })
+  assert.equal(newest.context, 1e6)
+  assert.equal(older.price, null)
+  assert.equal(gpt.desc, 'GPT Z')
+  assert.equal(defaultModel(models).name, 'google/gemini-x')
+  assert.equal(estimateCost(findModel(models, 'google/gemini-x'), { promptTokens: 1e6, completionTokens: 1e6 }), 5)
+  assert.equal(estimateCost(findModel(models, 'google/gemini-old'), { promptTokens: 1e6, completionTokens: 1e6 }), 0)
+})
+
+test('adhocModel accepts raw names for live providers only', () => {
+  const m = adhocModel('openai/gpt-6-codex', ['google', 'openai'])
+  assert.equal(m.provider, 'openai')
+  assert.equal(m.price, null)
+  assert.equal(m.effort, false)
+  assert.equal(adhocModel('mistral/large', ['google', 'openai']), null)
+  assert.equal(adhocModel('no-slash', ['google']), null)
 })
 
 test('fuzzyScore ranks contiguous and boundary matches higher', () => {

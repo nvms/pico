@@ -101,7 +101,7 @@ test('clear resets everything visible', () => {
   assert.equal(state.providerHistory.length, 1)
 })
 
-test('usage accumulates even inside rewound ranges', () => {
+test('spent usage survives rewinds, active usage rolls back', () => {
   const target = user('q2')
   const usage1 = makeEvent('usage', { model: 'google/gemini-2.5-pro', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedTokens: 0 } })
   const usage2 = makeEvent('usage', { model: 'google/gemini-2.5-pro', usage: { promptTokens: 20, completionTokens: 10, totalTokens: 30, cachedTokens: 0 } })
@@ -110,6 +110,13 @@ test('usage accumulates even inside rewound ranges', () => {
   const state = deriveState([...events, rewind])
   assert.equal(state.usage.promptTokens, 30)
   assert.equal(state.usage.completionTokens, 15)
+  assert.equal(state.usageActive.promptTokens, 10)
+  assert.equal(state.usageActive.completionTokens, 5)
+  assert.equal(state.usageActiveByModel['google/gemini-2.5-pro'].promptTokens, 10)
+
+  const undo = makeEvent('rewind_undo', { rewindId: rewind.id })
+  const restored = deriveState([...events, rewind, undo])
+  assert.equal(restored.usageActive.promptTokens, 30)
 })
 
 test('effort events track session effort, absent means unset', () => {

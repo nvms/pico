@@ -69,7 +69,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
                 {m.name === current && <text style={{ color: selected ? 'black' : accent() }}>{' ✓'}</text>}
                 {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
                 <box style={{ flexGrow: 1 }} />
-                <text style={{ color: selected ? 'black' : MUTED }}>{`$${m.price.in} in · $${m.price.out} out`}</text>
+                <text style={{ color: selected ? 'black' : MUTED }}>{m.price ? `$${m.price.in} in · $${m.price.out} out` : 'price unknown'}</text>
               </box>
               <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
             </box>
