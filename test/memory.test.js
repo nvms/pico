@@ -40,9 +40,10 @@ test('remember overwrites same-name memory and validates scope', async () => {
   delete process.env.PICO_HOME
 })
 
-test('memoryIndex renders hooks, empty when no memories', async () => {
+test('memoryIndex renders hooks, and says so when empty', async () => {
   const root = await fixture()
-  assert.equal(memoryIndex([], root), '')
+  assert.match(memoryIndex([], root), /no saved memories yet/)
+  assert.match(memoryIndex([], root), /without searching the filesystem/)
   const index = memoryIndex(
     [{ name: 'flaky-auth-test', scope: 'project', description: 'auth test fails on node 22' }],
     root,

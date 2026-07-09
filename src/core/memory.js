@@ -77,10 +77,12 @@ export function createMemory(root) {
 }
 
 export function memoryIndex(memories, root) {
-  if (memories.length === 0) return ''
+  if (memories.length === 0) {
+    return `You have no saved memories yet. This index lists them when you save durable facts with the remember tool; answer questions about your memories from this index alone, without searching the filesystem.`
+  }
   const lines = memories.map((m) => `- ${m.name} (${m.scope}): ${m.description}`)
   return [
-    `Memories you have saved (load one with the recall tool when relevant; the files live in ${projectMemoryDir(root)} and ${globalMemoryDir()} and can be edited or deleted with ordinary tools when asked to curate them):`,
+    `Memories you have saved. This index is complete: answer questions about your memories from it directly, load one with the recall tool when its content is relevant, and never search the filesystem for memories. The files live in ${projectMemoryDir(root)} and ${globalMemoryDir()} and can be edited or deleted with ordinary tools when asked to curate them.`,
     ...lines,
   ].join('\n')
 }
