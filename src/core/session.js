@@ -49,7 +49,11 @@ async function sessionMeta(file) {
     if (event.type === 'color') color = event.data.value
     if (event.type === 'message' && event.data.message?.role === 'user') {
       turns++
-      if (!title) title = String(event.data.message.content).slice(0, 200)
+      const content = event.data.message.content
+      const text = Array.isArray(content)
+        ? content.filter((p) => p.type === 'text').map((p) => p.text).join(' ')
+        : String(content)
+      if (!title && text.trim()) title = text.trim().slice(0, 200)
     }
   }
   if (!title) return null

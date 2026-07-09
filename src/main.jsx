@@ -63,5 +63,6 @@ const boot = {
   rebuild: buildProjectBoot,
 }
 
-mount(() => <App boot={boot} />, { title: 'pico', theme })
+const app = mount(() => <App boot={boot} />, { title: 'pico', theme })
+boot.setTheme = app.setTheme
 boot.mcp.connectAll()

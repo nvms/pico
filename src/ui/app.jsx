@@ -15,6 +15,7 @@ import { findModel, estimateCost } from '../core/models.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
+import { extractImagePaths, mediaTypeFor, buildUserContent } from './attachments.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
@@ -113,6 +114,8 @@ export function App({ boot }) {
   refs.abort = refs.abort || null
   refs.rewindUndo = refs.rewindUndo || null
   refs.quitAt ??= 0
+  refs.attachments ??= new Map()
+  refs.imageCount ??= 0
 
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
 
@@ -155,7 +158,7 @@ export function App({ boot }) {
     const state = deriveState(refs.allEvents)
     setDerived(state)
     setAccent(state.color)
-    boot.theme.accent = state.color || DEFAULT_ACCENT
+    boot.setTheme?.({ accent: state.color || DEFAULT_ACCENT })
   }
 
   function flushStream(items) {
@@ -165,7 +168,9 @@ export function App({ boot }) {
   }
 
   async function executeTurn(text) {
-    persist(makeEvent('message', { message: { role: 'user', content: text } }))
+    const { content, used } = buildUserContent(text, refs.attachments)
+    for (const placeholder of used) refs.attachments.delete(placeholder)
+    persist(makeEvent('message', { message: { role: 'user', content } }))
     ensureSession()
     reDerive()
     setFollow(true)
@@ -802,6 +807,28 @@ export function App({ boot }) {
           onCancel={() => { if (busy()) interrupt(); else setInput('') }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (e.key === 'paste' && e.text) {
+              const paths = extractImagePaths(e.text)
+              if (paths.length > 0) {
+                const placeholders = paths.map((path) => {
+                  const placeholder = `[Image #${++refs.imageCount}]`
+                  refs.attachments.set(placeholder, { path, mediaType: mediaTypeFor(path) })
+                  return placeholder
+                })
+                const at = e.cursor ?? e.value.length
+                setInput(e.value.slice(0, at) + placeholders.join(' ') + e.value.slice(at))
+                return true
+              }
+              return false
+            }
+            if (e.key === 'backspace' && e.cursor > 0) {
+              const match = e.value.slice(0, e.cursor).match(/\[Image #\d+\]$/)
+              if (match) {
+                refs.attachments.delete(match[0])
+                setInput(e.value.slice(0, e.cursor - match[0].length) + e.value.slice(e.cursor))
+                return true
+              }
+            }
             if (e.key === 'tab' && !e.ctrl && !e.meta) {
               const ctx = completionContext({ value: e.value, resolve: completionSource })
               if (!ctx) return false

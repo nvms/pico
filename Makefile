@@ -7,8 +7,14 @@ build: ## Bundle src into dist/pico.js
 test: ## Run the core test suite
 	@node --test 'test/**/*.test.js'
 
-link: build ## npm link the pico bin globally
-	@npm link
+link: build ## Symlink the pico bin into /opt/homebrew/bin
+	@ln -sf $(CURDIR)/bin/pico /opt/homebrew/bin/pico
+
+deps-local: ## Point @trendr/core and @prsm/ai at local working trees
+	@npm link @trendr/core @prsm/ai
+
+deps-npm: ## Restore published deps from npm
+	@npm install
 
 .PHONY: help dev build test link
 help: ## Show help

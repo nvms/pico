@@ -1,4 +1,28 @@
+import { readFile } from 'node:fs/promises'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
+
+async function hydratePart(part) {
+  if (part.type !== 'image' || part.source?.kind !== 'path') return part
+  try {
+    const data = await readFile(part.source.path)
+    return {
+      type: 'image',
+      source: { kind: 'base64', mediaType: part.source.mediaType, data: data.toString('base64') },
+    }
+  } catch {
+    return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
+  }
+}
+
+export function hydrateImages(history) {
+  return Promise.all(
+    history.map(async (message) =>
+      Array.isArray(message.content)
+        ? { ...message, content: await Promise.all(message.content.map(hydratePart)) }
+        : message,
+    ),
+  )
+}
 
 const STALL_MS = 90000
 
@@ -67,7 +91,7 @@ export async function runTurn({ history, tools, recorder, modelName, effort, sys
 
   arm()
   try {
-    const out = await step({ history: [...history], tools: [] })
+    const out = await step({ history: await hydrateImages(history), tools: [] })
     const interrupted = !!signal?.aborted || stalled
     if (interrupted) {
       return { messages: partialMessages(), usage: usageSeen, interrupted, stalled }
