@@ -533,7 +533,7 @@ export function ConnectPanel({ providers, focused, onConnect, onDisconnect, onCl
             <box style={{ flexDirection: 'row' }}>
               <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
               <text style={{ color: p.connected ? accent() : MUTED }}>{p.connected ? '▪' : '▫'}</text>
-              <text style={{ color: active ? accent() : FG }}>{` ${p.label.padEnd(28)}`}</text>
+              <text style={{ color: active ? accent() : FG }}>{` ${p.label}  `}</text>
               <box style={{ flexGrow: 1, height: 1 }}>
                 <text style={{ overflow: 'truncate', color: MUTED }}>
                   {p.connected ? `connected${p.email ? ` as ${p.email}` : ''}` : 'not connected'}
