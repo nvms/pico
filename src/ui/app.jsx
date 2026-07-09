@@ -19,7 +19,7 @@ import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
-import { extractImagePaths, mediaTypeFor, buildUserContent } from './attachments.js'
+import { extractImagePaths, mediaTypeFor, finalizeUserContent } from './attachments.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
@@ -178,7 +178,7 @@ export function App({ boot }) {
   }
 
   async function executeTurn(text) {
-    const { content, used } = buildUserContent(text, refs.attachments)
+    const { content, used } = finalizeUserContent(text, refs.attachments)
     for (const placeholder of used) refs.attachments.delete(placeholder)
     persist(makeEvent('message', { message: { role: 'user', content } }))
     ensureSession()

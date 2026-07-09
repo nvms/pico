@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extractImagePaths, mediaTypeFor, buildUserContent } from '../src/ui/attachments.js'
+import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths } from '../src/ui/attachments.js'
 import { hydrateImages } from '../src/core/agent.js'
 
 const yes = () => true
@@ -41,6 +41,23 @@ test('buildUserContent leaves plain text and stale placeholders alone', () => {
   assert.equal(content, 'no images here')
   const stale = buildUserContent('ghost [Image #9] token', new Map())
   assert.equal(stale.content, 'ghost [Image #9] token')
+})
+
+test('literal image paths in message text become attachments at send time', () => {
+  const parts = splitTextByImagePaths('what is this image /Users/x/Screenshot\\ 2026.png thanks', yes)
+  assert.deepEqual(parts.map((p) => p.type), ['text', 'image', 'text'])
+  assert.equal(parts[1].source.path, '/Users/x/Screenshot 2026.png')
+
+  const quoted = splitTextByImagePaths('"/Users/x/my shot.jpeg" please', yes)
+  assert.equal(quoted[0].source.path, '/Users/x/my shot.jpeg')
+
+  assert.equal(splitTextByImagePaths('look at /Users/x/notes.txt', yes), null)
+  assert.equal(splitTextByImagePaths('/Users/x/gone.png', () => false), null)
+
+  const { content } = finalizeUserContent('see /Users/x/a.png here', new Map(), yes)
+  assert.deepEqual(content.map((p) => p.type), ['text', 'image', 'text'])
+  const plain = finalizeUserContent('no images here', new Map(), yes)
+  assert.equal(plain.content, 'no images here')
 })
 
 test('hydrateImages converts path parts to base64 and degrades gracefully', async () => {

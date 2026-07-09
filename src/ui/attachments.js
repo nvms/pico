@@ -49,6 +49,25 @@ export function imageLabel(part) {
   return '[image]'
 }
 
+const IMAGE_PATH_RE = /(["'])(\/[^"']+?\.(?:png|jpe?g|gif|webp|bmp))\1|(\/(?:\\ |[^\s"'])+\.(?:png|jpe?g|gif|webp|bmp))/gi
+
+export function splitTextByImagePaths(text, exists = existsSync) {
+  const parts = []
+  let last = 0
+  for (const match of text.matchAll(IMAGE_PATH_RE)) {
+    const path = match[2] || match[3].replace(/\\ /g, ' ')
+    const mediaType = mediaTypeFor(path)
+    if (!mediaType || !exists(path)) continue
+    if (match.index > last) parts.push({ type: 'text', text: text.slice(last, match.index) })
+    parts.push({ type: 'image', source: { kind: 'path', path, mediaType } })
+    last = match.index + match[0].length
+  }
+  if (parts.length === 0) return null
+  const tail = text.slice(last)
+  if (tail) parts.push({ type: 'text', text: tail })
+  return parts
+}
+
 export function buildUserContent(text, attachments) {
   const parts = []
   let last = 0
@@ -69,4 +88,21 @@ export function buildUserContent(text, attachments) {
   const tail = text.slice(last)
   if (tail) parts.push({ type: 'text', text: tail })
   return { content: parts, used }
+}
+
+export function finalizeUserContent(text, attachments, exists = existsSync) {
+  const { content, used } = buildUserContent(text, attachments)
+  const parts = Array.isArray(content) ? content : [{ type: 'text', text: content }]
+  const expanded = []
+  for (const part of parts) {
+    if (part.type !== 'text') {
+      expanded.push(part)
+      continue
+    }
+    const split = splitTextByImagePaths(part.text, exists)
+    if (split) expanded.push(...split)
+    else expanded.push(part)
+  }
+  if (expanded.length === 1 && expanded[0].type === 'text') return { content: expanded[0].text, used }
+  return { content: expanded, used }
 }
