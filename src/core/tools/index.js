@@ -6,7 +6,7 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 
-export function createToolset({ cwd, tracker, skills, mcpTools = [], signal }) {
+export function createToolset({ cwd, tracker, skills, mcpTools = [], userTools = [], signal }) {
   const recorder = createRecorder()
   const deps = { cwd, recorder, tracker, signal }
 
@@ -38,7 +38,11 @@ export function createToolset({ cwd, tracker, skills, mcpTools = [], signal }) {
     })
   }
 
-  const tools = [...local, ...mcpTools].map((tool) => ({
+  const byName = new Map()
+  for (const tool of [...local, ...userTools, ...mcpTools]) {
+    if (!byName.has(tool.name)) byName.set(tool.name, tool)
+  }
+  const tools = [...byName.values()].map((tool) => ({
     ...tool,
     execute: recorded(recorder, tool.name, tool.execute),
   }))

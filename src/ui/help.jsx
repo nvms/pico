@@ -13,6 +13,7 @@ Two kinds of user-defined entries join this menu:
 
 - **commands** (\`~/.pico/commands/<name>.md\` or \`.pico/commands/<name>.md\`): prompt templates you invoke as \`/<name> [args]\`. \`$ARGUMENTS\` in the body is replaced with whatever follows the command; without a placeholder, args are appended. The model never sees these until you run one.
 - **skills** (\`~/.pico/skills/<name>/SKILL.md\` or \`.pico/skills/<name>/SKILL.md\`): capabilities with a name and description. You can invoke them like commands, and the agent can also discover and load them itself via the skill tool.
+- **tools** (\`~/.pico/tools/<name>.js\` or \`.pico/tools/<name>.js\`): ES modules default-exporting \`{ name, description, schema, execute }\` (or a factory receiving \`{ cwd, root }\`). They join the agent's toolset and are rescanned every turn, so edits apply on the next message. Ask the agent to build one for you: the built-in \`/new-tool\` skill teaches it the format.
 
 In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` reconnects, \`a\` adds, \`d\` removes. Unfiltered lists (effort, rewind options, MCP) also move with \`j\`/\`k\` and jump with \`g\`/\`G\`.
 

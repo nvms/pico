@@ -67,15 +67,15 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
             return (
               <box style={{ flexDirection: 'column', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
                 <box style={{ flexDirection: 'row' }}>
-                  <text style={{ bold: !off, dim: off, color: selected ? 'black' : off ? FAINT : FG }}>{m.name}</text>
+                  <text style={{ bold: !off, color: selected ? 'black' : off ? MUTED : FG }}>{m.name}</text>
                   {m.name === current && <text style={{ color: selected ? 'black' : accent() }}>{' ✓'}</text>}
                   {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
                   <box style={{ flexGrow: 1 }} />
-                  <text style={{ color: selected ? 'black' : off ? FAINT : MUTED }}>
+                  <text style={{ color: selected ? 'black' : MUTED }}>
                     {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in · $${m.price.out} out` : 'price unknown'}
                   </text>
                 </box>
-                <text style={{ dim: off, color: selected ? 'black' : off ? FAINT : MUTED }}>{m.desc}</text>
+                <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
               </box>
             )
           }}

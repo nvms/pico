@@ -8,6 +8,7 @@ import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText } from '../core/agent.js'
 import { createToolset } from '../core/tools/index.js'
+import { scanUserTools } from '../core/user-tools.js'
 import { revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
 import { transcriptToMarkdown } from '../core/export.js'
@@ -182,11 +183,20 @@ export function App({ boot }) {
     const controller = new AbortController()
     refs.abort = controller
     const loadedBefore = new Set(tracker.loaded)
+    const userToolScan = await scanUserTools({ cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
+    for (const failure of userToolScan.errors) {
+      const key = `${failure.file}:${failure.error}`
+      if (!refs.warnedTools?.has(key)) {
+        ;(refs.warnedTools ??= new Set()).add(key)
+        flash(`tool skipped: ${failure.file.split('/').pop()} · ${failure.error}`)
+      }
+    }
     const { tools, recorder } = createToolset({
       cwd,
       tracker,
       skills,
       mcpTools: mcp.tools(),
+      userTools: userToolScan.tools,
       signal: controller.signal,
     })
 

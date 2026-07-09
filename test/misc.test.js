@@ -58,9 +58,13 @@ test('project skills override global skills', async () => {
   await writeFile(join(root, '.pico/skills/deploy/SKILL.md'), '---\nname: deploy\ndescription: project deploy\n---\nproject body')
 
   const index = await createSkillIndex(root)
-  assert.equal(index.list().length, 1)
-  assert.equal(index.list()[0].description, 'project deploy')
+  const deploy = index.list().find((s) => s.name === 'deploy')
+  assert.equal(deploy.description, 'project deploy')
   assert.equal((await index.load('deploy')).trim(), 'project body')
+
+  const builtin = index.list().find((s) => s.name === 'new-tool')
+  assert.equal(builtin.source, 'builtin')
+  assert.match(await index.load('new-tool'), /default export/)
   delete process.env.PICO_HOME
 })
 
