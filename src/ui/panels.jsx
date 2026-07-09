@@ -223,14 +223,21 @@ function useEscape(focused, onClose) {
   })
 }
 
-export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, onPick, onClose }) {
+export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(sessions[0] || null)
   useEscape(() => focused, onClose)
+  useInput((event) => {
+    if (!focused) return
+    if (event.ctrl && event.key === 'x' && preview()) {
+      onDelete(preview())
+      event.stopPropagation()
+    }
+  })
 
   return (
     <PanelFrame
       title="Resume a session"
-      hint="type to filter · ↑↓ to move · ctrl+s scope · enter to resume · esc to close"
+      hint="type to filter · ↑↓ to move · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>

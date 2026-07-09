@@ -1,4 +1,4 @@
-import { appendFile, readFile, readdir, stat } from 'node:fs/promises'
+import { appendFile, readFile, readdir, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir } from './paths.js'
 import { makeHeader, serializeLine, parseLines, parseLine } from './events.js'
@@ -67,6 +67,10 @@ async function listDir(dir) {
   } catch {
     return []
   }
+}
+
+export function deleteSession(file) {
+  return unlink(file)
 }
 
 export async function listSessions({ scope, root }) {

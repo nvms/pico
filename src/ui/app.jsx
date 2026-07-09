@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
-import { createSession, openSession, loadSession, listSessions } from '../core/session.js'
+import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText } from '../core/agent.js'
@@ -556,6 +556,25 @@ export function App({ boot }) {
     }
   }
 
+  async function deleteSessionMeta(meta) {
+    if (refs.session?.id === meta.header.id) {
+      return flash('cannot delete the active session · /new first, then delete it')
+    }
+    const armed = refs.deleteArm
+    if (!armed || armed.file !== meta.file || Date.now() - armed.at > 3000) {
+      refs.deleteArm = { file: meta.file, at: Date.now() }
+      return flash(`ctrl+x again to delete "${meta.title.slice(0, 50)}"`)
+    }
+    refs.deleteArm = null
+    try {
+      await deleteSession(meta.file)
+      refreshSessions(resumeScope())
+      flash('session deleted')
+    } catch (err) {
+      flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
   async function resumeSession(meta) {
     setShowResumePanel(false)
     setShowProjectPanel(false)
@@ -1092,6 +1111,7 @@ export function App({ boot }) {
           loading={resumeLoading()}
           focused={showResumePanel()}
           onPick={resumeSession}
+          onDelete={deleteSessionMeta}
           onClose={() => setShowResumePanel(false)}
         />
       )}
