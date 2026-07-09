@@ -5,6 +5,7 @@ import { utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { scanUserTools } from '../src/core/user-tools.js'
+import { createRecorder, recorded, defaultTitle } from '../src/core/tools/recorder.js'
 
 async function fixture() {
   process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
@@ -51,6 +52,17 @@ test('reports broken tools as errors without failing the scan', async () => {
   assert.equal(tools.length, 1)
   assert.equal(errors.length, 2)
   delete process.env.PICO_HOME
+})
+
+test('recorded tools get default titles and json fullOutput', async () => {
+  assert.equal(defaultTitle('http_get', { url: 'https://example.com' }), 'https://example.com')
+  assert.equal(defaultTitle('noop', {}), 'noop')
+  const recorder = createRecorder()
+  const run = recorded(recorder, 'http_get', async ({ url }) => ({ status: 200, url }))
+  await run({ url: 'https://example.com' })
+  const entry = recorder.entries[0]
+  assert.equal(entry.title, 'https://example.com')
+  assert.match(entry.fullOutput, /"status": 200/)
 })
 
 test('edits are picked up via mtime cache busting', async () => {

@@ -1,13 +1,21 @@
+export function defaultTitle(name, args = {}) {
+  const candidate = args.path || args.command || args.pattern || args.url || args.name
+  if (typeof candidate === 'string' && candidate) return candidate
+  const raw = JSON.stringify(args)
+  if (!raw || raw === '{}') return name
+  return raw.length > 60 ? raw.slice(0, 60) + '…' : raw
+}
+
 export function createRecorder() {
   return {
     currentCall: null,
     entries: [],
     pending: null,
-    begin(name) {
+    begin(name, args) {
       this.pending = {
         callId: this.currentCall?.id ?? null,
         name,
-        title: name,
+        title: defaultTitle(name, args),
         status: 'done',
         startedAt: Date.now(),
       }
@@ -32,9 +40,14 @@ export function createRecorder() {
 
 export function recorded(recorder, name, fn) {
   return async (args) => {
-    recorder.begin(name)
+    recorder.begin(name, args)
     try {
       const result = await fn(args)
+      if (!recorder.pending?.fullOutput && result !== undefined) {
+        recorder.extra({
+          fullOutput: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+        })
+      }
       recorder.done()
       return result
     } catch (err) {

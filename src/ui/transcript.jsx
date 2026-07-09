@@ -2,14 +2,7 @@ import { Diff, Markdown, Spinner } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
-export function uiTitle(name, args = {}) {
-  if (args.path) return args.path
-  if (args.command) return args.command
-  if (args.pattern) return args.pattern
-  if (args.name) return args.name
-  const raw = JSON.stringify(args)
-  return raw.length > 60 ? raw.slice(0, 60) + '…' : raw
-}
+export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
 
 function ToolCard({ name, title, status, diff, revert, fullOutput, error, verbose }) {
   const running = status === 'running'
