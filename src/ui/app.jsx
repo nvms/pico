@@ -24,7 +24,7 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -40,6 +40,9 @@ const COMMANDS = [
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
+  { name: 'project', desc: 'Switch projects: jump to another project, same as ctrl+p' },
+  { name: 'skills', desc: 'List every skill: builtin, global, and project' },
+  { name: 'commands', desc: 'List every command: builtin, global, and project' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
@@ -103,6 +106,7 @@ export function App({ boot }) {
   const [resumeLoading, setResumeLoading] = createSignal(false)
   const [showMcpPanel, setShowMcpPanel] = createSignal(false)
   const [showProjectPanel, setShowProjectPanel] = createSignal(false)
+  const [infoPanel, setInfoPanel] = createSignal(null)
   const [projects, setProjects] = createSignal([])
   const [projectsLoading, setProjectsLoading] = createSignal(false)
   const [mcpServers, setMcpServers] = createSignal(mcp.list())
@@ -417,6 +421,22 @@ export function App({ boot }) {
       refreshSessions(resumeScope())
       return
     }
+    if (c.name === 'project') return openProjectPanel()
+    if (c.name === 'skills') {
+      return setInfoPanel({
+        title: 'Skills',
+        rows: skills.list().map((s) => ({ name: s.name, desc: s.description, note: s.source })),
+      })
+    }
+    if (c.name === 'commands') {
+      return setInfoPanel({
+        title: 'Commands',
+        rows: [
+          ...COMMANDS.map((cmd) => ({ name: `/${cmd.name}`, desc: cmd.desc, note: 'builtin' })),
+          ...boot.commands.list().map((cmd) => ({ name: `/${cmd.name}`, desc: cmd.description, note: cmd.source })),
+        ],
+      })
+    }
     if (c.name === 'new') {
       if (busy()) return flash('finish or interrupt the current turn first')
       refs.session = null
@@ -644,7 +664,7 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || rewindStep() !== null
+    showProjectPanel() || infoPanel() !== null || rewindStep() !== null
 
   const effortApplies = () => !!model().effort
 
@@ -1056,6 +1076,15 @@ export function App({ boot }) {
           focused={showResumePanel()}
           onPick={resumeSession}
           onClose={() => setShowResumePanel(false)}
+        />
+      )}
+
+      {infoPanel() && (
+        <InfoListPanel
+          title={infoPanel().title}
+          rows={infoPanel().rows}
+          focused={infoPanel() !== null}
+          onClose={() => setInfoPanel(null)}
         />
       )}
 

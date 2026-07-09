@@ -320,6 +320,33 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   )
 }
 
+export function InfoListPanel({ title, rows, focused, onClose }) {
+  useEscape(() => focused, onClose)
+
+  return (
+    <PanelFrame title={title} hint="j/k or ↑↓ to scroll · esc close">
+      <box style={{ flexDirection: 'column', height: 14, marginTop: 1 }}>
+        {rows.length === 0 ? (
+          <text style={{ color: FAINT }}>nothing here yet</text>
+        ) : (
+          <ScrollBox style={{ flexGrow: 1 }} focused={focused} scrollbar>
+            {rows.map((row, i) => (
+              <box key={`${row.name}-${i}`} style={{ flexDirection: 'column', marginTop: i === 0 ? 0 : 1 }}>
+                <box style={{ flexDirection: 'row' }}>
+                  <text style={{ color: accent() }}>{row.name}</text>
+                  <box style={{ flexGrow: 1 }} />
+                  {row.note && <text style={{ color: FAINT }}>{row.note}</text>}
+                </box>
+                <text style={{ color: MUTED }}>{row.desc || 'no description'}</text>
+              </box>
+            ))}
+          </ScrollBox>
+        )}
+      </box>
+    </PanelFrame>
+  )
+}
+
 export function ProjectPanel({ projects, loading, focused, onPick, onClose }) {
   const [preview, setPreview] = createSignal(projects[0] || null)
   useEscape(() => focused, onClose)
