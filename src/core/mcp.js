@@ -28,12 +28,11 @@ export function parseCommand(str) {
 
 export function parseServerSpec(str) {
   const tokens = tokenize(str)
-  const url = tokens.find((t) => /^https?:\/\//.test(t))
-  if (!url) return { type: 'stdio', ...parseCommand(str) }
+  if (!/^https?:\/\//.test(tokens[0] || '')) return { type: 'stdio', ...parseCommand(str) }
 
+  const [url, ...rest] = tokens
   const headers = {}
-  for (const token of tokens) {
-    if (token === url) continue
+  for (const token of rest) {
     const sep = token.indexOf('=')
     if (sep < 1) throw new Error(`http server spec only takes a url and Header=value pairs, got "${token}"`)
     headers[token.slice(0, sep)] = token.slice(sep + 1)

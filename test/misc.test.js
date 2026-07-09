@@ -58,6 +58,12 @@ test('parseServerSpec routes urls to http and commands to stdio', () => {
     headers: { Authorization: 'Bearer abc==', 'X-Team': 'core' },
   })
   assert.throws(() => parseServerSpec('https://x.dev extra-token'), /Header=value/)
+  assert.deepEqual(parseServerSpec('npx some-server --endpoint https://api.example.com'), {
+    type: 'stdio',
+    command: 'npx',
+    args: ['some-server', '--endpoint', 'https://api.example.com'],
+    env: {},
+  })
 })
 
 test('mcp runtime merges global and project servers, scopes writes', async () => {
