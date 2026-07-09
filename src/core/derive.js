@@ -176,6 +176,9 @@ export function deriveState(events) {
       case 'skill':
         state.transcript.push({ kind: 'skill', name: event.data.name })
         break
+      case 'thoughts':
+        state.transcript.push({ kind: 'thoughts', text: event.data.text })
+        break
     }
   }
 

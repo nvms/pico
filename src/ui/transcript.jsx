@@ -93,6 +93,28 @@ export function Message({ item, verbose }) {
     )
   }
 
+  if (item.kind === 'thoughts') {
+    const lines = item.text.split('\n')
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <box style={{ flexDirection: 'row' }}>
+          <text style={{ color: MUTED, italic: true }}>{'✦ thoughts'}</text>
+          <box style={{ flexGrow: 1 }} />
+          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} · ctrl+o`}</text>
+        </box>
+        {verbose && (
+          <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
+            {lines.slice(0, 300).map((line, i) => (
+              <text key={i} style={{ color: FG_SOFT, italic: true }}>{line || ' '}</text>
+            ))}
+            {lines.length > 300 && <text style={{ color: FAINT }}>{`… ${lines.length - 300} more lines`}</text>}
+          </box>
+        )}
+      </box>
+    )
+  }
+
   if (item.kind === 'skill') {
     return (
       <box style={{ flexDirection: 'column', paddingX: 2 }}>

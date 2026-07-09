@@ -73,7 +73,7 @@ export function App({ boot }) {
   const [derived, setDerived] = createSignal(deriveState([]))
   const [overlay, setOverlay] = createSignal([])
   const [streaming, setStreaming] = createSignal(null)
-  const [thinking, setThinking] = createSignal(null)
+  const [thinkingNow, setThinkingNow] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [startedAt, setStartedAt] = createSignal(0)
   const [input, setInput] = createSignal('')
@@ -206,14 +206,16 @@ export function App({ boot }) {
       signal: controller.signal,
     })
 
+    refs.turnThoughts = ''
     const onStream = (event) => {
       if (event.type === 'thinking') {
-        setThinking((t) => (t || '') + event.content)
+        refs.turnThoughts += event.content
+        setThinkingNow(true)
       } else if (event.type === 'content') {
-        setThinking(null)
+        setThinkingNow(false)
         setStreaming((s) => (s || '') + event.content)
       } else if (event.type === 'tool_calls_ready') {
-        setThinking(null)
+        setThinkingNow(false)
         setOverlay((o) => {
           const next = [...o]
           flushStream(next)
@@ -263,13 +265,14 @@ export function App({ boot }) {
     } catch (err) {
       setOverlay([])
       setStreaming(null)
-      setThinking(null)
+      setThinkingNow(false)
       setBusy(false)
       refs.abort = null
       flash(`error: ${String(err.message || err).slice(0, 120)}`)
       return
     }
 
+    if (refs.turnThoughts) persist(makeEvent('thoughts', { text: refs.turnThoughts }))
     for (const message of result.messages) persist(makeEvent('message', { message }))
     for (const entry of recorder.entries) persist(makeEvent('tool_meta', entry))
     for (const path of tracker.loaded) {
@@ -280,7 +283,7 @@ export function App({ boot }) {
 
     setOverlay([])
     setStreaming(null)
-    setThinking(null)
+    setThinkingNow(false)
     reDerive()
     setBusy(false)
     refs.abort = null
@@ -809,13 +812,6 @@ export function App({ boot }) {
       >
         {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
         {items.map((item, i) => <Message key={i} item={item} verbose={verbose()} />)}
-        {thinking() && (
-          <box style={{ flexDirection: 'column', paddingX: 2 }}>
-            <text> </text>
-            <text style={{ color: MUTED, italic: true }}>{`✦ thinking`}</text>
-            <text style={{ color: FAINT, italic: true }}>{thinking().slice(-1500)}</text>
-          </box>
-        )}
         {streaming() !== null && streaming() !== '' && (
           <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
         )}
@@ -1114,7 +1110,7 @@ export function App({ boot }) {
           : busy()
             ? (
               <box style={{ flexDirection: 'row' }}>
-                <Shimmer color={accent()} highlight="white" duration={1500} reverse>Responding</Shimmer>
+                <Shimmer color={accent()} highlight="white" duration={1500} reverse>{thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
                 <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
               </box>
             )

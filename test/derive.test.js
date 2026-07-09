@@ -127,6 +127,13 @@ test('effort events track session effort, absent means unset', () => {
   assert.equal(reset.effort, null)
 })
 
+test('thoughts events become collapsible transcript items', () => {
+  const events = [user('hard question'), makeEvent('thoughts', { text: 'step one\nstep two' }), assistant('answer')]
+  const state = deriveState(events)
+  assert.deepEqual(state.transcript.map((i) => i.kind), ['user', 'thoughts', 'assistant'])
+  assert.match(state.transcript[1].text, /step two/)
+})
+
 test('title and color events stick, latest wins', () => {
   const state = deriveState([
     user('hi'),
