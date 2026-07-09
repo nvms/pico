@@ -7,16 +7,6 @@ import { picoHome, ensureDir } from './paths.js'
 const MODELS_URL = 'https://chatgpt.com/backend-api/codex/models?client_version=2.0.0'
 const TTL = 24 * 60 * 60 * 1000
 
-const FALLBACK = [
-  { slug: 'gpt-5.6-sol', description: 'Latest frontier agentic coding model.' },
-  { slug: 'gpt-5.6-terra', description: 'Balanced agentic coding model for everyday work.' },
-  { slug: 'gpt-5.6-luna', description: 'Fast and affordable agentic coding model.' },
-  { slug: 'gpt-5.5', description: 'Frontier model for complex coding, research, and real-world work.' },
-  { slug: 'gpt-5.4', description: 'Strong model for everyday coding.' },
-  { slug: 'gpt-5.4-mini', description: 'Small, fast, and cost-efficient model for simpler coding tasks.' },
-  { slug: 'gpt-5.3-codex-spark', description: 'Ultra-fast coding model.' },
-]
-
 function cacheFile() {
   return join(picoHome(), 'codex-models-cache.json')
 }
@@ -38,7 +28,7 @@ export async function loadCodexModels(credentials) {
     cached = JSON.parse(await readFile(cacheFile(), 'utf-8'))
   } catch {}
   if (cached && Date.now() - cached.at < TTL) return mapCodexModels(cached.models)
-  if (!credentials) return mapCodexModels(cached?.models || FALLBACK)
+  if (!credentials) return mapCodexModels(cached?.models || [])
 
   try {
     const response = await fetch(MODELS_URL, {
@@ -56,6 +46,6 @@ export async function loadCodexModels(credentials) {
     await writeFile(cacheFile(), JSON.stringify({ at: Date.now(), models }))
     return mapCodexModels(models)
   } catch {
-    return mapCodexModels(cached?.models || FALLBACK)
+    return mapCodexModels(cached?.models || [])
   }
 }

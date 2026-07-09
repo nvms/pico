@@ -18,11 +18,18 @@ test('maps backend entries to picker models', () => {
   assert.match(models[1].desc, /GPT-5.3-Codex-Spark/)
 })
 
-test('falls back to the curated lineup without credentials or cache', async () => {
+test('no credentials and no cache means no codex rows, cache serves offline', async () => {
   process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
-  const models = await loadCodexModels(null)
-  assert.ok(models.length >= 7)
-  assert.ok(models.some((m) => m.name === 'codex/gpt-5.6-terra'))
-  assert.ok(models.every((m) => m.provider === 'codex'))
+  assert.deepEqual(await loadCodexModels(null), [])
+
+  const { writeFile, mkdir } = await import('node:fs/promises')
+  await mkdir(process.env.PICO_HOME, { recursive: true })
+  await writeFile(
+    join(process.env.PICO_HOME, 'codex-models-cache.json'),
+    JSON.stringify({ at: Date.now(), models: [{ slug: 'gpt-5.6-terra', description: 'cached' }] }),
+  )
+  const cached = await loadCodexModels(null)
+  assert.equal(cached.length, 1)
+  assert.equal(cached[0].name, 'codex/gpt-5.6-terra')
   delete process.env.PICO_HOME
 })
