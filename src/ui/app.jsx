@@ -1302,9 +1302,9 @@ export function App({ boot }) {
           onToggle={(name) => mcp.toggle(name)}
           onReconnect={(name) => mcp.reconnect(name)}
           onRemove={(name) => mcp.remove(name)}
-          onAdd={(name, command) => {
-            mcp.add(name, command)
-            flash(`added ${name}`)
+          onAdd={(name, command, scope) => {
+            mcp.add(name, command, scope)
+            flash(`added ${name} (${scope})`)
           }}
           onClose={() => setShowMcpPanel(false)}
         />

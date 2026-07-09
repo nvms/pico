@@ -58,30 +58,34 @@ export async function writeRegistry(registry) {
   await writeFile(globalMcpFile(), JSON.stringify(registry, null, 2) + '\n')
 }
 
-export function readEnablement(root) {
-  return readJson(projectMcpFile(root), { disabled: {} })
+export async function readProjectConfig(root) {
+  const config = await readJson(projectMcpFile(root), {})
+  return { disabled: config.disabled || {}, servers: config.servers || {} }
 }
 
-export async function writeEnablement(root, enablement) {
+export async function writeProjectConfig(root, config) {
   ensureDir(projectDir(root))
-  await writeFile(projectMcpFile(root), JSON.stringify(enablement, null, 2) + '\n')
+  await writeFile(projectMcpFile(root), JSON.stringify(config, null, 2) + '\n')
 }
 
 export async function createMcpRuntime({ root, onChange = () => {} }) {
   const registry = await readRegistry()
-  const enablement = await readEnablement(root)
+  const projectConfig = await readProjectConfig(root)
   const servers = new Map()
 
-  for (const [name, command] of Object.entries(registry.servers)) {
+  const register = (name, command, scope) => {
     servers.set(name, {
       name,
       command,
-      enabled: !enablement.disabled[name],
-      status: enablement.disabled[name] ? 'disabled' : 'idle',
+      scope,
+      enabled: !projectConfig.disabled[name],
+      status: projectConfig.disabled[name] ? 'disabled' : 'idle',
       error: null,
       connection: null,
     })
   }
+  for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
+  for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
 
   async function transportFactory(command) {
     const spec = parseServerSpec(command)
@@ -138,17 +142,30 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       }
       return Promise.allSettled(pending)
     },
-    async add(name, command) {
-      const registry = await readRegistry()
-      registry.servers[name] = command
-      await writeRegistry(registry)
-      servers.set(name, { name, command, enabled: true, status: 'idle', error: null, connection: null })
+    async add(name, command, scope = 'global') {
+      if (scope === 'project') {
+        const config = await readProjectConfig(root)
+        config.servers[name] = command
+        await writeProjectConfig(root, config)
+      } else {
+        const registry = await readRegistry()
+        registry.servers[name] = command
+        await writeRegistry(registry)
+      }
+      servers.set(name, { name, command, scope, enabled: true, status: 'idle', error: null, connection: null })
       await connect(name)
     },
     async remove(name) {
-      const registry = await readRegistry()
-      delete registry.servers[name]
-      await writeRegistry(registry)
+      const scope = servers.get(name)?.scope
+      if (scope === 'project') {
+        const config = await readProjectConfig(root)
+        delete config.servers[name]
+        await writeProjectConfig(root, config)
+      } else {
+        const registry = await readRegistry()
+        delete registry.servers[name]
+        await writeRegistry(registry)
+      }
       await disconnect(name)
       servers.delete(name)
       onChange()
@@ -156,18 +173,18 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     async toggle(name) {
       const server = servers.get(name)
       if (!server) return
-      const enablement = await readEnablement(root)
+      const config = await readProjectConfig(root)
       if (server.enabled) {
         server.enabled = false
         server.status = 'disabled'
-        enablement.disabled[name] = true
-        await writeEnablement(root, enablement)
+        config.disabled[name] = true
+        await writeProjectConfig(root, config)
         await disconnect(name)
         onChange()
       } else {
         server.enabled = true
-        delete enablement.disabled[name]
-        await writeEnablement(root, enablement)
+        delete config.disabled[name]
+        await writeProjectConfig(root, config)
         await connect(name)
       }
     },
@@ -178,6 +195,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       return [...servers.values()].map((s) => ({
         name: s.name,
         command: s.command,
+        scope: s.scope,
         enabled: s.enabled,
         status: s.status,
         error: s.error,

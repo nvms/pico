@@ -60,6 +60,31 @@ test('parseServerSpec routes urls to http and commands to stdio', () => {
   assert.throws(() => parseServerSpec('https://x.dev extra-token'), /Header=value/)
 })
 
+test('mcp runtime merges global and project servers, scopes writes', async () => {
+  const { createMcpRuntime, writeRegistry, writeProjectConfig, readProjectConfig, readRegistry } = await import('../src/core/mcp.js')
+  const { mkdtemp } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+
+  await writeRegistry({ servers: { fs: 'npx -y server-filesystem /tmp', shared: 'global-cmd' } })
+  await writeProjectConfig(root, { disabled: { fs: true }, servers: { local: 'node server.js', shared: 'project-cmd' } })
+
+  const mcp = await createMcpRuntime({ root })
+  const byName = Object.fromEntries(mcp.list().map((s) => [s.name, s]))
+  assert.equal(byName.fs.scope, 'global')
+  assert.equal(byName.fs.enabled, false)
+  assert.equal(byName.local.scope, 'project')
+  assert.equal(byName.shared.scope, 'project')
+  assert.equal(byName.shared.command, 'project-cmd')
+
+  await mcp.remove('local')
+  assert.deepEqual((await readProjectConfig(root)).servers, { shared: 'project-cmd' })
+  assert.equal((await readRegistry()).servers.fs, 'npx -y server-filesystem /tmp')
+  delete process.env.PICO_HOME
+})
+
 test('parseFrontmatter extracts meta and body', () => {
   const { meta, body } = parseFrontmatter('---\nname: deploy\ndescription: ship it\n---\ndo the thing\n')
   assert.equal(meta.name, 'deploy')

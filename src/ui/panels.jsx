@@ -604,8 +604,8 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
     <PanelFrame
       title="MCP servers"
       hint={adding()
-        ? 'stdio: <name> <command...> · http: <name> <url> [Header="value"...]'
-        : 'space/enter toggle · t tools · r reconnect · a add · d remove · esc close'}
+        ? `adding ${adding()} server · stdio: <name> <command...> · http: <name> <url> [Header="value"...]`
+        : 'space/enter toggle · t tools · r reconnect · a add global · p add project · d remove · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {adding() ? (
@@ -613,13 +613,13 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
             <text style={{ color: accent() }}>{'+ '}</text>
             <TextInput
               focused={focused}
-              placeholder="name command args..."
+              placeholder="name command-or-url..."
               clearOnSubmit
               onSubmit={(value) => {
                 const trimmed = value.trim()
                 const sep = trimmed.indexOf(' ')
                 if (sep > 0) {
-                  onAdd(trimmed.slice(0, sep), trimmed.slice(sep + 1).trim())
+                  onAdd(trimmed.slice(0, sep), trimmed.slice(sep + 1).trim(), adding())
                   setAdding(false)
                 }
               }}
@@ -645,6 +645,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                   <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
                   <text style={{ color: st.color }}>{st.icon}</text>
                   <text style={{ color: active ? accent() : FG }}>{` ${s.name.padEnd(14)}`}</text>
+                  {s.scope === 'project' && <text style={{ color: FAINT }}>{'·p '}</text>}
                   <box style={{ flexGrow: 1, height: 1 }}>
                     <text style={{ overflow: 'truncate', color: s.status === 'error' ? RED : MUTED }}>
                       {s.status === 'error' ? s.error : s.status === 'connected' ? `${s.toolCount} tools` : s.status}
@@ -662,7 +663,8 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
           focused={focused}
           onKey={(key) => {
             const s = selected()
-            if (key === 'a') setAdding(true)
+            if (key === 'a') setAdding('global')
+            else if (key === 'p') setAdding('project')
             else if (s && key === ' ') onToggle(s.name)
             else if (s && key === 'r') onReconnect(s.name)
             else if (s && key === 'd') onRemove(s.name)
@@ -677,7 +679,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
 function McpKeys({ focused, onKey }) {
   useInput((event) => {
     if (!focused) return
-    if ([' ', 'a', 'r', 'd', 't'].includes(event.key)) {
+    if ([' ', 'a', 'p', 'r', 'd', 't'].includes(event.key)) {
       onKey(event.key)
       event.stopPropagation()
     }
