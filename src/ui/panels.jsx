@@ -576,20 +576,20 @@ function FormField({ label, active, children }) {
 }
 
 function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
-  const fm = useFocus({ initial: 'name' })
-  fm.item('name')
-  fm.item('scope')
-  fm.item('transport')
-  fm.item('target')
-  fm.item('headers')
-  fm.item('add')
-  fm.item('cancel')
-
   const [name, setName] = createSignal('')
   const [scope, setScope] = createSignal('global')
   const [transport, setTransport] = createSignal('stdio')
   const [target, setTarget] = createSignal('')
   const [headers, setHeaders] = createSignal('')
+
+  const fm = useFocus({ initial: 'name' })
+  fm.item('name')
+  fm.item('scope')
+  fm.item('transport')
+  fm.item('target')
+  if (transport() === 'http') fm.item('headers')
+  fm.item('add')
+  fm.item('cancel')
 
   useInput((event) => {
     if (!focused) return
@@ -634,11 +634,13 @@ function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
           />
         </box>
       </FormField>
-      <FormField label={http ? 'headers · optional' : 'headers · http only'} active={fm.is('headers')}>
-        <box style={{ bg: PANEL_BG, paddingX: 1 }}>
-          <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' onChange={setHeaders} />
-        </box>
-      </FormField>
+      {http && (
+        <FormField label="headers · optional" active={fm.is('headers')}>
+          <box style={{ bg: PANEL_BG, paddingX: 1 }}>
+            <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' onChange={setHeaders} />
+          </box>
+        </FormField>
+      )}
       <box style={{ flexDirection: 'row' }}>
         <Button label="add" onPress={submit} focused={focused && fm.is('add')} />
         <text>  </text>
