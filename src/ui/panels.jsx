@@ -62,18 +62,23 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
           gap={1}
           itemHeight={2}
           scrolloff={1}
-          renderItem={(m, { selected, focused: f }) => (
-            <box style={{ flexDirection: 'column', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
-              <box style={{ flexDirection: 'row' }}>
-                <text style={{ bold: true, color: selected ? 'black' : FG }}>{m.name}</text>
-                {m.name === current && <text style={{ color: selected ? 'black' : accent() }}>{' ✓'}</text>}
-                {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
-                <box style={{ flexGrow: 1 }} />
-                <text style={{ color: selected ? 'black' : MUTED }}>{m.price ? `$${m.price.in} in · $${m.price.out} out` : 'price unknown'}</text>
+          renderItem={(m, { selected, focused: f }) => {
+            const off = m.available === false
+            return (
+              <box style={{ flexDirection: 'column', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
+                <box style={{ flexDirection: 'row' }}>
+                  <text style={{ bold: !off, dim: off, color: selected ? 'black' : off ? FAINT : FG }}>{m.name}</text>
+                  {m.name === current && <text style={{ color: selected ? 'black' : accent() }}>{' ✓'}</text>}
+                  {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
+                  <box style={{ flexGrow: 1 }} />
+                  <text style={{ color: selected ? 'black' : off ? FAINT : MUTED }}>
+                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in · $${m.price.out} out` : 'price unknown'}
+                  </text>
+                </box>
+                <text style={{ dim: off, color: selected ? 'black' : off ? FAINT : MUTED }}>{m.desc}</text>
               </box>
-              <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
-            </box>
-          )}
+            )
+          }}
         />
       </box>
     </PanelFrame>

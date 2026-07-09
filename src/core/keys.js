@@ -20,3 +20,7 @@ export function applyKeys(keys) {
   setKeys(keys)
   return Object.keys(keys)
 }
+
+export function keyHint(providerId) {
+  return PROVIDERS.find((p) => p.id === providerId)?.env[0] || `${providerId.toUpperCase()}_API_KEY`
+}

@@ -3,7 +3,7 @@ export function findModel(models, name) {
 }
 
 export function defaultModel(models) {
-  return models[0] || null
+  return models.find((m) => m.available !== false) || null
 }
 
 export function estimateCost(model, usage) {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { mount } from '@trendr/core'
-import { discoverKeys, applyKeys } from './core/keys.js'
+import { discoverKeys, applyKeys, keyHint } from './core/keys.js'
 import { defaultModel } from './core/models.js'
 import { loadCatalog, extractModels } from './core/catalog.js'
 import { readConfig } from './core/config.js'
@@ -17,9 +17,13 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 
 const keys = discoverKeys()
 const providers = applyKeys(keys)
-const models = extractModels(await loadCatalog(), providers)
+const models = extractModels(await loadCatalog(), ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
+  ...m,
+  available: providers.includes(m.provider),
+  keyHint: keyHint(m.provider),
+}))
 
-if (models.length === 0) {
+if (providers.length === 0) {
   console.error('pico: no API keys found in the environment.')
   console.error('set one of: GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY')
   process.exit(1)

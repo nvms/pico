@@ -275,7 +275,7 @@ export function App({ boot }) {
   function completionSource(name) {
     if (name === 'color') return Object.keys(SESSION_COLORS)
     if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
-    if (name === 'model') return models.map((m) => m.name)
+    if (name === 'model') return models.filter((m) => m.available !== false).map((m) => m.name)
     const cmd = allCommands.find((c) => c.name === name)
     if (cmd?.skill || cmd?.command) return fileList()
     return null
@@ -371,6 +371,7 @@ export function App({ boot }) {
       const adhoc = !exact && scored.length === 0 ? adhocModel(args, boot.providers) : null
       const pick = exact || scored[0]?.[1] || adhoc
       if (!pick) return flash(`no available model matches "${args}"`)
+      if (pick.available === false) return flash(`set ${pick.keyHint} in your environment to use ${pick.name}`)
       persist(makeEvent('model_switch', { from: model().name, to: pick.name }))
       setModel(pick)
       flash(adhoc ? `model set to ${pick.name} (not in catalog, pricing unknown)` : `model set to ${pick.name}`)
@@ -522,8 +523,9 @@ export function App({ boot }) {
       refs.persisted = events.length
       refs.rewindUndo = null
       reDerive()
+      const catalogMatch = models.find((m) => m.name === derived().model && m.available !== false)
       const restored = derived().model
-        && (models.find((m) => m.name === derived().model) || adhocModel(derived().model, boot.providers))
+        && (catalogMatch || adhocModel(derived().model, boot.providers))
       if (restored) {
         setModel(restored)
       } else {
@@ -972,12 +974,14 @@ export function App({ boot }) {
           defaultName={defaultModel().name}
           focused={showModelPanel()}
           onPick={(m) => {
+            if (m.available === false) return flash(`set ${m.keyHint} in your environment to use ${m.name}`)
             persist(makeEvent('model_switch', { from: model().name, to: m.name }))
             setModel(m)
             setShowModelPanel(false)
             flash(`model set to ${m.name}`)
           }}
           onPickDefault={(m) => {
+            if (m.available === false) return flash(`set ${m.keyHint} in your environment to use ${m.name}`)
             persist(makeEvent('model_switch', { from: model().name, to: m.name }))
             setModel(m)
             setDefaultModel(m)
