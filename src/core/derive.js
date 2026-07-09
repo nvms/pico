@@ -26,10 +26,11 @@ function addUsageInto(total, usage) {
   total.completionTokens += usage.completionTokens || 0
   total.totalTokens += usage.totalTokens || 0
   total.cachedTokens += usage.cachedTokens || 0
+  total.thoughtTokens += usage.thoughtTokens || 0
 }
 
 function emptyUsage() {
-  return { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0 }
+  return { promptTokens: 0, completionTokens: 0, totalTokens: 0, cachedTokens: 0, thoughtTokens: 0 }
 }
 
 function parseArgs(raw) {

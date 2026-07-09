@@ -73,6 +73,7 @@ export function App({ boot }) {
   const [derived, setDerived] = createSignal(deriveState([]))
   const [overlay, setOverlay] = createSignal([])
   const [streaming, setStreaming] = createSignal(null)
+  const [thinking, setThinking] = createSignal(null)
   const [busy, setBusy] = createSignal(false)
   const [startedAt, setStartedAt] = createSignal(0)
   const [input, setInput] = createSignal('')
@@ -206,9 +207,13 @@ export function App({ boot }) {
     })
 
     const onStream = (event) => {
-      if (event.type === 'content') {
+      if (event.type === 'thinking') {
+        setThinking((t) => (t || '') + event.content)
+      } else if (event.type === 'content') {
+        setThinking(null)
         setStreaming((s) => (s || '') + event.content)
       } else if (event.type === 'tool_calls_ready') {
+        setThinking(null)
         setOverlay((o) => {
           const next = [...o]
           flushStream(next)
@@ -258,6 +263,7 @@ export function App({ boot }) {
     } catch (err) {
       setOverlay([])
       setStreaming(null)
+      setThinking(null)
       setBusy(false)
       refs.abort = null
       flash(`error: ${String(err.message || err).slice(0, 120)}`)
@@ -274,6 +280,7 @@ export function App({ boot }) {
 
     setOverlay([])
     setStreaming(null)
+    setThinking(null)
     reDerive()
     setBusy(false)
     refs.abort = null
@@ -802,6 +809,13 @@ export function App({ boot }) {
       >
         {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
         {items.map((item, i) => <Message key={i} item={item} verbose={verbose()} />)}
+        {thinking() && (
+          <box style={{ flexDirection: 'column', paddingX: 2 }}>
+            <text> </text>
+            <text style={{ color: MUTED, italic: true }}>{`✦ thinking`}</text>
+            <text style={{ color: FAINT, italic: true }}>{thinking().slice(-1500)}</text>
+          </box>
+        )}
         {streaming() !== null && streaming() !== '' && (
           <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
         )}
@@ -1112,6 +1126,7 @@ export function App({ boot }) {
         <text style={{ color: MUTED }}>{`${usage.promptTokens.toLocaleString()} in`}</text>
         <text style={{ color: FAINT }}>↓</text>
         <text style={{ color: MUTED }}>{`${usage.completionTokens.toLocaleString()} out`}</text>
+        {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${usage.thoughtTokens.toLocaleString()} think`}</text>}
       </box>
     </box>
   )
