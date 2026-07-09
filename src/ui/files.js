@@ -8,7 +8,8 @@ let cached = { at: 0, cwd: null, files: [] }
 
 function ripgrepFiles(cwd) {
   return new Promise((resolve) => {
-    execFile('rg', ['--files', '--sortr=modified'], { cwd, maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
+    const args = ['--files', '--hidden', '--glob', '!**/.git/**', '--sortr=modified']
+    execFile('rg', args, { cwd, maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
       resolve(err && !stdout ? null : stdout.split('\n').filter(Boolean))
     })
   })
@@ -21,7 +22,7 @@ export async function listFiles(cwd) {
     files = await fg('**/*', {
       cwd,
       onlyFiles: true,
-      dot: false,
+      dot: true,
       ignore: ['**/node_modules/**', '**/.git/**'],
     }).catch(() => [])
   }

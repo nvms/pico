@@ -5,7 +5,7 @@ const MAX_RESULTS = 200
 
 function ripgrepGlob(pattern, cwd) {
   return new Promise((resolve) => {
-    const args = ['--files', '--glob', pattern, '--glob', '!**/node_modules/**', '--glob', '!**/.git/**']
+    const args = ['--files', '--hidden', '--glob', pattern, '--glob', '!**/node_modules/**', '--glob', '!**/.git/**']
     execFile('rg', args, { cwd, maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
       if (err && err.code !== 1) resolve(null)
       else resolve(stdout ? stdout.split('\n').filter(Boolean) : [])
@@ -27,7 +27,7 @@ export function createGlob({ cwd, recorder }) {
       if (files === null) {
         files = await fg(pattern, {
           cwd,
-          dot: false,
+          dot: true,
           ignore: ['**/node_modules/**', '**/.git/**'],
         })
       }

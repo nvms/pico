@@ -97,6 +97,25 @@ test('glob finds files and ignores node_modules', async () => {
   assert.deepEqual(result.files.sort(), ['hello.js', 'sub/nested.js'])
 })
 
+test('glob and grep see hidden files but never .git', async () => {
+  const { cwd, byName } = await fixture()
+  await mkdir(join(cwd, '.artifacts'), { recursive: true })
+  await mkdir(join(cwd, '.git'), { recursive: true })
+  await writeFile(join(cwd, '.artifacts/DECISIONS.md'), 'we chose tabs\n')
+  await writeFile(join(cwd, '.prettierrc'), '{ "semi": false }\n')
+  await writeFile(join(cwd, '.git/config'), 'we chose tabs\n')
+
+  const found = await byName.glob.execute({ pattern: '**/.*' })
+  assert.ok(found.files.includes('.prettierrc'))
+  assert.ok(!found.files.some((f) => f.startsWith('.git/')))
+
+  const md = await byName.glob.execute({ pattern: '.artifacts/**' })
+  assert.deepEqual(md.files, ['.artifacts/DECISIONS.md'])
+
+  const hits = await byName.grep.execute({ pattern: 'we chose tabs', mode: 'files' })
+  assert.deepEqual(hits.results, ['.artifacts/DECISIONS.md'])
+})
+
 test('grep content and files modes', async () => {
   const { byName } = await fixture()
   const content = await byName.grep.execute({ pattern: 'const b' })

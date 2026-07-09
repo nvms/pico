@@ -27,7 +27,7 @@ export function createGrep({ cwd, recorder }) {
     },
     execute: async ({ pattern, path, mode = 'content', glob, ignoreCase, context, multiline, limit = MAX_RESULTS }) => {
       recorder.extra({ title: pattern })
-      const args = ['--no-heading', '--color=never', '--max-columns', '500']
+      const args = ['--no-heading', '--color=never', '--max-columns', '500', '--hidden', '--glob', '!**/.git/**']
 
       if (mode === 'files') args.push('--files-with-matches')
       else if (mode === 'count') args.push('--count')
