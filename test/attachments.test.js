@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths } from '../src/ui/attachments.js'
+import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths, placeholderizeImagePaths } from '../src/ui/attachments.js'
 import { hydrateImages } from '../src/core/agent.js'
 
 const yes = () => true
@@ -58,6 +58,30 @@ test('literal image paths in message text become attachments at send time', () =
   assert.deepEqual(content.map((p) => p.type), ['text', 'image', 'text'])
   const plain = finalizeUserContent('no images here', new Map(), yes)
   assert.equal(plain.content, 'no images here')
+})
+
+test('macos narrow no-break space in screenshot names is a path character', () => {
+  const path = '/Users/x/Screenshot\\ 2026-07-08\\ at\\ 9.48.15 PM.png'
+  const parts = splitTextByImagePaths(path, yes)
+  assert.equal(parts.length, 1)
+  assert.equal(parts[0].source.path, '/Users/x/Screenshot 2026-07-08 at 9.48.15 PM.png')
+  assert.deepEqual(extractImagePaths(path, yes), ['/Users/x/Screenshot 2026-07-08 at 9.48.15 PM.png'])
+})
+
+test('placeholderizeImagePaths swaps completed paths for placeholders', () => {
+  const attachments = new Map()
+  let id = 0
+  const result = placeholderizeImagePaths('look at /Users/x/a.png now', {
+    attachments,
+    nextId: () => ++id,
+    exists: yes,
+  })
+  assert.equal(result.text, 'look at [Image #1] now')
+  assert.equal(attachments.get('[Image #1]').path, '/Users/x/a.png')
+
+  const untouched = placeholderizeImagePaths('just words', { attachments, nextId: () => ++id, exists: yes })
+  assert.equal(untouched.changed, false)
+  assert.equal(untouched.text, 'just words')
 })
 
 test('hydrateImages converts path parts to base64 and degrades gracefully', async () => {

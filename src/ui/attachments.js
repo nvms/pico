@@ -32,7 +32,7 @@ function toPath(token) {
 }
 
 export function extractImagePaths(text, exists = existsSync) {
-  const tokens = text.trim().match(/'[^']*'|"[^"]*"|(?:\\ |\S)+/g)
+  const tokens = text.trim().match(/'[^']*'|"[^"]*"|(?:\\ |[^ \t\n\r])+/g)
   if (!tokens || tokens.length === 0) return []
   const paths = []
   for (const token of tokens) {
@@ -49,7 +49,7 @@ export function imageLabel(part) {
   return '[image]'
 }
 
-const IMAGE_PATH_RE = /(["'])(\/[^"']+?\.(?:png|jpe?g|gif|webp|bmp))\1|(\/(?:\\ |[^\s"'])+\.(?:png|jpe?g|gif|webp|bmp))/gi
+const IMAGE_PATH_RE = /(["'])(\/[^"']+?\.(?:png|jpe?g|gif|webp|bmp))\1|(\/(?:\\ |[^ \t\n\r"'])+\.(?:png|jpe?g|gif|webp|bmp))/gi
 
 export function splitTextByImagePaths(text, exists = existsSync) {
   const parts = []
@@ -88,6 +88,22 @@ export function buildUserContent(text, attachments) {
   const tail = text.slice(last)
   if (tail) parts.push({ type: 'text', text: tail })
   return { content: parts, used }
+}
+
+export function placeholderizeImagePaths(text, { attachments, nextId, exists = existsSync }) {
+  const parts = splitTextByImagePaths(text, exists)
+  if (!parts) return { text, changed: false }
+  let out = ''
+  for (const part of parts) {
+    if (part.type === 'text') {
+      out += part.text
+    } else {
+      const placeholder = `[Image #${nextId()}]`
+      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType })
+      out += placeholder
+    }
+  }
+  return { text: out, changed: true }
 }
 
 export function finalizeUserContent(text, attachments, exists = existsSync) {

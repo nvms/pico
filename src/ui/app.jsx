@@ -19,7 +19,7 @@ import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
-import { extractImagePaths, mediaTypeFor, finalizeUserContent } from './attachments.js'
+import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths } from './attachments.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
@@ -861,7 +861,18 @@ export function App({ boot }) {
         )}
         <TextArea
           value={input()}
-          onChange={(v) => { setInput(v); setCmdIndex(0); setCmdCycle(null); setFileIndex(0); setHistIdx(-1); setFilesDismissed(false) }}
+          onChange={(v) => {
+            const converted = placeholderizeImagePaths(v, {
+              attachments: refs.attachments,
+              nextId: () => ++refs.imageCount,
+            })
+            setInput(converted.text)
+            setCmdIndex(0)
+            setCmdCycle(null)
+            setFileIndex(0)
+            setHistIdx(-1)
+            setFilesDismissed(false)
+          }}
           onCancel={() => { if (busy()) interrupt(); else { setInput(''); setCmdCycle(null) } }}
           onSubmit={send}
           onKeyDown={(e) => {
