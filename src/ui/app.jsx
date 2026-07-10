@@ -733,7 +733,15 @@ export function App({ boot }) {
     }
     if (c.name === 'tools') {
       const scan = await scanUserTools({ cwd: boot.cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
-      const { tools: builtins } = createToolset({ cwd: boot.cwd, tracker, skills })
+      const { tools: builtins } = createToolset({
+        cwd: boot.cwd,
+        tracker,
+        skills,
+        shells: boot.shells,
+        wakeups: boot.wakeups,
+        memory: boot.memory,
+        dredge: boot.dredge,
+      })
       const mcpCount = mcp.tools().length
       setInfoPanel({
         title: `Tools${mcpCount ? ` · plus ${mcpCount} MCP (see /mcp)` : ''}`,
