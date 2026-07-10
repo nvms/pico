@@ -14,6 +14,8 @@ Then produce a <summary> block with exactly these sections:
 7. Current Work: precisely what was in progress just now, with file names and direct quotes
 8. Next Step: only if directly in line with the most recent explicit request; include verbatim quotes showing exactly where work left off, or state that there is none
 
+This summarization request is not part of the conversation: do not list it as a user message, count it as a task, or let it appear as the current work or next step. Summarize only what came before it.
+
 Respond with plain text only: one <analysis> block followed by one <summary> block.`
 
   if (customInstructions.trim()) {
