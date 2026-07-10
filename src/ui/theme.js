@@ -12,6 +12,7 @@ const PALETTES = {
     selectBg: '#374151',
     red: '#f87171',
     highlight: '#ffffff',
+    shiki: 'nord',
   },
   light: {
     desc: 'dark text for light terminals',
@@ -24,6 +25,20 @@ const PALETTES = {
     selectBg: '#d4d4dc',
     red: '#dc2626',
     highlight: '#111827',
+    shiki: 'github-light',
+  },
+  nord: {
+    desc: 'arctic blues on polar night',
+    accent: '#88c0d0',
+    fg: '#d8dee9',
+    fgSoft: '#aab2c4',
+    muted: '#7b88a1',
+    faint: '#616e88',
+    panelBg: '#3b4252',
+    selectBg: '#434c5e',
+    red: '#bf616a',
+    highlight: '#eceff4',
+    shiki: 'nord',
   },
 }
 
@@ -70,4 +85,8 @@ export function paletteName() {
 
 export function paletteList() {
   return Object.entries(PALETTES).map(([key, p]) => ({ key, desc: p.desc }))
+}
+
+export function shikiTheme() {
+  return PALETTES[currentPalette].shiki
 }

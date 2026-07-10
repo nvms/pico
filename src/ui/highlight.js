@@ -1,6 +1,6 @@
 import { codeToANSI } from '@shikijs/cli'
 import { createSignal } from '@trendr/core'
-import { paletteName } from './theme.js'
+import { shikiTheme } from './theme.js'
 
 const LANGS = {
   js: 'js', mjs: 'js', cjs: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx',
@@ -24,7 +24,7 @@ export const highlightVersion = version
 
 export function highlight(code, lang) {
   const safeLang = lang && !failed.has(lang) ? lang : 'txt'
-  const theme = paletteName() === 'light' ? 'github-light' : 'nord'
+  const theme = shikiTheme()
   return code
     .split('\n')
     .map((line) => {

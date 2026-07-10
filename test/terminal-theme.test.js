@@ -37,3 +37,17 @@ test('setPalette swaps live bindings and falls back to dark', () => {
   setPalette('nonsense')
   assert.equal(paletteName(), 'dark')
 })
+
+test('every palette declares the full color set and a shiki theme', () => {
+  const keys = theme.paletteList().map((p) => p.key)
+  assert.ok(keys.includes('nord'))
+  for (const key of keys) {
+    setPalette(key)
+    assert.equal(paletteName(), key)
+    for (const value of [theme.FG, theme.FG_SOFT, theme.MUTED, theme.FAINT, theme.PANEL_BG, theme.SELECT_BG, theme.RED, theme.HIGHLIGHT, theme.DEFAULT_ACCENT]) {
+      assert.match(value, /^#[0-9a-fA-F]{6}$/)
+    }
+    assert.equal(typeof theme.shikiTheme(), 'string')
+  }
+  setPalette('dark')
+})
