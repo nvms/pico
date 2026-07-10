@@ -48,7 +48,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
   })
 
   return (
-    <PanelFrame title="Select model" hint="type to filter · enter: this session · ctrl+s: set as default · esc: close">
+    <PanelFrame title="Select model" hint="enter: this session · ctrl+s: set as default · esc: close">
       <box style={{ flexDirection: 'column', height: 12, marginTop: 1 }}>
         <PickList
           counter
@@ -94,7 +94,7 @@ export function HistoryPanel({ prompts, scopes, scopeIndex, focused, onPick, onC
   return (
     <PanelFrame
       title="Search prompts"
-      hint="type to filter · ↑↓ to move · ctrl+s scope · enter to edit · esc to close"
+      hint="↑↓ to move · ctrl+s scope · enter to edit · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -137,7 +137,7 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
   const [preview, setPreview] = createSignal(entries[0] || null)
 
   return (
-    <PanelFrame title="Rewind to a message" hint="type to filter · ↑↓ to move · enter to choose · esc to close">
+    <PanelFrame title="Rewind to a message" hint="↑↓ to move · enter to choose · esc to close">
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           <PickList
@@ -241,7 +241,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
   return (
     <PanelFrame
       title="Resume a session"
-      hint="type to filter · ↑↓ to move · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
+      hint="↑↓ to move · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -312,7 +312,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
   return (
     <PanelFrame
       title="Memory"
-      hint="type to filter · ↑↓ to move · tab: focus preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
+      hint="↑↓ to move · tab: focus preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -471,7 +471,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
   })
 
   return (
-    <PanelFrame title="Switch project" hint="type to filter · ↑↓ to move · enter to jump to its last session · ctrl+x delete · esc to close">
+    <PanelFrame title="Switch project" hint="↑↓ to move · enter to jump to its last session · ctrl+x delete · esc to close">
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           {loading ? (
