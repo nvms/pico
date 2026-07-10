@@ -58,6 +58,38 @@ test('partial compact keeps messages from keepFrom and prepends the summary', ()
   assert.equal(later.providerHistory.at(-1).content, 'third question')
 })
 
+test('chained compacts each keep their own recent window', () => {
+  const u1 = user('one')
+  const u2 = user('two')
+  const first = makeEvent('compact', { summary: 's1', keepFrom: u2.id, sessionFile: '/x.jsonl' })
+  const u3 = user('three')
+  const second = makeEvent('compact', { summary: 's2', keepFrom: u2.id, sessionFile: '/x.jsonl' })
+  const events = [u1, assistant('a1'), u2, assistant('a2'), first, u3, assistant('a3'), second]
+
+  const state = deriveState(events)
+  assert.match(state.providerHistory[0].content, /s2/)
+  assert.equal(state.providerHistory[1].content, 'two')
+  assert.equal(state.providerHistory.at(-1).content, 'a3')
+  assert.equal(state.transcript.filter((i) => i.kind === 'summary').length, 2)
+  assert.equal(state.transcript.filter((i) => i.kind === 'user').length, 3)
+})
+
+test('stale keepFrom degrades to a summary-only compact', () => {
+  const u1 = user('one')
+  const u2 = user('two')
+  const events = [
+    u1,
+    assistant('a1'),
+    u2,
+    assistant('a2'),
+    makeEvent('compact', { summary: 's1', keepFrom: u2.id, sessionFile: '/x.jsonl' }),
+    makeEvent('compact', { summary: 's2', keepFrom: u1.id, sessionFile: '/x.jsonl' }),
+  ]
+  const state = deriveState(events)
+  assert.equal(state.providerHistory.length, 1)
+  assert.match(state.providerHistory[0].content, /s2/)
+})
+
 test('legacy compact events without keepFrom still fold the old way', () => {
   const events = [user('a'), assistant('b'), makeEvent('compact', { summary: 'old style' }), user('c')]
   const state = deriveState(events)
