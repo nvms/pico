@@ -67,6 +67,8 @@ pico reads AGENTS.md files automatically: a global one from ~/.pico, then every 
 
 Sessions are stored under ~/.pico as jsonl event logs; \`/resume\` folds one back into exactly this view.
 
+\`/context\` breaks down what the next request will contain - system prompt, tool schemas, project instructions, memory index, compaction summary, and conversation - with an estimated size for each piece next to the provider-measured total.
+
 The footer's \`ctx %\` shows how full the model's context is. At 85% pico auto-compacts: the older conversation is summarized in a structured form, the most recent turns are kept verbatim, and the model is told where the full session file lives so it can read exact details back on demand. Nothing visible changes in the transcript, and rewind still works across it. \`/compact\` runs it manually and takes optional focus instructions (\`/compact focus on the API changes\`). Set \`"autoCompact": false\` in \`~/.pico/config.json\` to disable the automatic trigger.
 
 ---

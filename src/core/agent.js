@@ -26,7 +26,7 @@ export function hydrateImages(history) {
 
 const STALL_MS = 90000
 
-export async function compactHistory({ history, modelName, auth, prompt, signal }) {
+export async function compactHistory({ history, modelName, auth, prompt, signal, onStream }) {
   const out = await compose(
     model({
       model: modelName,
@@ -37,9 +37,21 @@ export async function compactHistory({ history, modelName, auth, prompt, signal 
     history: [...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }],
     tools: [],
     abortSignal: signal,
+    ...(onStream && { stream: onStream }),
   })
   if (signal?.aborted) throw new Error('compaction cancelled')
   return getText(out.lastResponse?.content || '').trim()
+}
+
+// the summary has a fixed shape: an <analysis> scratchpad, then 8 numbered
+// sections; watching headers stream by is real progress, not an estimate
+export function compactProgress(streamed) {
+  const chars = streamed.length
+  const afterAnalysis = streamed.split('</analysis>')[1] ?? streamed.split('<summary>')[1]
+  if (afterAnalysis === undefined) return { phase: 'analyzing', section: 0, chars }
+  const sections = (afterAnalysis.match(/^\s*\d+\.\s/gm) || []).length
+  if (sections === 0) return { phase: 'analyzing', section: 0, chars }
+  return { phase: 'writing', section: Math.min(8, sections), chars }
 }
 
 export async function summarizeText({ text, modelName }) {

@@ -2,12 +2,12 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
-import { runTurn, summarizeText, compactHistory } from '../core/agent.js'
+import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
 import { compactionPrompt, formatCompactSummary } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
@@ -62,6 +62,7 @@ const COMMANDS = [
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
   { name: 'clear', desc: 'Clear the conversation and free the context window' },
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
+  { name: 'context', desc: "Show what's in the model's context and how big each piece is" },
   { name: 'export', desc: 'Save the current conversation to a markdown file' },
   { name: 'help', desc: 'List every command and what it does' },
 ]
@@ -91,6 +92,7 @@ export function App({ boot }) {
   const [thinkingNow, setThinkingNow] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
   const [compacting, setCompacting] = createSignal(false)
+  const [compactStatus, setCompactStatus] = createSignal(null)
   const [startedAt, setStartedAt] = createSignal(0)
   const [input, setInput] = createSignal('')
   const [model, setModel] = createSignal(boot.initialModel)
@@ -269,7 +271,9 @@ export function App({ boot }) {
     refs.abort = controller
     setBusy(true)
     setCompacting(true)
+    setCompactStatus(null)
     setStartedAt(Date.now())
+    let streamed = ''
     try {
       const raw = await compactHistory({
         history: state.providerHistory,
@@ -277,6 +281,11 @@ export function App({ boot }) {
         auth,
         prompt: compactionPrompt(instructions),
         signal: controller.signal,
+        onStream: (event) => {
+          if (event.type !== 'content') return
+          streamed += event.content
+          setCompactStatus(compactProgress(streamed))
+        },
       })
       const summary = formatCompactSummary(raw)
       if (!summary) throw new Error('empty summary')
@@ -288,6 +297,7 @@ export function App({ boot }) {
       else flash(`compact failed: ${String(err.message || err).slice(0, 100)}`)
     } finally {
       setCompacting(false)
+      setCompactStatus(null)
       setBusy(false)
       refs.abort = null
     }
@@ -501,6 +511,87 @@ export function App({ boot }) {
     refs.abort?.abort()
   }
 
+  const fmtTokens = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+  async function openContextPanel() {
+    const est = (text) => Math.round(String(text).length / 4)
+    const tok = (n) => `~${fmtTokens(n)} tok`
+    const state = derived()
+
+    const memoryIndexText = memoryIndex(await boot.memory.list().catch(() => []), boot.root)
+    const skillList = boot.skills.list()
+    const files = startupContext.files
+    const systemFull = buildSystemPrompt({ cwd, contextFiles: files, skills: skillList, memoryIndexText })
+    const systemBase = buildSystemPrompt({ cwd, contextFiles: [], skills: [], memoryIndexText: '' })
+    const userToolScan = await scanUserTools({ cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
+    const { tools } = createToolset({
+      cwd,
+      tracker,
+      skills: boot.skills,
+      shells: boot.shells,
+      wakeups: boot.wakeups,
+      memory: boot.memory,
+      mcpTools: mcp.tools(),
+      userTools: userToolScan.tools,
+    })
+    const toolTokens = est(JSON.stringify(tools))
+
+    const history = state.providerHistory
+    const compacted = history[0]?.role === 'user'
+      && state.historyEventIds[0] === null
+      && String(history[0].content).startsWith('[system notification] The earlier portion')
+    const summaryTokens = compacted ? est(history[0].content) : 0
+    const messages = compacted ? history.slice(1) : history
+    const messageTokens = est(JSON.stringify(messages))
+
+    const rows = [
+      { name: 'system prompt', desc: 'identity, environment, tool guidance', note: tok(est(systemBase)) },
+      { name: `tool schemas (${tools.length})`, desc: tools.map((t) => t.name).join(' · '), note: tok(toolTokens) },
+    ]
+    if (files.length) {
+      rows.push({
+        name: `project instructions (${files.length})`,
+        desc: files.map((f) => f.path.replace(`${boot.root}/`, '')).join(', '),
+        note: tok(files.reduce((sum, f) => sum + est(f.content), 0)),
+      })
+    }
+    if (skillList.length) {
+      rows.push({
+        name: `skills index (${skillList.length})`,
+        desc: skillList.map((s) => s.name).join(', '),
+        note: tok(est(skillList.map((s) => `- ${s.name}: ${s.description}`).join('\n'))),
+      })
+    }
+    if (memoryIndexText) {
+      rows.push({ name: 'memory index', desc: 'one line per saved memory', note: tok(est(memoryIndexText)) })
+    }
+    if (compacted) {
+      rows.push({ name: 'compaction summary', desc: 'stands in for everything before the last compact', note: tok(summaryTokens) })
+    }
+    rows.push({
+      name: `conversation (${messages.length} messages)`,
+      desc: compacted ? 'kept verbatim since the last compact' : 'every message this session',
+      note: tok(messageTokens),
+    })
+
+    const total = est(systemFull) + toolTokens + summaryTokens + messageTokens
+    const limit = model().context
+    rows.push({
+      name: 'estimated next request',
+      desc: limit ? `of ${fmtTokens(limit)} context · ~${Math.round((total / limit) * 100)}%` : 'context size unknown for this model',
+      note: tok(total),
+    })
+    if (state.lastPromptTokens && state.lastPromptModel === model().name) {
+      rows.push({
+        name: 'last measured request',
+        desc: 'provider-reported input tokens, the number behind ctx %',
+        note: `${state.lastPromptTokens.toLocaleString()} tok`,
+      })
+    }
+
+    setInfoPanel({ title: `Context · ${model().name}`, rows })
+  }
+
   const themeItems = () => [
     ...paletteList(),
     { key: 'auto', desc: `follow the terminal (detected: ${boot.detectedTheme || 'dark'})` },
@@ -600,6 +691,7 @@ export function App({ boot }) {
       if (!EFFORT_LEVELS.some((l) => l.key === level)) return flash('usage: /effort <default|low|medium|high|max>')
       return setSessionEffort(level)
     }
+    if (c.name === 'context') return openContextPanel()
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
     if (c.name === 'shells') return setShowShellsPanel(true)
@@ -1503,8 +1595,17 @@ export function App({ boot }) {
         {busy()
           ? (
             <box style={{ flexDirection: 'row' }}>
-              <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>{compacting() ? 'Compacting' : thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
-              <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
+              <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
+                {compacting()
+                  ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
+                  : thinkingNow() ? 'Thinking' : 'Responding'}
+              </Shimmer>
+              <text style={{ color: FAINT }}>{` (${elapsed}s${compactStatus() ? ` · ↓ ${fmtTokens(Math.round(compactStatus().chars / 4))} tokens` : ''}) · esc to interrupt`}</text>
+              {compactStatus()?.phase === 'writing' && (
+                <box style={{ flexDirection: 'row', marginLeft: 1, width: 16 }}>
+                  <ProgressBar variant="thin" value={compactStatus().section / 8} width={16} percentage={false} color={accent()} />
+                </box>
+              )}
             </box>
           )
           : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}

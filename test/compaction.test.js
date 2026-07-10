@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { compactionPrompt, formatCompactSummary, continuationMessage } from '../src/core/compaction.js'
+import { compactProgress } from '../src/core/agent.js'
 import { deriveState } from '../src/core/derive.js'
 import { makeEvent } from '../src/core/events.js'
 
@@ -88,6 +89,17 @@ test('stale keepFrom degrades to a summary-only compact', () => {
   const state = deriveState(events)
   assert.equal(state.providerHistory.length, 1)
   assert.match(state.providerHistory[0].content, /s2/)
+})
+
+test('compactProgress tracks analysis then numbered sections', () => {
+  assert.deepEqual(compactProgress('<analysis>\nthinking'), { phase: 'analyzing', section: 0, chars: 19 })
+  const two = '<analysis>\n1. fake list inside analysis\n</analysis>\n<summary>\n1. Primary Request:\n   stuff\n2. Key Concepts:\n'
+  assert.equal(compactProgress(two).phase, 'writing')
+  assert.equal(compactProgress(two).section, 2)
+  const noAnalysis = '<summary>\n1. Primary Request:\n'
+  assert.equal(compactProgress(noAnalysis).section, 1)
+  const many = '</analysis>\n' + Array.from({ length: 12 }, (_, i) => `${i + 1}. Section`).join('\n')
+  assert.equal(compactProgress(many).section, 8)
 })
 
 test('legacy compact events without keepFrom still fold the old way', () => {
