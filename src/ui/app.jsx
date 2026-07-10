@@ -455,7 +455,7 @@ export function App({ boot }) {
 
   function completionSource(name) {
     if (name === 'color') return Object.keys(SESSION_COLORS)
-    if (name === 'theme') return ['light', 'dark', 'auto']
+    if (name === 'theme') return [...paletteList().map((p) => p.key), 'auto']
     if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
     if (name === 'model') return models.filter((m) => m.available !== false).map((m) => m.name)
     const cmd = allCommands.find((c) => c.name === name)
