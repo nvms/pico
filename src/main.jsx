@@ -13,7 +13,7 @@ import { resolveDredge } from './core/tools/web.js'
 import { createShellManager } from './core/shells.js'
 import { createWakeupManager } from './core/wakeups.js'
 import { App } from './ui/app.jsx'
-import { DEFAULT_ACCENT, setPalette, paletteList } from './ui/theme.js'
+import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -103,7 +103,7 @@ const configuredDefault = config.defaultModel && models.find((m) => m.name === c
 const detectedTheme = await detectTerminalTheme()
 const themeOverride = paletteList().some((p) => p.key === config.theme) ? config.theme : null
 setPalette(themeOverride || detectedTheme)
-const theme = { accent: DEFAULT_ACCENT }
+const theme = { accent: DEFAULT_ACCENT, muted: MUTED }
 
 const boot = {
   ...(await bootProject(process.cwd())),

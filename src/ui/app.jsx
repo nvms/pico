@@ -246,7 +246,7 @@ export function App({ boot }) {
     const state = deriveState(refs.allEvents)
     setDerived(state)
     setAccent(state.color)
-    boot.setTheme?.({ accent: state.color || DEFAULT_ACCENT })
+    boot.setTheme?.({ accent: state.color || DEFAULT_ACCENT, muted: MUTED })
   }
 
   function flushStream(items) {
@@ -649,7 +649,7 @@ export function App({ boot }) {
 
   function previewPalette(pref) {
     setPalette(paletteFor(pref))
-    boot.setTheme?.({ accent: accent() })
+    boot.setTheme?.({ accent: accent(), muted: MUTED })
   }
 
   function applyThemePref(pref) {
