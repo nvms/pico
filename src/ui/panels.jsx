@@ -164,12 +164,12 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview() ? (
             <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FG }}>{preview().text.slice(0, 2000)}</text>
-              <text> </text>
               <text style={{ color: FAINT }}>{`rewinding here drops ${stats(preview().index).msgs} entries`}</text>
               {stats(preview().index).edits.map((m, i) => (
                 <text key={i} style={{ color: FAINT }}>{`  ↩ ${m.title}`}</text>
               ))}
+              <text> </text>
+              <text style={{ color: FG }}>{preview().text.slice(0, 2000)}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no matching messages</text>
@@ -506,9 +506,9 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
           {preview() ? (
             <box style={{ flexDirection: 'column' }}>
               <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
+              <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
               <text> </text>
               <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{`last: ${preview().latest.title.replace(/\n/g, ' ')}`}</text>
-              <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no projects</text>
