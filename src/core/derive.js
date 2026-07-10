@@ -1,3 +1,5 @@
+import { continuationMessage } from './compaction.js'
+
 const DROPPING_MODES = ['both', 'chat', 'summary']
 
 function activeRewinds(events) {
@@ -41,10 +43,15 @@ function parseArgs(raw) {
   }
 }
 
+function pushHistory(state, message, eventId) {
+  state.providerHistory.push(message)
+  state.historyEventIds.push(eventId)
+}
+
 function foldMessage(state, event) {
   const message = event.data.message
   if (!message || message.role === 'system') return
-  state.providerHistory.push(message)
+  pushHistory(state, message, event.id)
 
   if (message.role === 'user') {
     const text = Array.isArray(message.content)
@@ -88,10 +95,10 @@ function foldRewind(state, event) {
   }
   if (mode === 'summary' && summaryText) {
     state.transcript.push({ kind: 'summary', text: summaryText })
-    state.providerHistory.push({
+    pushHistory(state, {
       role: 'assistant',
       content: `[summary of the rewound conversation]\n${summaryText}`,
-    })
+    }, event.id)
   }
 }
 
@@ -104,6 +111,7 @@ export function deriveState(events) {
   const state = {
     transcript: [],
     providerHistory: [],
+    historyEventIds: [],
     model: null,
     effort: undefined,
     usage: emptyUsage(),
@@ -162,17 +170,32 @@ export function deriveState(events) {
       case 'rewind':
         if (!canceledUndoTargets.has(event.id)) foldRewind(state, event)
         break
-      case 'compact':
-        state.providerHistory = [
-          { role: 'user', content: `[conversation summary]\n${event.data.summary}` },
-          { role: 'assistant', content: 'Got it. Continuing from that summary.' },
-        ]
-        state.transcript.push({ kind: 'summary', text: event.data.summary })
+      case 'compact': {
+        const { summary, keepFrom, sessionFile } = event.data
+        if (keepFrom !== undefined || sessionFile) {
+          const idx = keepFrom ? state.historyEventIds.indexOf(keepFrom) : -1
+          const kept = idx >= 0 ? state.providerHistory.slice(idx) : []
+          const keptIds = idx >= 0 ? state.historyEventIds.slice(idx) : []
+          state.providerHistory = [
+            { role: 'user', content: continuationMessage(summary, { sessionFile, recentKept: kept.length > 0 }) },
+            ...kept,
+          ]
+          state.historyEventIds = [null, ...keptIds]
+        } else {
+          state.providerHistory = [
+            { role: 'user', content: `[conversation summary]\n${summary}` },
+            { role: 'assistant', content: 'Got it. Continuing from that summary.' },
+          ]
+          state.historyEventIds = [null, null]
+        }
+        state.transcript.push({ kind: 'summary', text: summary })
         state.lastPromptTokens = 0
         break
+      }
       case 'clear':
         state.transcript = []
         state.providerHistory = []
+        state.historyEventIds = []
         state.toolItems = new Map()
         state.lastPromptTokens = 0
         break
@@ -187,7 +210,7 @@ export function deriveState(events) {
         break
       case 'shell_note':
       case 'system_note':
-        state.providerHistory.push({ role: 'user', content: event.data.text })
+        pushHistory(state, { role: 'user', content: event.data.text }, event.id)
         state.transcript.push({ kind: 'notice', text: event.data.text.split('\n')[0] })
         break
     }

@@ -7,7 +7,8 @@ import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
-import { runTurn, summarizeText } from '../core/agent.js'
+import { runTurn, summarizeText, compactHistory } from '../core/agent.js'
+import { compactionPrompt, formatCompactSummary } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
 import { createSkillIndex } from '../core/skills.js'
@@ -246,6 +247,54 @@ export function App({ boot }) {
     await runAgentTurn()
   }
 
+  async function performCompaction(instructions = '') {
+    if (busy()) return flash('finish or interrupt the current turn first')
+    if (refs.compacting) return
+    const state = derived()
+    if (state.providerHistory.length < 4) return flash('nothing to compact yet')
+
+    let auth = null
+    if (model().provider === 'codex') {
+      auth = await openaiCredentials().catch(() => null)
+      if (!auth) return flash('codex models need a ChatGPT sign-in: run /connect')
+    }
+
+    const entries = userEntries(state)
+    const keepFrom = entries.at(-2)?.eventId ?? entries.at(-1)?.eventId
+
+    refs.compacting = true
+    flash('compacting...')
+    try {
+      const raw = await compactHistory({
+        history: state.providerHistory,
+        modelName: model().name,
+        auth,
+        prompt: compactionPrompt(instructions),
+      })
+      const summary = formatCompactSummary(raw)
+      if (!summary) throw new Error('empty summary')
+      persist(makeEvent('compact', { summary, keepFrom, sessionFile: refs.session?.file || null }))
+      reDerive()
+      flash('compacted · recent messages kept verbatim')
+    } catch (err) {
+      flash(`compact failed: ${String(err.message || err).slice(0, 100)}`)
+    } finally {
+      refs.compacting = false
+    }
+  }
+
+  function maybeAutoCompact() {
+    if (boot.autoCompact === false || busy() || refs.compacting) return
+    const limit = model().context
+    const used = derived().lastPromptTokens
+    if (!limit || !used || derived().lastPromptModel !== model().name) return
+    const ratio = used / limit
+    if (ratio >= 0.85) {
+      flash(`context ${Math.round(ratio * 100)}% full · auto-compacting`)
+      performCompaction()
+    }
+  }
+
   async function runAgentTurn() {
     let auth = null
     if (model().provider === 'codex') {
@@ -384,6 +433,7 @@ export function App({ boot }) {
       }
     }
     flushSystemNotes()
+    maybeAutoCompact()
   }
 
   function completionSource(name) {
@@ -579,22 +629,7 @@ export function App({ boot }) {
       flash('conversation cleared')
       return
     }
-    if (c.name === 'compact') {
-      if (busy()) return flash('finish or interrupt the current turn first')
-      const history = derived().providerHistory
-      if (history.length === 0) return flash('nothing to compact yet')
-      flash('compacting...')
-      try {
-        const text = history.map((m) => `${m.role}: ${typeof m.content === 'string' ? m.content : ''}`).join('\n')
-        const summary = await summarizeText({ text, modelName: model().name })
-        persist(makeEvent('compact', { summary }))
-        reDerive()
-        flash('conversation compacted')
-      } catch (err) {
-        flash(`compact failed: ${String(err.message || err).slice(0, 80)}`)
-      }
-      return
-    }
+    if (c.name === 'compact') return performCompaction(args)
     if (c.name === 'cost') {
       const state = derived()
       const entries = Object.entries(state.usageByModel)

@@ -108,6 +108,7 @@ const boot = {
   providers,
   initialModel: configuredDefault || defaultModel(models),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
+  autoCompact: config.autoCompact !== false,
   refs: {},
   shells,
   wakeups,

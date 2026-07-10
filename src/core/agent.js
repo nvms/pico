@@ -26,6 +26,20 @@ export function hydrateImages(history) {
 
 const STALL_MS = 90000
 
+export async function compactHistory({ history, modelName, auth, prompt }) {
+  const out = await compose(
+    model({
+      model: modelName,
+      ...(auth?.apiKey && { apiKey: auth.apiKey }),
+      ...(auth?.headers && { headers: auth.headers }),
+    }),
+  )({
+    history: [...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }],
+    tools: [],
+  })
+  return getText(out.lastResponse?.content || '').trim()
+}
+
 export async function summarizeText({ text, modelName }) {
   const out = await compose(
     model({
