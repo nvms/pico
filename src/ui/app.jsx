@@ -339,6 +339,7 @@ export function App({ boot }) {
       }
     }
     setFollow(true)
+    setHistWindow(HISTORY_WINDOW)
     setBusy(true)
     setStartedAt(Date.now())
 
@@ -1243,6 +1244,9 @@ export function App({ boot }) {
         scrollOffset={follow() ? 1e9 : offset()}
         onScroll={(next, meta) => {
           setFollow(!!meta?.atBottom)
+          // back at the bottom: loaded history is off-screen, so re-hiding
+          // it is invisible and restores the small render window
+          if (meta?.atBottom && histWindow() > HISTORY_WINDOW) setHistWindow(HISTORY_WINDOW)
           if (next === 0 && hiddenCount > 0) {
             // keep the view anchored: estimate the rows the new batch adds
             // and scroll past them so the current top item stays in place
