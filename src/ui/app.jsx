@@ -450,7 +450,19 @@ export function App({ boot }) {
     reDerive()
     setBusy(false)
     refs.abort = null
-    if (result.stalled) flash('model stalled · turn interrupted')
+    if (result.stalled) {
+      flash('model stalled · turn interrupted')
+      noteSystem(
+        '[system notification] the previous turn was cut off automatically: the model produced no output for 5 minutes (provider stall). Work may have stopped mid-task; pick up where it left off.',
+        { wake: false },
+      )
+    } else if (result.error) {
+      flash(`error: ${result.error.slice(0, 120)}`)
+      noteSystem(
+        `[system notification] the previous turn ended with a provider error: ${result.error.slice(0, 300)}. Work may have stopped mid-task; pick up where it left off.`,
+        { wake: false },
+      )
+    }
 
     const q = queued()
     if (q.length > 0) {
@@ -1137,7 +1149,8 @@ export function App({ boot }) {
     }
   })
 
-  const elapsed = busy() ? Math.max(0, Math.floor((Date.now() - startedAt()) / 1000)) : 0
+  const fmtElapsed = (s) => (s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`)
+  const elapsed = fmtElapsed(busy() ? Math.max(0, Math.floor((Date.now() - startedAt()) / 1000)) : 0)
 
   const slashQuery = input().startsWith('/') ? input().slice(1) : null
   const showCommands = slashQuery !== null && !slashQuery.includes(' ') && !anyPanel()
@@ -1611,7 +1624,7 @@ export function App({ boot }) {
                   ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
                   : thinkingNow() ? 'Thinking' : 'Responding'}
               </Shimmer>
-              <text style={{ color: FAINT }}>{` (${elapsed}s${compactStatus() ? ` · ↓ ${fmtTokens(Math.round(compactStatus().chars / 4))} tokens` : ''}) · esc to interrupt`}</text>
+              <text style={{ color: FAINT }}>{` (${elapsed}${compactStatus() ? ` · ↓ ${fmtTokens(Math.round(compactStatus().chars / 4))} tokens` : ''}) · esc to interrupt`}</text>
               {compactStatus()?.phase === 'writing' && (
                 <box style={{ flexDirection: 'row', marginLeft: 1, width: 16 }}>
                   <ProgressBar variant="thin" value={compactStatus().section / 8} width={16} percentage={false} color={accent()} />

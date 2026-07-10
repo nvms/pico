@@ -24,7 +24,9 @@ export function hydrateImages(history) {
   )
 }
 
-const STALL_MS = 90000
+// reasoning models with large contexts can sit minutes before the first
+// output token; this guards against truly dead streams, not slow ones
+const STALL_MS = 300000
 
 export async function compactHistory({ history, modelName, auth, prompt, signal, onStream }) {
   const out = await compose(
@@ -152,7 +154,9 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
     if (err.name === 'AbortError' || internal.signal.aborted) {
       return { messages: partialMessages(), usage: usageSeen, lastPromptTokens, interrupted: true, stalled }
     }
-    throw err
+    // a provider error mid-turn must not discard the rounds that already
+    // ran: tools mutated the world, so the record has to survive
+    return { messages: partialMessages(), usage: usageSeen, lastPromptTokens, interrupted: true, stalled: false, error: String(err.message || err) }
   } finally {
     clearTimeout(watchdog)
     signal?.removeEventListener('abort', onUserAbort)
