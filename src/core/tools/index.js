@@ -5,8 +5,9 @@ import { createEdit } from './edit.js'
 import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
+import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, mcpTools = [], userTools = [], signal, maxToolCalls }) {
+export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, dredge, mcpTools = [], userTools = [], signal, maxToolCalls }) {
   const recorder = createRecorder()
   const deps = { cwd, recorder, tracker, signal, shells }
 
@@ -18,6 +19,10 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, m
     createGlob(deps),
     createGrep(deps),
   ]
+
+  if (dredge) {
+    local.push(...createWebTools({ dredge, recorder, signal }))
+  }
 
   if (shells) {
     local.push(

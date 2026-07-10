@@ -49,6 +49,10 @@ The agent can run long-lived processes (dev servers, watchers) with \`bash backg
 
 \`/connect\` lists subscription providers you can sign in with instead of API keys. OpenAI (ChatGPT / Codex plan) signs in through your browser via OAuth; tokens are stored in \`~/.pico/auth.json\` and refreshed automatically, so you sign in once. Once connected, codex models appear in \`/model\`, billed to your plan. \`d\` in the panel disconnects.
 
+## Web search
+
+With a [dredge](https://github.com/jonathanpyers/dredge) endpoint configured, the agent gets two extra tools: \`web_search\` (ranked results, Google-style operators) and \`web_fetch\` (any url as clean paginated markdown, including pdf and docx). Configure it as \`"dredge": { "url": "...", "apiKey": "..." }\` in \`~/.pico/config.json\`, or with \`DREDGE_URL\` and \`DREDGE_API_KEY\`. Without a configured endpoint the tools are not offered to the model at all.
+
 ## Memory
 
 The agent saves durable facts with the remember tool: one file per memory under \`~/.pico/memory\` (global) or the project's directory in \`~/.pico/projects\`. Only a one-line index is in its context; it loads a specific memory with the recall tool when relevant. \`/memory\` lists everything it knows. Ask it to remember, forget, or clean up its memories in plain language.

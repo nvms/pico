@@ -9,6 +9,7 @@ import { openaiConnected, openaiCredentials } from './core/openai-auth.js'
 import { readConfig } from './core/config.js'
 import { detectTerminalTheme } from './core/terminal-theme.js'
 import { buildProjectBoot } from './core/boot.js'
+import { resolveDredge } from './core/tools/web.js'
 import { createShellManager } from './core/shells.js'
 import { createWakeupManager } from './core/wakeups.js'
 import { App } from './ui/app.jsx'
@@ -113,6 +114,7 @@ const boot = {
   initialModel: configuredDefault || defaultModel(models),
   detectedTheme,
   themePref: themeOverride || 'auto',
+  dredge: resolveDredge(config),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   autoCompact: config.autoCompact !== false,
   refs: {},

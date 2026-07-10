@@ -357,6 +357,7 @@ export function App({ boot }) {
       shells: boot.shells,
       wakeups: boot.wakeups,
       memory: boot.memory,
+      dredge: boot.dredge,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -532,6 +533,7 @@ export function App({ boot }) {
       shells: boot.shells,
       wakeups: boot.wakeups,
       memory: boot.memory,
+      dredge: boot.dredge,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
     })

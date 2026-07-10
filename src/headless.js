@@ -12,6 +12,7 @@ import { sessionsDir } from './core/paths.js'
 import { makeEvent } from './core/events.js'
 import { deriveState } from './core/derive.js'
 import { createToolset } from './core/tools/index.js'
+import { resolveDredge } from './core/tools/web.js'
 import { runTurn } from './core/agent.js'
 import { buildSystemPrompt } from './core/system-prompt.js'
 import { memoryIndex } from './core/memory.js'
@@ -105,6 +106,7 @@ export async function runHeadless(opts) {
     skills: boot.skills,
     shells,
     memory: boot.memory,
+    dredge: resolveDredge(config),
     mcpTools: boot.mcp.tools(),
     userTools: [],
     maxToolCalls: opts.maxToolCalls ?? 50,
