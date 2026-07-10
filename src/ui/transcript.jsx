@@ -86,10 +86,23 @@ export function Message({ item, verbose }) {
   }
 
   if (item.kind === 'summary') {
+    const lines = item.text.split('\n')
     return (
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
-        <text style={{ color: MUTED, italic: true }}>{`✦ summary: ${item.text.replace(/\n/g, ' ').slice(0, 500)}`}</text>
+        <box style={{ flexDirection: 'row' }}>
+          <text style={{ color: MUTED, italic: true }}>{item.source === 'compact' ? '✦ summary · conversation compacted above this point' : '✦ summary · rewound conversation'}</text>
+          <box style={{ flexGrow: 1 }} />
+          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} · ctrl+o`}</text>
+        </box>
+        {verbose && (
+          <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
+            {lines.slice(0, 500).map((line, i) => (
+              <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>
+            ))}
+            {lines.length > 500 && <text style={{ color: FAINT }}>{`… ${lines.length - 500} more lines`}</text>}
+          </box>
+        )}
       </box>
     )
   }

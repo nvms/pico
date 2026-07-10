@@ -94,7 +94,7 @@ function foldRewind(state, event) {
     if (item) item.status = 'reverted'
   }
   if (mode === 'summary' && summaryText) {
-    state.transcript.push({ kind: 'summary', text: summaryText })
+    state.transcript.push({ kind: 'summary', source: 'rewind', text: summaryText })
     pushHistory(state, {
       role: 'assistant',
       content: `[summary of the rewound conversation]\n${summaryText}`,
@@ -192,7 +192,7 @@ export function deriveState(events) {
           ]
           state.historyEventIds = [null, null]
         }
-        state.transcript.push({ kind: 'summary', text: summary })
+        state.transcript.push({ kind: 'summary', source: 'compact', text: summary })
         state.lastPromptTokens = 0
         break
       }
