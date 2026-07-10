@@ -277,10 +277,10 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview() ? (
             <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FG }}>{preview().title.slice(0, 500)}</text>
-              <text> </text>
               <text style={{ color: FAINT }}>{`${preview().turns} ${preview().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(preview().at)}`}</text>
               <text style={{ color: FAINT, overflow: 'truncate' }}>{preview().header.root}</text>
+              <text> </text>
+              <text style={{ color: FG }}>{preview().title.slice(0, 500)}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no sessions</text>
