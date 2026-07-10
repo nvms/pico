@@ -26,7 +26,7 @@ export function hydrateImages(history) {
 
 const STALL_MS = 90000
 
-export async function compactHistory({ history, modelName, auth, prompt }) {
+export async function compactHistory({ history, modelName, auth, prompt, signal }) {
   const out = await compose(
     model({
       model: modelName,
@@ -36,7 +36,9 @@ export async function compactHistory({ history, modelName, auth, prompt }) {
   )({
     history: [...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }],
     tools: [],
+    abortSignal: signal,
   })
+  if (signal?.aborted) throw new Error('compaction cancelled')
   return getText(out.lastResponse?.content || '').trim()
 }
 

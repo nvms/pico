@@ -89,6 +89,7 @@ export function App({ boot }) {
   const [streaming, setStreaming] = createSignal(null)
   const [thinkingNow, setThinkingNow] = createSignal(false)
   const [busy, setBusy] = createSignal(false)
+  const [compacting, setCompacting] = createSignal(false)
   const [startedAt, setStartedAt] = createSignal(0)
   const [input, setInput] = createSignal('')
   const [model, setModel] = createSignal(boot.initialModel)
@@ -248,8 +249,7 @@ export function App({ boot }) {
   }
 
   async function performCompaction(instructions = '') {
-    if (busy()) return flash('finish or interrupt the current turn first')
-    if (refs.compacting) return
+    if (busy() || compacting()) return flash('finish or interrupt the current turn first')
     const state = derived()
     if (state.providerHistory.length < 4) return flash('nothing to compact yet')
 
@@ -262,14 +262,18 @@ export function App({ boot }) {
     const entries = userEntries(state)
     const keepFrom = entries.at(-2)?.eventId ?? entries.at(-1)?.eventId
 
-    refs.compacting = true
-    flash('compacting...')
+    const controller = new AbortController()
+    refs.abort = controller
+    setBusy(true)
+    setCompacting(true)
+    setStartedAt(Date.now())
     try {
       const raw = await compactHistory({
         history: state.providerHistory,
         modelName: model().name,
         auth,
         prompt: compactionPrompt(instructions),
+        signal: controller.signal,
       })
       const summary = formatCompactSummary(raw)
       if (!summary) throw new Error('empty summary')
@@ -277,14 +281,24 @@ export function App({ boot }) {
       reDerive()
       flash('compacted · recent messages kept verbatim')
     } catch (err) {
-      flash(`compact failed: ${String(err.message || err).slice(0, 100)}`)
+      if (controller.signal.aborted) flash('compaction cancelled')
+      else flash(`compact failed: ${String(err.message || err).slice(0, 100)}`)
     } finally {
-      refs.compacting = false
+      setCompacting(false)
+      setBusy(false)
+      refs.abort = null
+    }
+
+    const q = queued()
+    if (q.length > 0) {
+      setQueued([])
+      if (controller.signal.aborted) setInput(q.join('\n'))
+      else executeTurn(q.join('\n'))
     }
   }
 
   function maybeAutoCompact() {
-    if (boot.autoCompact === false || busy() || refs.compacting) return
+    if (boot.autoCompact === false || busy() || compacting()) return
     const limit = model().context
     const used = derived().lastPromptTokens
     if (!limit || !used || derived().lastPromptModel !== model().name) return
@@ -1438,7 +1452,7 @@ export function App({ boot }) {
         {busy()
           ? (
             <box style={{ flexDirection: 'row' }}>
-              <Shimmer color={accent()} highlight="white" duration={1500} reverse>{thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
+              <Shimmer color={accent()} highlight="white" duration={1500} reverse>{compacting() ? 'Compacting' : thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
               <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
             </box>
           )
