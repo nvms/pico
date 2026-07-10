@@ -56,7 +56,7 @@ With a [dredge](https://github.com/jonathanpyers/dredge) endpoint configured, th
 
 ## Memory
 
-The agent saves durable facts with the remember tool: one file per memory under \`~/.pico/memory\` (global) or the project's directory in \`~/.pico/projects\`. Only a one-line index is in its context; it loads a specific memory with the recall tool when relevant. \`/memory\` lists everything it knows. Ask it to remember, forget, or clean up its memories in plain language.
+The agent saves durable facts with the remember tool: one file per memory under \`~/.pico/memory\` (global) or the project's directory in \`~/.pico/projects\`. Only a one-line index is in its context; it loads a specific memory with the recall tool when relevant. \`/memory\` lists everything it knows with a content preview: \`ctrl+s\` cycles the scope filter (all, project, global) and \`ctrl+x\` twice forgets the selected memory. You can also ask the agent to remember, forget, or clean up its memories in plain language.
 
 ## Wake-ups
 

@@ -291,6 +291,70 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
   )
 }
 
+export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, onClose }) {
+  const [cursorItem, setCursorItem] = createSignal(null)
+  const preview = memories.includes(cursorItem()) ? cursorItem() : memories[0] || null
+  useEscape(() => focused, onClose)
+  useInput((event) => {
+    if (!focused) return
+    if (event.ctrl && event.key === 'x' && preview) {
+      onForget(preview)
+      event.stopPropagation()
+    }
+  })
+
+  return (
+    <PanelFrame
+      title="Memory"
+      hint="type to filter · ↑↓ to move · ctrl+s scope · ctrl+x forget (twice) · esc to close"
+      right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
+    >
+      <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
+        <box style={{ flexDirection: 'column', width: '50%' }}>
+          {memories.length === 0 ? (
+            <text style={{ color: FAINT }}>no memories here yet</text>
+          ) : (
+            <PickList
+              counter
+              items={memories}
+              focused={focused}
+              placeholder="filter memories..."
+              filter={(q, m) => fuzzyScore(q, `${m.name} ${m.description}`) >= 0}
+              onCursorChange={setCursorItem}
+              onSubmit={() => {}}
+              onCancel={onClose}
+              scrollbar
+              gap={1}
+              renderItem={(m, { selected, focused: f }) => (
+                <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
+                  <box style={{ flexGrow: 1, height: 1 }}>
+                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{m.name}</text>
+                  </box>
+                  <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${m.scope}`}</text>
+                </box>
+              )}
+            />
+          )}
+        </box>
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
+          {preview ? (
+            <box style={{ flexDirection: 'column' }}>
+              <text style={{ color: MUTED, italic: true, overflow: 'truncate' }}>{preview.description || 'no description'}</text>
+              <text> </text>
+              {preview.body.split('\n').slice(0, 8).map((line, i) => (
+                <text key={i} style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
+              ))}
+              {preview.body.split('\n').length > 8 && <text style={{ color: FAINT }}>…</text>}
+            </box>
+          ) : (
+            <text style={{ color: FAINT }}>no memories</text>
+          )}
+        </box>
+      </box>
+    </PanelFrame>
+  )
+}
+
 export function EffortPanel({ levels, current, defaultLevel, focused, onPick, onPickDefault, onClose }) {
   const [cursor, setCursor] = createSignal(0)
   const items = levels

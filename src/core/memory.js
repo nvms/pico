@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, readdir, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { picoHome, projectDir } from './paths.js'
 import { parseFrontmatter } from './skills.js'
@@ -63,6 +63,13 @@ export function createMemory(root) {
       const text = `---\nname: ${slug}\ndescription: ${String(description).replace(/\n/g, ' ')}\n---\n${content}\n`
       await writeFile(file, text, 'utf-8')
       return { name: slug, scope, file }
+    },
+    async forget(name) {
+      const memories = await this.list()
+      const memory = memories.find((m) => m.name === name)
+      if (!memory) throw new Error(`no memory named "${name}"`)
+      await unlink(memory.file)
+      return { name: memory.name, scope: memory.scope }
     },
     async recall(name) {
       const memories = await this.list()

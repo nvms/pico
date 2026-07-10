@@ -40,6 +40,19 @@ test('remember overwrites same-name memory and validates scope', async () => {
   delete process.env.PICO_HOME
 })
 
+test('forget removes the memory file across scopes', async () => {
+  const root = await fixture()
+  const memory = createMemory(root)
+  await memory.remember({ name: 'keep-me', description: 'stays', content: 'x', scope: 'project' })
+  await memory.remember({ name: 'drop-me', description: 'goes', content: 'y', scope: 'global' })
+
+  const gone = await memory.forget('drop-me')
+  assert.deepEqual(gone, { name: 'drop-me', scope: 'global' })
+  assert.deepEqual((await memory.list()).map((m) => m.name), ['keep-me'])
+  await assert.rejects(memory.forget('drop-me'), /no memory named/)
+  delete process.env.PICO_HOME
+})
+
 test('memoryIndex renders hooks, and says so when empty', async () => {
   const root = await fixture()
   assert.match(memoryIndex([], root), /no saved memories yet/)

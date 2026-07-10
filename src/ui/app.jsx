@@ -29,7 +29,7 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -58,7 +58,7 @@ const COMMANDS = [
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
-  { name: 'memory', desc: 'List saved memories: project and global' },
+  { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
   { name: 'clear', desc: 'Clear the conversation and free the context window' },
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
@@ -81,6 +81,7 @@ const SESSION_COLORS = {
 }
 
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
+const MEMORY_SCOPES = ['all', 'project', 'global']
 
 // only the newest slice of a long transcript renders; older items load in
 // batches when the user scrolls to the top. render cost is per-item, so this
@@ -106,6 +107,9 @@ export function App({ boot }) {
   const [defaultEffort, setDefaultEffort] = createSignal(boot.initialEffort)
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
   const [showThemePanel, setShowThemePanel] = createSignal(false)
+  const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
+  const [memScope, setMemScope] = createSignal(0)
+  const [memoryList, setMemoryList] = createSignal([])
   const [themePref, setThemePref] = createSignal(boot.themePref || 'auto')
   const [queued, setQueued] = createSignal([])
   const [sent, setSent] = createSignal([])
@@ -534,6 +538,26 @@ export function App({ boot }) {
 
   const fmtTokens = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 
+  async function refreshMemories() {
+    setMemoryList(await boot.memory.list().catch(() => []))
+  }
+
+  async function forgetMemory(m) {
+    const armed = refs.forgetArm
+    if (!armed || armed.file !== m.file || Date.now() - armed.at > 3000) {
+      refs.forgetArm = { file: m.file, at: Date.now() }
+      return flash(`ctrl+x again to forget "${m.name}"`)
+    }
+    refs.forgetArm = null
+    try {
+      await boot.memory.forget(m.name)
+      await refreshMemories()
+      flash(`forgot ${m.name} (${m.scope})`)
+    } catch (err) {
+      flash(`forget failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
   async function openContextPanel() {
     const est = (text) => Math.round(String(text).length / 4)
     const tok = (n) => `~${fmtTokens(n)} tok`
@@ -719,11 +743,8 @@ export function App({ boot }) {
     if (c.name === 'shells') return setShowShellsPanel(true)
     if (c.name === 'wakeups') return setShowWakeupsPanel(true)
     if (c.name === 'memory') {
-      const memories = await boot.memory.list().catch(() => [])
-      return setInfoPanel({
-        title: `Memory · ${shortenPath(boot.root)}`,
-        rows: memories.map((m) => ({ name: m.name, desc: m.description, note: m.scope })),
-      })
+      await refreshMemories()
+      return setShowMemoryPanel(true)
     }
     if (c.name === 'resume') {
       setShowResumePanel(true)
@@ -1050,7 +1071,7 @@ export function App({ boot }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showThemePanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showModelPanel() || showEffortPanel() || showThemePanel() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
@@ -1142,6 +1163,11 @@ export function App({ boot }) {
     }
     if (event.ctrl && event.key === 's' && showHistoryPanel()) {
       switchHistScope((histScope() + 1) % HISTORY_SCOPES.length)
+      event.stopPropagation()
+      return
+    }
+    if (event.ctrl && event.key === 's' && showMemoryPanel()) {
+      setMemScope((s) => (s + 1) % MEMORY_SCOPES.length)
       event.stopPropagation()
       return
     }
@@ -1548,6 +1574,17 @@ export function App({ boot }) {
           onPick={resumeSession}
           onDelete={deleteSessionMeta}
           onClose={() => setShowResumePanel(false)}
+        />
+      )}
+
+      {showMemoryPanel() && (
+        <MemoryPanel
+          memories={memoryList().filter((m) => MEMORY_SCOPES[memScope()] === 'all' || m.scope === MEMORY_SCOPES[memScope()])}
+          scopes={MEMORY_SCOPES}
+          scopeIndex={memScope()}
+          focused={showMemoryPanel()}
+          onForget={forgetMemory}
+          onClose={() => setShowMemoryPanel(false)}
         />
       )}
 
