@@ -1312,6 +1312,10 @@ export function App({ boot }) {
           onCancel={() => { if (busy()) interrupt(); else { setInput(''); setCmdCycle(null) } }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (e.key === 'tab' && !e.ctrl && !e.meta && showFiles && matchedFiles.length > 0) {
+              pickFile(matchedFiles[Math.min(fileIndex(), matchedFiles.length - 1)])
+              return true
+            }
             if (e.key === 'tab' && !e.ctrl && !e.meta && showCommands && matchedCommands.length > 0) {
               const cycle = cmdCycle()
               if (!cycle) {
