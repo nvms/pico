@@ -41,6 +41,11 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
   let roundText = ''
   let usageSeen = null
   let stalled = false
+  // usage events carry cumulative totals per request round, so consecutive
+  // deltas recover each round's true input size; the last delta is the size
+  // of the current context as actually sent
+  let cumulativePrompt = 0
+  let lastPromptTokens = 0
 
   const internal = new AbortController()
   const onUserAbort = () => internal.abort()
@@ -71,6 +76,9 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
       collected.push({ role: 'tool', tool_call_id: event.call.id, content: JSON.stringify({ error: event.error }) })
     } else if (event.type === 'usage') {
       usageSeen = event.usage
+      const prompt = event.usage?.promptTokens || 0
+      lastPromptTokens = Math.max(0, prompt - cumulativePrompt)
+      cumulativePrompt = prompt
     }
     onStream?.(event)
   }
@@ -100,13 +108,13 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
     const out = await step({ history: await hydrateImages(history), tools: [] })
     const interrupted = !!signal?.aborted || stalled
     if (interrupted) {
-      return { messages: partialMessages(), usage: usageSeen, interrupted, stalled }
+      return { messages: partialMessages(), usage: usageSeen, lastPromptTokens, interrupted, stalled }
     }
     const messages = out.history.filter((m) => m.role !== 'system').slice(base)
-    return { messages, usage: out.usage || null, interrupted: false, stalled: false }
+    return { messages, usage: out.usage || null, lastPromptTokens, interrupted: false, stalled: false }
   } catch (err) {
     if (err.name === 'AbortError' || internal.signal.aborted) {
-      return { messages: partialMessages(), usage: usageSeen, interrupted: true, stalled }
+      return { messages: partialMessages(), usage: usageSeen, lastPromptTokens, interrupted: true, stalled }
     }
     throw err
   } finally {

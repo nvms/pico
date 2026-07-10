@@ -124,7 +124,7 @@ export function deriveState(events) {
         addUsageInto(state.usageActive, event.data.usage)
         const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())
         addUsageInto(activeByModel, event.data.usage)
-        state.lastPromptTokens = event.data.usage.promptTokens || 0
+        state.lastPromptTokens = event.data.lastPrompt ?? (event.data.usage.promptTokens || 0)
       }
       continue
     }

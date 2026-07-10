@@ -150,7 +150,7 @@ export async function runHeadless(opts) {
   for (const path of boot.tracker.loaded) {
     if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
   }
-  if (result.usage) persist(makeEvent('usage', { model: model.name, usage: result.usage }))
+  if (result.usage) persist(makeEvent('usage', { model: model.name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
   if (result.interrupted) persist(makeEvent('interrupt', {}))
 
   const running = shells.running()

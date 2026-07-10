@@ -363,7 +363,7 @@ export function App({ boot }) {
     for (const path of tracker.loaded) {
       if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
     }
-    if (result.usage) persist(makeEvent('usage', { model: model().name, usage: result.usage }))
+    if (result.usage) persist(makeEvent('usage', { model: model().name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
     if (result.interrupted) persist(makeEvent('interrupt', {}))
 
     setOverlay([])

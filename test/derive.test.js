@@ -156,9 +156,12 @@ test('title and color events stick, latest wins', () => {
 
 test('lastPromptTokens tracks the active conversation size', () => {
   const target = user('q2')
-  const usage = (n) => makeEvent('usage', { model: 'm', usage: { promptTokens: n, completionTokens: 1, totalTokens: n + 1, cachedTokens: 0 } })
+  const usage = (n, lastPrompt) => makeEvent('usage', { model: 'm', usage: { promptTokens: n, completionTokens: 1, totalTokens: n + 1, cachedTokens: 0 }, ...(lastPrompt !== undefined && { lastPrompt }) })
   const events = [user('q1'), usage(100), assistant('a1'), target, usage(900), assistant('a2')]
   assert.equal(deriveState(events).lastPromptTokens, 900)
+
+  const toolTurn = [user('q1'), usage(72000, 28000), assistant('a1')]
+  assert.equal(deriveState(toolTurn).lastPromptTokens, 28000)
 
   const rewind = makeEvent('rewind', { target: target.id, mode: 'chat' })
   assert.equal(deriveState([...events, rewind]).lastPromptTokens, 100)
