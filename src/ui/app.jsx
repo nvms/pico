@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useInput, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -1634,6 +1634,10 @@ export function App({ boot }) {
           )
           : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
+        {process.env.PICO_PERF && (() => {
+          const stats = useFrameStats()
+          return <text style={{ color: MUTED }}>{`⏱ ${(stats.renderMs ?? 0).toFixed(1)}ms · ${stats.fps}fps · ${derived().transcript.length} items`}</text>
+        })()}
         {runningShells > 0 && <text style={{ color: MUTED }}>{`⚙ ${runningShells}`}</text>}
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
