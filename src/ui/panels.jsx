@@ -293,10 +293,16 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
 
 export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, onClose }) {
   const [cursorItem, setCursorItem] = createSignal(null)
+  const [pane, setPane] = createSignal('list')
   const preview = memories.includes(cursorItem()) ? cursorItem() : memories[0] || null
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
+    if (event.key === 'tab' && !event.ctrl && !event.meta) {
+      setPane((p) => (p === 'list' ? 'preview' : 'list'))
+      event.stopPropagation()
+      return
+    }
     if (event.ctrl && event.key === 'x' && preview) {
       onForget(preview)
       event.stopPropagation()
@@ -306,7 +312,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
   return (
     <PanelFrame
       title="Memory"
-      hint="type to filter · ↑↓ to move · ctrl+s scope · ctrl+x forget (twice) · esc to close"
+      hint="type to filter · ↑↓ to move · tab: focus preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -317,7 +323,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
             <PickList
               counter
               items={memories}
-              focused={focused}
+              focused={focused && pane() === 'list'}
               placeholder="filter memories..."
               filter={(q, m) => fuzzyScore(q, `${m.name} ${m.description}`) >= 0}
               onCursorChange={setCursorItem}
@@ -338,11 +344,11 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
         </box>
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview ? (
-            <box style={{ flexDirection: 'column' }}>
+            <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               <text style={{ color: MUTED, italic: true }}>{preview.description || 'no description'}</text>
               <text> </text>
               <text style={{ color: FG_SOFT }}>{preview.body}</text>
-            </box>
+            </ScrollBox>
           ) : (
             <text style={{ color: FAINT }}>no memories</text>
           )}
