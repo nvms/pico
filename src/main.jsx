@@ -12,7 +12,7 @@ import { buildProjectBoot } from './core/boot.js'
 import { createShellManager } from './core/shells.js'
 import { createWakeupManager } from './core/wakeups.js'
 import { App } from './ui/app.jsx'
-import { DEFAULT_ACCENT, setPalette } from './ui/theme.js'
+import { DEFAULT_ACCENT, setPalette, paletteList } from './ui/theme.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -99,7 +99,9 @@ const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotif
 const config = await readConfig()
 const configuredDefault = config.defaultModel && models.find((m) => m.name === config.defaultModel)
 
-setPalette(['light', 'dark'].includes(config.theme) ? config.theme : await detectTerminalTheme())
+const detectedTheme = await detectTerminalTheme()
+const themeOverride = paletteList().some((p) => p.key === config.theme) ? config.theme : null
+setPalette(themeOverride || detectedTheme)
 const theme = { accent: DEFAULT_ACCENT }
 
 const boot = {
@@ -109,6 +111,8 @@ const boot = {
   models,
   providers,
   initialModel: configuredDefault || defaultModel(models),
+  detectedTheme,
+  themePref: themeOverride || 'auto',
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   autoCompact: config.autoCompact !== false,
   refs: {},

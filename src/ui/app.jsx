@@ -29,8 +29,8 @@ import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, setPalette, paletteName, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
+import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -54,7 +54,7 @@ const COMMANDS = [
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
-  { name: 'theme', desc: 'Switch palette: /theme <light|dark|auto>' },
+  { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
@@ -98,6 +98,8 @@ export function App({ boot }) {
   const [effort, setEffort] = createSignal(boot.initialEffort)
   const [defaultEffort, setDefaultEffort] = createSignal(boot.initialEffort)
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
+  const [showThemePanel, setShowThemePanel] = createSignal(false)
+  const [themePref, setThemePref] = createSignal(boot.themePref || 'auto')
   const [queued, setQueued] = createSignal([])
   const [sent, setSent] = createSignal([])
   const [histIdx, setHistIdx] = createSignal(-1)
@@ -499,6 +501,27 @@ export function App({ boot }) {
     refs.abort?.abort()
   }
 
+  const themeItems = () => [
+    ...paletteList(),
+    { key: 'auto', desc: `follow the terminal (detected: ${boot.detectedTheme || 'dark'})` },
+  ]
+
+  function paletteFor(pref) {
+    return pref === 'auto' ? boot.detectedTheme || 'dark' : pref
+  }
+
+  function previewPalette(pref) {
+    setPalette(paletteFor(pref))
+    boot.setTheme?.({ accent: accent() })
+  }
+
+  function applyThemePref(pref) {
+    setThemePref(pref)
+    previewPalette(pref)
+    writeConfig({ theme: pref === 'auto' ? undefined : pref }).catch(() => {})
+    flash(pref === 'auto' ? `theme: auto · following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
+  }
+
   async function runCommand(c, args = '') {
     if (typeof args !== 'string') args = ''
     setInput('')
@@ -530,18 +553,11 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'theme') {
+      if (!args) return setShowThemePanel(true)
       const choice = args.toLowerCase()
-      if (choice === 'light' || choice === 'dark') {
-        setPalette(choice)
-        boot.setTheme?.({ accent: accent() })
-        writeConfig({ theme: choice }).catch(() => {})
-        flash(`theme: ${choice}`)
-      } else if (choice === 'auto') {
-        writeConfig({ theme: undefined }).catch(() => {})
-        flash(`theme: auto · detects your terminal on next start (currently ${paletteName()})`)
-      } else {
-        flash(`theme: ${paletteName()} · /theme <light|dark|auto>`)
-      }
+      const valid = [...paletteList().map((p) => p.key), 'auto']
+      if (!valid.includes(choice)) return flash(`theme: ${paletteName()} · /theme <${valid.join('|')}>`)
+      applyThemePref(choice)
       return
     }
     if (c.skill) {
@@ -910,7 +926,7 @@ export function App({ boot }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showModelPanel() || showEffortPanel() || showThemePanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
@@ -1340,6 +1356,23 @@ export function App({ boot }) {
             setShowEffortPanel(false)
           }}
           onClose={() => setShowEffortPanel(false)}
+        />
+      )}
+
+      {showThemePanel() && (
+        <ThemePanel
+          themes={themeItems()}
+          pref={themePref()}
+          focused={showThemePanel()}
+          onPick={(t) => {
+            setShowThemePanel(false)
+            applyThemePref(t.key)
+          }}
+          onPreview={(t) => previewPalette(t.key)}
+          onClose={() => {
+            setShowThemePanel(false)
+            previewPalette(themePref())
+          }}
         />
       )}
 

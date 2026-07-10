@@ -333,6 +333,38 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   )
 }
 
+export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }) {
+  const [cursor, setCursor] = createSignal(Math.max(0, themes.findIndex((t) => t.key === pref)))
+
+  return (
+    <PanelFrame title="Theme" hint="j/k to move and preview · enter to apply · esc: close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        <Menu
+          items={themes}
+          selected={cursor()}
+          onSelect={(i) => {
+            setCursor(i)
+            onPreview(themes[i])
+          }}
+          focused={focused}
+          maxVisible={6}
+          vimKeys
+          onSubmit={onPick}
+          onCancel={onClose}
+          renderItem={(t, { active }) => (
+            <box style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+              <text style={{ color: active ? accent() : FG }}>{t.key.padEnd(10)}</text>
+              <text style={{ color: FAINT }}>{t.desc}</text>
+              {t.key === pref && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
+            </box>
+          )}
+        />
+      </box>
+    </PanelFrame>
+  )
+}
+
 export function InfoListPanel({ title, rows, focused, onClose }) {
   useEscape(() => focused, onClose)
 

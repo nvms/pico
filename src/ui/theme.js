@@ -2,6 +2,7 @@ import { createSignal } from '@trendr/core'
 
 const PALETTES = {
   dark: {
+    desc: 'light text for dark terminals',
     accent: '#6BE795',
     fg: '#e5e7eb',
     fgSoft: '#9ca3af',
@@ -13,6 +14,7 @@ const PALETTES = {
     highlight: '#ffffff',
   },
   light: {
+    desc: 'dark text for light terminals',
     accent: '#0f9d63',
     fg: '#1f2430',
     fgSoft: '#4b5563',
@@ -64,4 +66,8 @@ export function setPalette(name) {
 
 export function paletteName() {
   return currentPalette
+}
+
+export function paletteList() {
+  return Object.entries(PALETTES).map(([key, p]) => ({ key, desc: p.desc }))
 }
