@@ -26,7 +26,7 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 - \`up\` and \`down\` on an empty composer recall messages you already sent
 - \`ctrl+r\` fuzzy-searches your prompt history with a preview; enter puts the match back in the composer
 - \`ctrl+s\` opens the session picker (same as \`/resume\`); \`ctrl+t\` opens the model picker
-- \`ctrl+p\` switches projects: pick one and pico jumps to its most recent session, changing the working directory, tools, context, and MCP servers to match; \`/new\` starts a fresh session in the current project
+- \`ctrl+p\` switches projects: pick one and pico jumps to its most recent session, changing the working directory, tools, context, and MCP servers to match; \`ctrl+x\` twice deletes a project's pico history (all its sessions and memories); \`/new\` starts a fresh session in the current project
 - \`ctrl+b\` cycles thinking effort (default, low, medium, high, max) on models that support it; \`/effort\` opens the full picker
 - inside a search panel, \`ctrl+s\` cycles the scope instead: this session, this project, or everywhere
 - \`/rewind\` restores the conversation to an earlier message; a rewind can be undone with \`ctrl+z\`

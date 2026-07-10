@@ -456,12 +456,19 @@ export function InfoListPanel({ title, rows, focused, onClose }) {
   )
 }
 
-export function ProjectPanel({ projects, loading, focused, onPick, onClose }) {
+export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(projects[0] || null)
   useEscape(() => focused, onClose)
+  useInput((event) => {
+    if (!focused) return
+    if (event.ctrl && event.key === 'x' && preview()) {
+      onDelete(preview())
+      event.stopPropagation()
+    }
+  })
 
   return (
-    <PanelFrame title="Switch project" hint="type to filter · ↑↓ to move · enter to jump to its last session · esc to close">
+    <PanelFrame title="Switch project" hint="type to filter · ↑↓ to move · enter to jump to its last session · ctrl+x delete · esc to close">
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           {loading ? (

@@ -1,6 +1,6 @@
-import { appendFile, readFile, readdir, stat, unlink } from 'node:fs/promises'
+import { appendFile, readFile, readdir, rm, stat, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { picoHome, sessionsDir, ensureDir } from './paths.js'
+import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { makeHeader, serializeLine, parseLines, parseLine } from './events.js'
 
 export function createSession({ cwd, root }) {
@@ -71,6 +71,10 @@ async function listDir(dir) {
 
 export function deleteSession(file) {
   return unlink(file)
+}
+
+export function deleteProjectData(root) {
+  return rm(projectDir(root), { recursive: true, force: true })
 }
 
 export async function listSessions({ scope, root }) {

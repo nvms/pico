@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
-import { createSession, openSession, loadSession, listSessions, deleteSession } from '../core/session.js'
+import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
@@ -918,6 +918,23 @@ export function App({ boot }) {
       .finally(() => setProjectsLoading(false))
   }
 
+  async function deleteProject(p) {
+    if (p.current) return flash('cannot delete the current project · switch away first')
+    const armed = refs.projectDeleteArm
+    if (!armed || armed.root !== p.root || Date.now() - armed.at > 3000) {
+      refs.projectDeleteArm = { root: p.root, at: Date.now() }
+      return flash(`ctrl+x again to delete "${p.path}" and its ${p.count} ${p.count === 1 ? 'session' : 'sessions'}`)
+    }
+    refs.projectDeleteArm = null
+    try {
+      await deleteProjectData(p.root)
+      setProjects((list) => list.filter((x) => x.root !== p.root))
+      flash(`deleted ${p.path} · ${p.count} ${p.count === 1 ? 'session' : 'sessions'} removed`)
+    } catch (err) {
+      flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
   async function switchProject(meta) {
     if (busy()) return flash('finish or interrupt the current turn first')
     try {
@@ -1603,6 +1620,7 @@ export function App({ boot }) {
           loading={projectsLoading()}
           focused={showProjectPanel()}
           onPick={(p) => resumeSession(p.latest)}
+          onDelete={deleteProject}
           onClose={() => setShowProjectPanel(false)}
         />
       )}

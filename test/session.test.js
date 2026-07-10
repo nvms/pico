@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createSession, loadSession, listSessions } from '../src/core/session.js'
+import { createSession, loadSession, listSessions, deleteProjectData } from '../src/core/session.js'
 import { makeEvent } from '../src/core/events.js'
 
 async function isolatedHome() {
@@ -58,5 +58,26 @@ test('listSessions surfaces title, turns, scopes', async () => {
   await b.flush()
   const renamed = await listSessions({ scope: 'project', root: rootB })
   assert.equal(renamed[0].title, 'auth refactor')
+  delete process.env.PICO_HOME
+})
+
+test('deleteProjectData removes every session for that root and nothing else', async () => {
+  await isolatedHome()
+  const rootA = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const rootB = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+
+  const a = createSession({ cwd: rootA, root: rootA })
+  a.append(makeEvent('message', { message: { role: 'user', content: 'keep me' } }))
+  await a.flush()
+  const b = createSession({ cwd: rootB, root: rootB })
+  b.append(makeEvent('message', { message: { role: 'user', content: 'delete me' } }))
+  await b.flush()
+
+  await deleteProjectData(rootB)
+  const everywhere = await listSessions({ scope: 'everywhere', root: rootA })
+  assert.equal(everywhere.length, 1)
+  assert.equal(everywhere[0].header.root, rootA)
+
+  await deleteProjectData(rootB)
   delete process.env.PICO_HOME
 })
