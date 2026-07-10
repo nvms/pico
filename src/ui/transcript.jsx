@@ -5,8 +5,7 @@ import { highlight, langForPath } from './highlight.js'
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
 
 function diffPreviewLines(diff, revert) {
-  // hunk headers render as their own rows, so count one per hunk
-  if (diff?.hunks?.length) return diff.hunks.reduce((sum, h) => sum + h.lines.length, 0) + diff.hunks.length
+  if (diff?.hunks?.length) return diff.hunks.reduce((sum, h) => sum + h.lines.length, 0)
   // events recorded before created-file writes carried hunks: size from the content itself
   return Math.max(String(revert?.after || '').split('\n').length, String(revert?.before || '').split('\n').length, 2)
 }
@@ -52,6 +51,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
             language={langForPath(revert.path)}
             highlight={highlight}
             context={3}
+            folds={false}
             focused={false}
             scrollbar={false}
           />
