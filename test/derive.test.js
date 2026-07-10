@@ -154,6 +154,18 @@ test('title and color events stick, latest wins', () => {
   assert.equal(state.color, '#60a5fa')
 })
 
+test('lastPromptTokens tracks the active conversation size', () => {
+  const target = user('q2')
+  const usage = (n) => makeEvent('usage', { model: 'm', usage: { promptTokens: n, completionTokens: 1, totalTokens: n + 1, cachedTokens: 0 } })
+  const events = [user('q1'), usage(100), assistant('a1'), target, usage(900), assistant('a2')]
+  assert.equal(deriveState(events).lastPromptTokens, 900)
+
+  const rewind = makeEvent('rewind', { target: target.id, mode: 'chat' })
+  assert.equal(deriveState([...events, rewind]).lastPromptTokens, 100)
+  assert.equal(deriveState([...events, makeEvent('clear', {})]).lastPromptTokens, 0)
+  assert.equal(deriveState([...events, makeEvent('compact', { summary: 's' })]).lastPromptTokens, 0)
+})
+
 test('model_switch tracks current model', () => {
   const events = [
     makeEvent('model_switch', { from: null, to: 'google/gemini-2.5-pro' }),

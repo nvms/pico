@@ -59,7 +59,12 @@ const models = [
     available: providers.includes(m.provider),
     keyHint: keyHint(m.provider),
   })),
-  ...(await loadCodexModels(codexCreds)).map((m) => ({ ...m, available: chatgpt, keyHint: '/connect' })),
+  ...(await loadCodexModels(codexCreds)).map((m) => ({
+    ...m,
+    context: m.context ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context ?? null,
+    available: chatgpt,
+    keyHint: '/connect',
+  })),
 ]
 
 if (providers.length === 0) {

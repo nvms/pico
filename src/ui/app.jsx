@@ -29,7 +29,7 @@ import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG } from './theme.js'
+import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
 
 const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -1417,6 +1417,10 @@ export function App({ boot }) {
         <text style={{ color: FAINT }}>↓</text>
         <text style={{ color: MUTED }}>{`${usage.completionTokens.toLocaleString()} out`}</text>
         {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${usage.thoughtTokens.toLocaleString()} think`}</text>}
+        {model().context > 0 && derived().lastPromptTokens > 0 && (() => {
+          const pct = Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
+          return <text style={{ color: pct >= 80 ? RED : MUTED }}>{`ctx ${pct}%`}</text>
+        })()}
       </box>
     </box>
   )

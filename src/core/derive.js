@@ -110,6 +110,7 @@ export function deriveState(events) {
     usageByModel: {},
     usageActive: emptyUsage(),
     usageActiveByModel: {},
+    lastPromptTokens: 0,
     loadedContext: new Set(),
     toolItems: new Map(),
   }
@@ -123,6 +124,7 @@ export function deriveState(events) {
         addUsageInto(state.usageActive, event.data.usage)
         const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())
         addUsageInto(activeByModel, event.data.usage)
+        state.lastPromptTokens = event.data.usage.promptTokens || 0
       }
       continue
     }
@@ -164,11 +166,13 @@ export function deriveState(events) {
           { role: 'assistant', content: 'Got it. Continuing from that summary.' },
         ]
         state.transcript.push({ kind: 'summary', text: event.data.summary })
+        state.lastPromptTokens = 0
         break
       case 'clear':
         state.transcript = []
         state.providerHistory = []
         state.toolItems = new Map()
+        state.lastPromptTokens = 0
         break
       case 'context_file':
         state.loadedContext.add(event.data.path)
