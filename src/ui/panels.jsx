@@ -321,7 +321,7 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
           renderItem={(l, { active }) => (
             <box style={{ flexDirection: 'row' }}>
               <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
-              <text style={{ color: active ? accent() : FG }}>{label(l).padEnd(10)}</text>
+              <text style={{ color: active ? accent() : FG }}>{label(l).padEnd(Math.max(10, label(l).length + 1))}</text>
               <text style={{ color: FAINT }}>{l.desc}</text>
               {l.key === current && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
               {l.key === defaultLevel && <text style={{ color: FAINT }}>{'  · default'}</text>}
@@ -354,7 +354,7 @@ export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }
           renderItem={(t, { active }) => (
             <box style={{ flexDirection: 'row' }}>
               <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
-              <text style={{ color: active ? accent() : FG }}>{t.key.padEnd(10)}</text>
+              <text style={{ color: active ? accent() : FG }}>{t.key.padEnd(Math.max(10, t.key.length + 1))}</text>
               <text style={{ color: FAINT }}>{t.desc}</text>
               {t.key === pref && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
             </box>
@@ -519,7 +519,7 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
                 <text style={{ color: s.status === 'running' ? accent() : s.exitCode === 0 ? MUTED : RED }}>
                   {s.status === 'running' ? '⚙' : s.exitCode === 0 ? '✓' : '✗'}
                 </text>
-                <text style={{ color: active ? accent() : FG }}>{` ${s.id.padEnd(3)}`}</text>
+                <text style={{ color: active ? accent() : FG }}>{` ${s.id.padEnd(Math.max(3, s.id.length + 1))}`}</text>
                 <box style={{ flexGrow: 1, height: 1 }}>
                   <text style={{ overflow: 'truncate', color: active ? FG : FG_SOFT }}>{s.command}</text>
                 </box>
@@ -809,7 +809,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                 <box style={{ flexDirection: 'row' }}>
                   <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
                   <text style={{ color: st.color }}>{st.icon}</text>
-                  <text style={{ color: active ? accent() : FG }}>{` ${s.name.padEnd(14)}`}</text>
+                  <text style={{ color: active ? accent() : FG }}>{` ${s.name.padEnd(Math.max(14, s.name.length + 1))}`}</text>
                   {s.scope === 'project' && <text style={{ color: FAINT }}>{'·p '}</text>}
                   <box style={{ flexGrow: 1, height: 1 }}>
                     <text style={{ overflow: 'truncate', color: s.status === 'error' ? RED : MUTED }}>

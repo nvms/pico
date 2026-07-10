@@ -1413,7 +1413,7 @@ export function App({ boot }) {
               renderItem={(c, { active }) => (
                 <box style={{ flexDirection: 'row' }}>
                   <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
-                  <text style={{ color: active ? accent() : MUTED }}>{`/${c.name}`.padEnd(12)}</text>
+                  <text style={{ color: active ? accent() : MUTED }}>{`/${c.name}`.padEnd(matchedCommands.reduce((m, x) => Math.max(m, x.name.length + 3), 12))}</text>
                   <text style={{ color: active ? '#cbd5e1' : FAINT }}>{c.desc}</text>
                 </box>
               )}
