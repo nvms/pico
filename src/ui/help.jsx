@@ -68,7 +68,7 @@ pico picks a light or dark palette at startup by asking the terminal for its bac
 
 ## Context
 
-pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree.
+pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree. In any project directory without an AGENTS.md, a CLAUDE.md is honored as a fallback so existing repos work unchanged; AGENTS.md always wins when both exist, and the fallback never applies to the global file.
 
 Sessions are stored under ~/.pico as jsonl event logs; \`/resume\` folds one back into exactly this view.
 

@@ -35,15 +35,28 @@ function ancestorDirs(cwd, stopDir) {
   return dirs
 }
 
+// AGENTS.md is canonical; CLAUDE.md is honored per directory only when no
+// AGENTS.md exists there, so repos documented for other agents still work.
+// the fallback never applies to the global file: that is ~/.pico/AGENTS.md
+// alone, and personal files like ~/.claude/CLAUDE.md are another tool's
+function readDirContext(dir) {
+  const agents = join(dir, 'AGENTS.md')
+  const agentsContent = readIfExists(agents)
+  if (agentsContent) return { path: agents, content: agentsContent }
+  const claude = join(dir, 'CLAUDE.md')
+  const claudeContent = readIfExists(claude)
+  if (claudeContent) return { path: claude, content: claudeContent }
+  return null
+}
+
 export function loadStartupContext(cwd) {
   const stopDir = contextStopDir(cwd)
   const files = []
   const globalContent = readIfExists(globalAgentsFile())
   if (globalContent) files.push({ path: globalAgentsFile(), content: globalContent })
   for (const dir of ancestorDirs(cwd, stopDir)) {
-    const path = join(dir, 'AGENTS.md')
-    const content = readIfExists(path)
-    if (content) files.push({ path, content })
+    const entry = readDirContext(dir)
+    if (entry) files.push(entry)
   }
   return { files, stopDir }
 }
@@ -56,12 +69,11 @@ export function createContextTracker({ stopDir, loaded }) {
       if (!target.startsWith(stopDir)) return []
       const fresh = []
       for (const dir of ancestorDirs(target, stopDir)) {
-        const path = join(dir, 'AGENTS.md')
-        if (loaded.has(path)) continue
-        const content = readIfExists(path)
-        if (content) {
-          loaded.add(path)
-          fresh.push({ path, content })
+        if (loaded.has(join(dir, 'AGENTS.md')) || loaded.has(join(dir, 'CLAUDE.md'))) continue
+        const entry = readDirContext(dir)
+        if (entry) {
+          loaded.add(entry.path)
+          fresh.push(entry)
         }
       }
       return fresh
