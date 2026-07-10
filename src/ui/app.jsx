@@ -1303,7 +1303,7 @@ export function App({ boot }) {
         }}
         scrollbar
       >
-        {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
+        {items.length === 0 && <Banner version={version} />}
         {hiddenCount > 0 && (
           <box style={{ paddingX: 2 }}>
             <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
