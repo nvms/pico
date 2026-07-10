@@ -37,6 +37,7 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 
 - \`tab\` switches focus between the transcript and the composer
 - with the transcript focused, \`up\`/\`down\`/\`j\`/\`k\` scroll and \`g\`/\`G\` jump to the ends
+- long sessions render only the newest 50 messages; scrolling to the very top loads older ones in batches (the top line shows how many are hidden)
 - \`ctrl+o\` expands and collapses tool output in the transcript
 - the mouse wheel scrolls; click-drag selects text and copies it on release
 - \`ctrl+c\` twice exits

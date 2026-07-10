@@ -81,6 +81,11 @@ const SESSION_COLORS = {
 }
 
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
+
+// only the newest slice of a long transcript renders; older items load in
+// batches when the user scrolls to the top. render cost is per-item, so this
+// keeps day-long sessions as fast as fresh ones
+const HISTORY_WINDOW = 50
 const RESUME_SCOPES = ['project', 'everywhere']
 
 export function App({ boot }) {
@@ -137,6 +142,7 @@ export function App({ boot }) {
   const [rewindTarget, setRewindTarget] = createSignal(null)
   const [offset, setOffset] = createSignal(0)
   const [follow, setFollow] = createSignal(true)
+  const [histWindow, setHistWindow] = createSignal(HISTORY_WINDOW)
 
   const refs = boot.refs
   refs.session ??= null
@@ -775,6 +781,7 @@ export function App({ boot }) {
       setSent([])
       setModel(defaultModel())
       setEffort(defaultEffort())
+      setHistWindow(HISTORY_WINDOW)
       reDerive()
       flash('new session')
       return
@@ -950,6 +957,7 @@ export function App({ boot }) {
       }
       setEffort(derived().effort === undefined ? defaultEffort() : derived().effort)
       setSent(userEntries(derived()).map((e) => ({ text: recallText(e), at: header.createdAt })))
+      setHistWindow(HISTORY_WINDOW)
       setFollow(true)
       flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`)
     } catch (err) {
@@ -1223,7 +1231,9 @@ export function App({ boot }) {
 
   highlightVersion()
 
-  const items = [...derived().transcript, ...overlay()]
+  const transcript = derived().transcript
+  const hiddenCount = Math.max(0, transcript.length - histWindow())
+  const items = [...transcript.slice(hiddenCount), ...overlay()]
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
@@ -1231,11 +1241,28 @@ export function App({ boot }) {
         style={{ flexGrow: 1 }}
         focused={fm.is('feed')}
         scrollOffset={follow() ? 1e9 : offset()}
-        onScroll={(next, meta) => { setFollow(!!meta?.atBottom); setOffset(next) }}
+        onScroll={(next, meta) => {
+          setFollow(!!meta?.atBottom)
+          if (next === 0 && hiddenCount > 0) {
+            // keep the view anchored: estimate the rows the new batch adds
+            // and scroll past them so the current top item stays in place
+            const added = Math.min(HISTORY_WINDOW, hiddenCount)
+            const avgRows = Math.max(2, Math.round((meta?.maxOffset || 0) / Math.max(1, items.length)))
+            setHistWindow((w) => w + HISTORY_WINDOW)
+            setOffset(added * avgRows)
+            return
+          }
+          setOffset(next)
+        }}
         scrollbar
       >
         {items.length === 0 && <Banner version={version} cwd={boot.displayCwd} modelName={model().name} />}
-        {items.map((item, i) => <Message key={i} item={item} verbose={verbose()} />)}
+        {hiddenCount > 0 && (
+          <box style={{ paddingX: 2 }}>
+            <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
+          </box>
+        )}
+        {items.map((item, i) => <Message key={hiddenCount + i} item={item} verbose={verbose()} />)}
         {streaming() !== null && streaming() !== '' && (
           <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
         )}
