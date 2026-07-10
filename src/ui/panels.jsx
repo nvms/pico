@@ -339,12 +339,9 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview ? (
             <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: MUTED, italic: true, overflow: 'truncate' }}>{preview.description || 'no description'}</text>
+              <text style={{ color: MUTED, italic: true }}>{preview.description || 'no description'}</text>
               <text> </text>
-              {preview.body.split('\n').slice(0, 8).map((line, i) => (
-                <text key={i} style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
-              ))}
-              {preview.body.split('\n').length > 8 && <text style={{ color: FAINT }}>…</text>}
+              <text style={{ color: FG_SOFT }}>{preview.body}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no memories</text>
