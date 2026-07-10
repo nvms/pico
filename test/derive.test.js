@@ -182,6 +182,38 @@ test('model_switch tracks current model', () => {
   assert.equal(deriveState(events).model, 'google/gemini-2.5-flash')
 })
 
+test('stale large tool results are elided from provider history only', () => {
+  const big = 'x'.repeat(5000)
+  const events = [
+    user('fetch the schema'),
+    assistant('', [call('c1', 'web_fetch', { url: 'https://x/big.json' })]),
+    toolResult('c1', big),
+    assistant('got it'),
+    user('next question'),
+    assistant('answer'),
+    user('another question'),
+    assistant('answer two'),
+  ]
+  const state = deriveState(events)
+  const toolMsg = state.providerHistory.find((m) => m.role === 'tool')
+  assert.match(toolMsg.content, /elided to save context: 5,000 chars/)
+  assert.equal(state.transcript.find((i) => i.kind === 'tool').resultText, big)
+
+  const fresh = deriveState(events.slice(0, 6))
+  assert.equal(fresh.providerHistory.find((m) => m.role === 'tool').content, big)
+
+  const small = [
+    user('a'),
+    assistant('', [call('c2', 'read', {})]),
+    toolResult('c2', 'short result'),
+    assistant('ok'),
+    user('b'),
+    assistant('c'),
+    user('d'),
+  ]
+  assert.equal(deriveState(small).providerHistory.find((m) => m.role === 'tool').content, 'short result')
+})
+
 test('userEntries and rewindStats', () => {
   const first = user('one')
   const events = [

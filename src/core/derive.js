@@ -2,6 +2,32 @@ import { continuationMessage } from './compaction.js'
 
 const DROPPING_MODES = ['both', 'chat', 'summary']
 
+// context editing: a large tool result keeps getting re-sent with every
+// request long after the model has used it. once the conversation has moved
+// on (two user turns past it), the body is replaced with a short note in the
+// model's view only; the transcript and the jsonl keep the real thing, and
+// the model can re-run the tool if it truly needs the data again
+const ELIDE_MIN_CHARS = 4000
+const ELIDE_AFTER_USER_TURNS = 2
+
+function elideStaleToolResults(history) {
+  const userIndexes = []
+  history.forEach((message, i) => {
+    if (message.role === 'user') userIndexes.push(i)
+  })
+  const cutoff = userIndexes.at(-ELIDE_AFTER_USER_TURNS)
+  if (cutoff === undefined) return history
+  return history.map((message, i) => {
+    if (i >= cutoff || message.role !== 'tool') return message
+    const content = String(message.content ?? '')
+    if (content.length < ELIDE_MIN_CHARS) return message
+    return {
+      ...message,
+      content: `[tool result elided to save context: ${content.length.toLocaleString()} chars. re-run the tool if this is needed again]`,
+    }
+  })
+}
+
 function activeRewinds(events) {
   const canceled = new Set()
   for (const e of events) {
@@ -220,6 +246,7 @@ export function deriveState(events) {
     }
   }
 
+  state.providerHistory = elideStaleToolResults(state.providerHistory)
   return state
 }
 
