@@ -133,8 +133,12 @@ export function deriveState(events) {
         addUsageInto(state.usageActive, event.data.usage)
         const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())
         addUsageInto(activeByModel, event.data.usage)
-        state.lastPromptTokens = event.data.lastPrompt ?? (event.data.usage.promptTokens || 0)
-        state.lastPromptModel = event.data.model
+        // only events that recorded the final request's size can drive the
+        // context meter; older cumulative-only events would overstate it
+        if (event.data.lastPrompt !== undefined) {
+          state.lastPromptTokens = event.data.lastPrompt
+          state.lastPromptModel = event.data.model
+        }
       }
       continue
     }
