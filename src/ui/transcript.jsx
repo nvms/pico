@@ -4,6 +4,12 @@ import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
 
+function diffPreviewLines(diff, revert) {
+  if (diff?.hunks?.length) return diff.hunks.reduce((sum, h) => sum + h.lines.length, 0)
+  // events recorded before created-file writes carried hunks: size from the content itself
+  return Math.max(String(revert?.after || '').split('\n').length, String(revert?.before || '').split('\n').length, 2)
+}
+
 function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose }) {
   const running = status === 'running'
   const interrupted = status === 'interrupted'
@@ -38,7 +44,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
         <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${error}`}</text>
       )}
       {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
-        <box style={{ flexDirection: 'column', height: Math.min((diff?.hunks || []).reduce((a, h) => a + h.lines.length, 2) + 1, 12), marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: Math.min(diffPreviewLines(diff, revert) + 1, 12), marginTop: 1 }}>
           <Diff
             before={revert.before}
             after={revert.after}

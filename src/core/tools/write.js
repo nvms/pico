@@ -31,7 +31,9 @@ export function createWrite({ cwd, recorder, tracker }) {
         result.additions = diff.additions
         result.deletions = diff.deletions
       } else {
-        recorder.extra({ revert: { path: full, before: '', after: content }, created: true })
+        const diff = makeDiff(path, '', content)
+        recorder.extra({ diff, revert: { path: full, before: '', after: content }, created: true })
+        result.additions = diff.additions
         result.created = true
       }
       const context = tracker.check(full)
