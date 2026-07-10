@@ -1092,6 +1092,10 @@ export function App({ boot }) {
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
+  // the rich two-pane panels dim the conversation behind them; quick pickers
+  // (effort, theme) stay lightweight and leave it alone
+  const dimmingPanel = () => anyPanel() && !showEffortPanel() && !showThemePanel()
+
   function killShell(shell) {
     if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
     const armed = refs.shellKillArm
@@ -1282,7 +1286,7 @@ export function App({ boot }) {
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
       <ScrollBox
-        style={{ flexGrow: 1 }}
+        style={{ flexGrow: 1, dim: dimmingPanel() }}
         focused={fm.is('feed')}
         scrollOffset={follow() ? 1e9 : offset()}
         onScroll={(next, meta) => {
