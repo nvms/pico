@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compactionPrompt, formatCompactSummary, continuationMessage } from '../src/core/compaction.js'
+import { compactionPrompt, formatCompactSummary, continuationMessage, summarySections } from '../src/core/compaction.js'
 import { compactProgress } from '../src/core/agent.js'
 import { deriveState } from '../src/core/derive.js'
 import { makeEvent } from '../src/core/events.js'
@@ -89,6 +89,25 @@ test('stale keepFrom degrades to a summary-only compact', () => {
   const state = deriveState(events)
   assert.equal(state.providerHistory.length, 1)
   assert.match(state.providerHistory[0].content, /s2/)
+})
+
+test('formatCompactSummary salvages malformed model output', () => {
+  const unclosedBoth = '<analysis>\nrambling draft\nmore rambling\n1. Primary Request:\n   the thing\n2. Key Concepts:\n   stuff'
+  const salvaged = formatCompactSummary(unclosedBoth)
+  assert.doesNotMatch(salvaged, /rambling/)
+  assert.match(salvaged, /Primary Request/)
+
+  const unclosedSummary = '<analysis>\ndraft\n</analysis>\n<summary>\n1. Primary Request:\n   cut off mid-stream'
+  assert.match(formatCompactSummary(unclosedSummary), /Primary Request/)
+  assert.doesNotMatch(formatCompactSummary(unclosedSummary), /draft/)
+
+  assert.equal(formatCompactSummary('<analysis>\nonly rambling, no sections'), '')
+})
+
+test('summarySections counts top-level headers only', () => {
+  const good = ['1. A', 'text', '2. B', '  1. indented sub-item', '3. C', '4. D', '5. E'].join('\n')
+  assert.equal(summarySections(good), 5)
+  assert.equal(summarySections('prose with no structure'), 0)
 })
 
 test('compactProgress tracks analysis then numbered sections', () => {

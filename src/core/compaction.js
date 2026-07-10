@@ -26,9 +26,20 @@ Respond with plain text only: one <analysis> block followed by one <summary> blo
 
 export function formatCompactSummary(raw) {
   let formatted = raw.replace(/<analysis>[\s\S]*?<\/analysis>/, '')
-  const match = formatted.match(/<summary>([\s\S]*?)<\/summary>/)
-  if (match) formatted = match[1]
+  const match = formatted.match(/<summary>([\s\S]*?)(?:<\/summary>|$)/)
+  if (match) {
+    formatted = match[1]
+  } else if (formatted.includes('<analysis>')) {
+    // unclosed analysis with no summary block: salvage from the first
+    // section header rather than persisting the scratchpad
+    const start = formatted.search(/^1\.\s/m)
+    formatted = start >= 0 ? formatted.slice(start) : ''
+  }
   return formatted.replace(/\n\n+/g, '\n\n').trim()
+}
+
+export function summarySections(text) {
+  return (text.match(/^\d+\.\s/gm) || []).length
 }
 
 export function continuationMessage(summary, { sessionFile, recentKept } = {}) {

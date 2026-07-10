@@ -8,7 +8,7 @@ import { createSession, openSession, loadSession, listSessions, deleteSession } 
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
-import { compactionPrompt, formatCompactSummary } from '../core/compaction.js'
+import { compactionPrompt, formatCompactSummary, summarySections } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
 import { createSkillIndex } from '../core/skills.js'
@@ -289,6 +289,7 @@ export function App({ boot }) {
       })
       const summary = formatCompactSummary(raw)
       if (!summary) throw new Error('empty summary')
+      if (summarySections(summary) < 5) throw new Error('malformed summary, conversation left untouched')
       persist(makeEvent('compact', { summary, keepFrom, sessionFile: refs.session?.file || null }))
       reDerive()
       flash('compacted · recent messages kept verbatim')
