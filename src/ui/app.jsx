@@ -484,6 +484,7 @@ export function App({ boot }) {
   }
 
   async function runCommand(c, args = '') {
+    if (typeof args !== 'string') args = ''
     setInput('')
     setCmdCycle(null)
     if (c.name === 'rename') {
@@ -1206,7 +1207,7 @@ export function App({ boot }) {
               items={matchedCommands}
               selected={cmdIndex()}
               onSelect={setCmdIndex}
-              onSubmit={runCommand}
+              onSubmit={(c) => runCommand(c)}
               focused={showCommands}
               maxVisible={5}
               scrolloff={2}
