@@ -10,10 +10,15 @@ export function resolveDredge(config = {}, env = process.env) {
   }
 }
 
+const CALL_TIMEOUT_MS = 120000
+
 async function call(dredge, path, params, signal) {
   const query = new URLSearchParams(params)
+  // bounded above dredge's own 90s queue ceiling so a wedged server becomes
+  // a tool error instead of a hung turn
+  const signals = [AbortSignal.timeout(CALL_TIMEOUT_MS), ...(signal ? [signal] : [])]
   const response = await fetch(`${dredge.url}${path}?${query}`, {
-    signal,
+    signal: AbortSignal.any(signals),
     headers: dredge.apiKey ? { authorization: `Bearer ${dredge.apiKey}` } : {},
   })
   const body = await response.json().catch(() => null)

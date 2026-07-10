@@ -90,14 +90,22 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
   }
 
   const stream = (event) => {
+    if (event.type === 'tool_executing') {
+      // a tool may legitimately run for minutes (test suites, slow fetches)
+      // and emits nothing while it does; the watchdog guards the provider
+      // stream, so pause it until the tool finishes. tools carry their own
+      // timeouts (bash 120s default, web tools via dredge)
+      clearTimeout(watchdog)
+      recorder.currentCall = event.call
+      onStream?.(event)
+      return
+    }
     arm()
     if (event.type === 'content') {
       roundText += event.content
     } else if (event.type === 'tool_calls_ready') {
       collected.push({ role: 'assistant', content: roundText, tool_calls: event.calls })
       roundText = ''
-    } else if (event.type === 'tool_executing') {
-      recorder.currentCall = event.call
     } else if (event.type === 'tool_complete') {
       collected.push({ role: 'tool', tool_call_id: event.call.id, content: JSON.stringify(event.result) })
     } else if (event.type === 'tool_error') {
