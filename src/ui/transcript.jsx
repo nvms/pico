@@ -152,7 +152,7 @@ export function Message({ item, verbose }) {
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
         <box style={{ bg: PANEL_BG, flexDirection: 'column', paddingX: 2, paddingY: 1 }}>
-          <text style={{ color: '#f9fafb' }}>{item.text}</text>
+          <text style={{ color: FG }}>{item.text}</text>
         </box>
       </box>
     )

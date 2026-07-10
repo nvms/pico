@@ -1,5 +1,6 @@
 import { codeToANSI } from '@shikijs/cli'
 import { createSignal } from '@trendr/core'
+import { paletteName } from './theme.js'
 
 const LANGS = {
   js: 'js', mjs: 'js', cjs: 'js', jsx: 'jsx', ts: 'ts', tsx: 'tsx',
@@ -23,21 +24,22 @@ export const highlightVersion = version
 
 export function highlight(code, lang) {
   const safeLang = lang && !failed.has(lang) ? lang : 'txt'
+  const theme = paletteName() === 'light' ? 'github-light' : 'nord'
   return code
     .split('\n')
     .map((line) => {
-      const key = `${safeLang}\n${line}`
+      const key = `${theme}\n${safeLang}\n${line}`
       if (cache.has(key)) return cache.get(key)
-      warm(line, safeLang, key)
+      warm(line, safeLang, theme, key)
       return line
     })
     .join('\n')
 }
 
-function warm(line, lang, key) {
+function warm(line, lang, theme, key) {
   if (pending.has(key)) return
   pending.add(key)
-  codeToANSI(line, lang, 'nord')
+  codeToANSI(line, lang, theme)
     .then((ansi) => cache.set(key, ansi.replace(/\n$/, '')))
     .catch(() => {
       failed.add(lang)

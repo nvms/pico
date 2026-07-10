@@ -30,7 +30,7 @@ import { highlightVersion } from './highlight.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
+import { accent, setAccent, setPalette, paletteName, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -54,6 +54,7 @@ const COMMANDS = [
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
+  { name: 'theme', desc: 'Switch palette: /theme <light|dark|auto>' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
@@ -452,6 +453,7 @@ export function App({ boot }) {
 
   function completionSource(name) {
     if (name === 'color') return Object.keys(SESSION_COLORS)
+    if (name === 'theme') return ['light', 'dark', 'auto']
     if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
     if (name === 'model') return models.filter((m) => m.available !== false).map((m) => m.name)
     const cmd = allCommands.find((c) => c.name === name)
@@ -525,6 +527,21 @@ export function App({ boot }) {
       reDerive()
       const name = names[values.indexOf(value)]
       flash(`session color: ${name || value}`)
+      return
+    }
+    if (c.name === 'theme') {
+      const choice = args.toLowerCase()
+      if (choice === 'light' || choice === 'dark') {
+        setPalette(choice)
+        boot.setTheme?.({ accent: accent() })
+        writeConfig({ theme: choice }).catch(() => {})
+        flash(`theme: ${choice}`)
+      } else if (choice === 'auto') {
+        writeConfig({ theme: undefined }).catch(() => {})
+        flash(`theme: auto · detects your terminal on next start (currently ${paletteName()})`)
+      } else {
+        flash(`theme: ${paletteName()} · /theme <light|dark|auto>`)
+      }
       return
     }
     if (c.skill) {
@@ -1115,6 +1132,7 @@ export function App({ boot }) {
           </box>
         )}
         <TextArea
+          color={FG}
           value={input()}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
@@ -1452,7 +1470,7 @@ export function App({ boot }) {
         {busy()
           ? (
             <box style={{ flexDirection: 'row' }}>
-              <Shimmer color={accent()} highlight="white" duration={1500} reverse>{compacting() ? 'Compacting' : thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
+              <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>{compacting() ? 'Compacting' : thinkingNow() ? 'Thinking' : 'Responding'}</Shimmer>
               <text style={{ color: FAINT }}>{` (${elapsed}s) · esc to interrupt`}</text>
             </box>
           )

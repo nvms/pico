@@ -57,6 +57,10 @@ The agent saves durable facts with the remember tool: one file per memory under 
 
 The agent can schedule one-time wake-ups for itself with the schedule_wakeup tool: after the delay it receives its own note as a system notification and acts on it. Recurring loops are just the agent rescheduling at the end of each wake-up. \`/wakeups\` lists pending ones with live countdowns; enter or \`k\` cancels. A \`⏰ N\` in the footer shows how many are pending. Wake-ups live in memory and are lost when pico exits.
 
+## Appearance
+
+pico picks a light or dark palette at startup by asking the terminal for its background color (OSC 11), so it matches whatever theme your terminal uses. \`/theme light\` or \`/theme dark\` overrides that and persists in \`~/.pico/config.json\`; \`/theme auto\` goes back to detection. \`/color\` tints a single session's accent and is independent of the palette.
+
 ## Context
 
 pico reads AGENTS.md files automatically: a global one from ~/.pico, then every ancestor of your working directory up to the git root. Deeper files win. AGENTS.md files in subdirectories load lazily the first time a tool touches that subtree.

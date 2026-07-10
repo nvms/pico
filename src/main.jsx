@@ -7,11 +7,12 @@ import { loadCatalog, extractModels } from './core/catalog.js'
 import { loadCodexModels } from './core/codex-models.js'
 import { openaiConnected, openaiCredentials } from './core/openai-auth.js'
 import { readConfig } from './core/config.js'
+import { detectTerminalTheme } from './core/terminal-theme.js'
 import { buildProjectBoot } from './core/boot.js'
 import { createShellManager } from './core/shells.js'
 import { createWakeupManager } from './core/wakeups.js'
 import { App } from './ui/app.jsx'
-import { DEFAULT_ACCENT } from './ui/theme.js'
+import { DEFAULT_ACCENT, setPalette } from './ui/theme.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -98,6 +99,7 @@ const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotif
 const config = await readConfig()
 const configuredDefault = config.defaultModel && models.find((m) => m.name === config.defaultModel)
 
+setPalette(['light', 'dark'].includes(config.theme) ? config.theme : await detectTerminalTheme())
 const theme = { accent: DEFAULT_ACCENT }
 
 const boot = {
