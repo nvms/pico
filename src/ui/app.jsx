@@ -1417,7 +1417,7 @@ export function App({ boot }) {
         <text style={{ color: FAINT }}>↓</text>
         <text style={{ color: MUTED }}>{`${usage.completionTokens.toLocaleString()} out`}</text>
         {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${usage.thoughtTokens.toLocaleString()} think`}</text>}
-        {model().context > 0 && derived().lastPromptTokens > 0 && (() => {
+        {model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name && (() => {
           const pct = Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
           return <text style={{ color: pct >= 80 ? RED : MUTED }}>{`ctx ${pct}%`}</text>
         })()}

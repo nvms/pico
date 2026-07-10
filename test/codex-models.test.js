@@ -7,9 +7,11 @@ import { mapCodexModels, loadCodexModels } from '../src/core/codex-models.js'
 
 test('maps backend entries to picker models', () => {
   const models = mapCodexModels([
-    { slug: 'gpt-5.6-sol', description: 'Latest frontier agentic coding model.' },
+    { slug: 'gpt-5.6-sol', description: 'Latest frontier agentic coding model.', context_window: 272000 },
     { slug: 'gpt-5.3-codex-spark', label: 'GPT-5.3-Codex-Spark' },
   ])
+  assert.equal(models[0].context, 272000)
+  assert.equal(models[1].context, null)
   assert.equal(models[0].name, 'codex/gpt-5.6-sol')
   assert.equal(models[0].provider, 'codex')
   assert.match(models[0].desc, /via ChatGPT plan/)

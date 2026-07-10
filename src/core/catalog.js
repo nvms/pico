@@ -63,7 +63,9 @@ export function extractModels(providers, providerIds) {
         desc: m.description || m.name || id,
         price: m.cost && m.cost.input != null ? { in: m.cost.input, out: m.cost.output } : null,
         effort: !!m.reasoning,
-        context: m.limit?.context || null,
+        // the measured fill number is input tokens, so prefer the input limit
+        // as the denominator where the provider distinguishes it
+        context: m.limit?.input || m.limit?.context || null,
       })
     }
   }

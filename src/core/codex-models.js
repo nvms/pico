@@ -18,7 +18,7 @@ export function mapCodexModels(entries) {
     desc: `${m.description || m.label || m.slug} · via ChatGPT plan`,
     price: null,
     effort: true,
-    context: null,
+    context: m.context_window || null,
   }))
 }
 
@@ -40,7 +40,12 @@ export async function loadCodexModels(credentials) {
     })
     if (!response.ok) throw new Error(String(response.status))
     const data = await response.json()
-    const models = (data.models || []).map((m) => ({ slug: m.slug, description: m.description, label: m.label }))
+    const models = (data.models || []).map((m) => ({
+      slug: m.slug,
+      description: m.description,
+      label: m.label || m.display_name,
+      context_window: m.context_window || m.max_context_window || null,
+    }))
     if (models.length === 0) throw new Error('empty model list')
     ensureDir(picoHome())
     await writeFile(cacheFile(), JSON.stringify({ at: Date.now(), models }))

@@ -162,6 +162,7 @@ test('lastPromptTokens tracks the active conversation size', () => {
 
   const toolTurn = [user('q1'), usage(72000, 28000), assistant('a1')]
   assert.equal(deriveState(toolTurn).lastPromptTokens, 28000)
+  assert.equal(deriveState(toolTurn).lastPromptModel, 'm')
 
   const rewind = makeEvent('rewind', { target: target.id, mode: 'chat' })
   assert.equal(deriveState([...events, rewind]).lastPromptTokens, 100)

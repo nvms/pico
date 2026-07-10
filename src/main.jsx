@@ -61,7 +61,10 @@ const models = [
   })),
   ...(await loadCodexModels(codexCreds)).map((m) => ({
     ...m,
-    context: m.context ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context ?? null,
+    context: m.context
+      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.input
+      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context
+      ?? null,
     available: chatgpt,
     keyHint: '/connect',
   })),

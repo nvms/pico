@@ -128,7 +128,7 @@ test('extractModels filters, sorts by release, and maps fields', () => {
   const providers = {
     google: {
       models: {
-        'gemini-x': { description: 'newest', tool_call: true, reasoning: true, cost: { input: 1, output: 4 }, release_date: '2026-05-01', limit: { context: 1e6 } },
+        'gemini-x': { description: 'newest', tool_call: true, reasoning: true, cost: { input: 1, output: 4 }, release_date: '2026-05-01', limit: { context: 1e6, input: 900000 } },
         'gemini-old': { description: 'older', tool_call: true, reasoning: false, release_date: '2025-01-01' },
         'gemini-tts': { description: 'speech', tool_call: false, release_date: '2026-06-01' },
         'gemini-x-20260501': { description: 'dated dupe', tool_call: true, release_date: '2026-05-01' },
@@ -141,7 +141,7 @@ test('extractModels filters, sorts by release, and maps fields', () => {
   const [newest, older, gpt] = models
   assert.equal(newest.effort, true)
   assert.deepEqual(newest.price, { in: 1, out: 4 })
-  assert.equal(newest.context, 1e6)
+  assert.equal(newest.context, 900000)
   assert.equal(older.price, null)
   assert.equal(gpt.desc, 'GPT Z')
   assert.equal(defaultModel(models).name, 'google/gemini-x')

@@ -111,6 +111,7 @@ export function deriveState(events) {
     usageActive: emptyUsage(),
     usageActiveByModel: {},
     lastPromptTokens: 0,
+    lastPromptModel: null,
     loadedContext: new Set(),
     toolItems: new Map(),
   }
@@ -125,6 +126,7 @@ export function deriveState(events) {
         const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())
         addUsageInto(activeByModel, event.data.usage)
         state.lastPromptTokens = event.data.lastPrompt ?? (event.data.usage.promptTokens || 0)
+        state.lastPromptModel = event.data.model
       }
       continue
     }
