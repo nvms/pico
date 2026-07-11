@@ -82,6 +82,7 @@ const SESSION_COLORS = {
 
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
 const MEMORY_SCOPES = ['all', 'project', 'global']
+const SHELL_STRIP_MAX = 5
 
 // only the newest slice of a long transcript renders; older items load in
 // batches when the user scrolls to the top. render cost is per-item, so this
@@ -175,13 +176,15 @@ export function App({ boot }) {
     }
     if (shell.killedBy === 'user') {
       flash(`shell ${shell.id} killed`)
-      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
+      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
     const tail = boot.shells.output(shell.id, { tail: 30 }).output
+    const secs = Math.max(0, Math.round(((shell.endedAt || Date.now()) - shell.startedAt) / 1000))
+    const ran = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`
     noteSystem(
-      `[system notification] background shell ${shell.id} (${shell.command}) exited with code ${shell.exitCode}.` +
+      `[system notification] background shell ${shell.id} (${shell.description || shell.command}) exited with code ${shell.exitCode} after ${ran}.` +
         (tail ? `\nRecent output:\n${tail}` : ''),
       { wake: true },
     )
@@ -1270,7 +1273,7 @@ export function App({ boot }) {
 
   const { usageActive: usage } = derived()
   shellsVersion()
-  const runningShells = boot.shells.running()
+  const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   const pendingWakeups = boot.wakeups.pending()
 
   if (view() === 'help') {
@@ -1716,6 +1719,26 @@ export function App({ boot }) {
         />
       )}
 
+      {liveShells.length > 0 && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          {liveShells.slice(0, SHELL_STRIP_MAX).map((s) => (
+            <box key={s.id} style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent() }}>{'⚙ '}</text>
+              <text style={{ color: MUTED }}>{`${s.id} · `}</text>
+              <box style={{ flexGrow: 1, height: 1 }}>
+                <text style={{ overflow: 'truncate', color: FG_SOFT }}>{s.description || s.command.replace(/\n/g, ' ')}</text>
+              </box>
+              <text style={{ color: MUTED }}>{`  ${Date.now() - s.startedAt < 60000 ? '<1m' : timeAgo(s.startedAt).replace(' ago', '')}`}</text>
+            </box>
+          ))}
+          <box style={{ flexDirection: 'row' }}>
+            <text style={{ color: MUTED }}>
+              {`  ${liveShells.length > SHELL_STRIP_MAX ? `+${liveShells.length - SHELL_STRIP_MAX} more · ` : ''}/shells`}
+            </text>
+          </box>
+        </box>
+      )}
+
       <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
         {busy()
           ? (
@@ -1739,7 +1762,6 @@ export function App({ boot }) {
           const stats = useFrameStats()
           return <text style={{ color: MUTED }}>{`⏱ ${(stats.renderMs ?? 0).toFixed(1)}ms · ${stats.fps}fps · ${derived().transcript.length} items`}</text>
         })()}
-        {runningShells > 0 && <text style={{ color: MUTED }}>{`⚙ ${runningShells}`}</text>}
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}

@@ -10,6 +10,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     return {
       id: shell.id,
       command: shell.command,
+      description: shell.description,
       cwd: shell.cwd,
       status: shell.status,
       exitCode: shell.exitCode,
@@ -21,7 +22,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     }
   }
 
-  function start(command, { cwd } = {}) {
+  function start(command, { cwd, description } = {}) {
     const id = String(nextId++)
     const child = spawn(command, {
       shell: true,
@@ -32,6 +33,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     const shell = {
       id,
       command,
+      description: description || null,
       cwd: cwd || process.cwd(),
       child,
       status: 'running',

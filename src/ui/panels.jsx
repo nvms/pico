@@ -594,8 +594,9 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
                   {s.status === 'running' ? '⚙' : s.exitCode === 0 ? '✓' : '✗'}
                 </text>
                 <text style={{ color: active ? accent() : FG }}>{` ${s.id.padEnd(Math.max(3, s.id.length + 1))}`}</text>
-                <box style={{ flexGrow: 1, height: 1 }}>
-                  <text style={{ overflow: 'truncate', color: active ? FG : FG_SOFT }}>{s.command}</text>
+                <box style={{ flexGrow: 1, height: 1, flexDirection: 'row' }}>
+                  {s.description && <text style={{ color: active ? FG : FG_SOFT }}>{`${s.description}  `}</text>}
+                  <text style={{ overflow: 'truncate', color: s.description ? FAINT : active ? FG : FG_SOFT }}>{s.command}</text>
                 </box>
                 <text style={{ color: FAINT }}>{`  ${s.status === 'running' ? `up ${uptime(s)}` : `exit ${s.exitCode} · ${uptime(s)}`}`}</text>
               </box>

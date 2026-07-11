@@ -15,11 +15,12 @@ export function createBash({ cwd, recorder, signal, shells }) {
       command: { type: 'string', description: 'the command to run' },
       timeout: { type: 'number', description: 'foreground timeout in milliseconds, default 120000; prefer background true over a large timeout', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
+      description: { type: 'string', description: 'for background shells: a few words naming what this is for, shown to the human watching (e.g. "vite dev server", "watching ci")', optional: true },
     },
-    execute: ({ command, timeout, background }) => {
+    execute: ({ command, timeout, background, description }) => {
       if (background && shells) {
-        recorder.extra({ title: command, background: true })
-        const { id } = shells.start(command, { cwd })
+        recorder.extra({ title: description || command, background: true })
+        const { id } = shells.start(command, { cwd, description })
         return { shellId: id, status: 'running' }
       }
       return new Promise((resolve) => {
