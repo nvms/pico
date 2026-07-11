@@ -1379,6 +1379,7 @@ export function App({ boot }) {
         )}
         <TextArea
           color={FG}
+          lineCounter
           value={input()}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
