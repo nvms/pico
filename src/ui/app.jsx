@@ -1722,7 +1722,7 @@ export function App({ boot }) {
         />
       )}
 
-      {liveShells.length > 0 && (
+      {liveShells.length > 0 && !showShellsPanel() && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
           {liveShells.slice(0, SHELL_STRIP_MAX).map((s) => (
             <box key={s.id} style={{ flexDirection: 'row' }}>
