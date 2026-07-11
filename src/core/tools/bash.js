@@ -35,8 +35,18 @@ export function createBash({ cwd, recorder, signal, shells }) {
           },
           (err, stdout, stderr) => {
             const exitCode = err ? (typeof err.code === 'number' ? err.code : 1) : 0
+            const ms = timeout || 120000
+            const timedOut = !!err?.killed && err.code == null && !signal?.aborted
             recorder.extra({ fullOutput: [stdout, stderr].filter(Boolean).join('\n') })
-            resolve({ stdout: capped(stdout || ''), stderr: capped(stderr || ''), exitCode })
+            resolve({
+              stdout: capped(stdout || ''),
+              stderr: capped(stderr || ''),
+              exitCode,
+              ...(timedOut && {
+                timedOut: true,
+                note: `killed at the ${ms}ms timeout. do not simply rerun it: use background true for long-running work and wait for its exit notification, or pass a larger timeout if the command genuinely needs the foreground`,
+              }),
+            })
           },
         )
         if (signal) {
