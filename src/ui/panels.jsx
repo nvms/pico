@@ -892,7 +892,6 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                     <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
                     <text style={{ color: st.color }}>{st.icon}</text>
                     <text style={{ color: active ? accent() : FG }}>{` ${s.name.padEnd(Math.max(14, s.name.length + 1))}`}</text>
-                    {s.scope === 'project' && <text style={{ color: FAINT }}>{'·p '}</text>}
                     <box style={{ flexGrow: 1, height: 1 }}>
                       <text style={{ overflow: 'truncate', color: s.status === 'error' ? RED : MUTED }}>
                         {s.status === 'error' ? s.error : s.status === 'connected' ? `${s.toolCount} tools` : s.status}
@@ -901,7 +900,10 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                   </box>
                   <box style={{ flexDirection: 'row', height: 1 }}>
                     <text>{'     '}</text>
-                    <text style={{ overflow: 'truncate', color: FAINT }}>{shortenHome(s.command)}</text>
+                    <box style={{ flexGrow: 1, height: 1 }}>
+                      <text style={{ overflow: 'truncate', color: FAINT }}>{shortenHome(s.command)}</text>
+                    </box>
+                    <text style={{ color: FAINT }}>{`  ${s.scope === 'project' ? 'project' : 'global'}`}</text>
                   </box>
                 </box>
               )
