@@ -11,11 +11,14 @@ function diffPreviewLines(diff, revert) {
 }
 
 function fmtDuration(ms) {
-  if (ms < 1000) return `${(ms / 1000).toFixed(2)}s`
-  if (ms < 10000) return `${(ms / 1000).toFixed(1)}s`
-  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`
   const secs = Math.round(ms / 1000)
   return `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+function fmtRunning(ms) {
+  const secs = Math.floor(ms / 1000)
+  return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`
 }
 
 function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, startedAt, durationMs }) {
@@ -28,7 +31,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
   const elapsed = running && startedAt ? Date.now() - startedAt : 0
   const took = !running && !background && durationMs != null ? fmtDuration(durationMs) : null
 
-  const info = running ? (elapsed >= 5000 ? `running (${fmtDuration(elapsed)})` : 'running')
+  const info = running ? (elapsed >= 5000 ? `running (${fmtRunning(elapsed)})` : 'running')
     : interrupted ? 'interrupted'
     : reverted ? 'reverted'
     : failed ? `failed${took ? ` · ${took}` : ''}`
