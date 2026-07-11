@@ -1107,7 +1107,7 @@ export function App({ boot }) {
     const armed = refs.shellKillArm
     if (!armed || armed.id !== shell.id || Date.now() - armed.at > 3000) {
       refs.shellKillArm = { id: shell.id, at: Date.now() }
-      return flash(`k again to kill shell ${shell.id}`)
+      return flash(`ctrl+x again to kill "${shell.description || `shell ${shell.id}`}"`)
     }
     refs.shellKillArm = null
     boot.shells.kill(shell.id, 'user')

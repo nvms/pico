@@ -44,7 +44,7 @@ In the MCP panel: space or enter toggles a server, \`t\` lists its tools, \`r\` 
 
 ## Shells
 
-The agent can run long-lived processes (dev servers, watchers) with \`bash background: true\`, then read their output and stop them itself. \`/shells\` lists them: enter opens a live output view, \`k\` kills (press twice), \`d\` dismisses a dead one. A \`⚙ N\` in the footer shows how many are running. When a shell exits on its own, the agent is notified and responds; shells die with pico, and quitting warns you if any are still up.
+The agent can run long-lived processes (dev servers, watchers) with \`bash background: true\`, then read their output and stop them itself. \`/shells\` lists them: enter opens a live output view, and \`ctrl+x\` removes the selected row - killing a running shell (press twice) or dismissing a dead one (single press). A \`⚙ N\` in the footer shows how many are running. When a shell exits on its own, the agent is notified and responds; shells die with pico, and quitting warns you if any are still up.
 
 ## Subscriptions
 

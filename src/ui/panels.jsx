@@ -530,11 +530,9 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
   useInput((event) => {
     if (!focused || viewing()) return
     const s = selected()
-    if (s && event.key === 'k' && !event.ctrl) {
-      onKill(s)
-      event.stopPropagation()
-    } else if (s && event.key === 'd' && !event.ctrl) {
-      onDismiss(s)
+    if (s && event.ctrl && event.key === 'x') {
+      if (s.status === 'running') onKill(s)
+      else onDismiss(s)
       event.stopPropagation()
     }
   })
@@ -572,7 +570,7 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
   }
 
   return (
-    <PanelFrame title="Shells" hint="enter view output · k kill · d dismiss · esc close">
+    <PanelFrame title="Shells" hint="j/k to move · enter view output · ctrl+x kill or dismiss · esc close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {shells.length === 0 ? (
           <text style={{ color: FAINT }}>no background shells · the agent starts them with bash background: true</text>
@@ -584,7 +582,7 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
             onSelect={setIndex}
             focused={focused}
             maxVisible={6}
-            vimKeys={false}
+            vimKeys
             onSubmit={(s) => setViewing(s.id)}
             onCancel={onClose}
             renderItem={(s, { active }) => (
