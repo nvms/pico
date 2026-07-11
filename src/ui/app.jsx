@@ -906,6 +906,12 @@ export function App({ boot }) {
 
   async function disconnectProvider(provider) {
     if (provider.id !== 'openai') return
+    const armed = refs.disconnectArm
+    if (!armed || armed.id !== provider.id || Date.now() - armed.at > 3000) {
+      refs.disconnectArm = { id: provider.id, at: Date.now() }
+      return flash(`ctrl+x again to disconnect ${provider.label} (you will need to sign in again)`)
+    }
+    refs.disconnectArm = null
     await disconnectOpenAI().catch(() => {})
     boot.providers = boot.providers.filter((p) => p !== 'codex')
     boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: false } : m))
@@ -1707,6 +1713,12 @@ export function App({ boot }) {
           wakeups={(shellsVersion(), boot.wakeups.list())}
           focused={showWakeupsPanel()}
           onCancel={(w) => {
+            const armed = refs.wakeupCancelArm
+            if (!armed || armed.id !== w.id || Date.now() - armed.at > 3000) {
+              refs.wakeupCancelArm = { id: w.id, at: Date.now() }
+              return flash(`again to cancel wake-up ${w.id} (${w.note.split('\n')[0].slice(0, 40)})`)
+            }
+            refs.wakeupCancelArm = null
             boot.wakeups.cancel(w.id)
             flash(`cancelled wake-up ${w.id}`)
             noteSystem(
@@ -1724,7 +1736,16 @@ export function App({ boot }) {
           focused={showMcpPanel()}
           onToggle={(name) => mcp.toggle(name)}
           onReconnect={(name) => mcp.reconnect(name)}
-          onRemove={(name) => mcp.remove(name)}
+          onRemove={(name) => {
+            const armed = refs.mcpRemoveArm
+            if (!armed || armed.name !== name || Date.now() - armed.at > 3000) {
+              refs.mcpRemoveArm = { name, at: Date.now() }
+              return flash(`ctrl+x again to remove "${name}" and its config`)
+            }
+            refs.mcpRemoveArm = null
+            mcp.remove(name)
+            flash(`removed mcp server ${name}`)
+          }}
           onAdd={(name, command, scope) => {
             mcp.add(name, command, scope)
             flash(`added ${name} (${scope})`)

@@ -621,14 +621,14 @@ export function ConnectPanel({ providers, focused, onConnect, onDisconnect, onCl
   useInput((event) => {
     if (!focused) return
     const p = selected()
-    if (p && event.key === 'd' && !event.ctrl && p.connected) {
+    if (p && event.ctrl && event.key === 'x' && p.connected) {
       onDisconnect(p)
       event.stopPropagation()
     }
   })
 
   return (
-    <PanelFrame title="Connect a subscription" hint="enter sign in · d disconnect · esc close">
+    <PanelFrame title="Connect a subscription" hint="enter sign in · ctrl+x disconnect (twice) · esc close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
           counter
@@ -670,7 +670,7 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
   useInput((event) => {
     if (!focused) return
     const w = selected()
-    if (w && event.key === 'k' && !event.ctrl) {
+    if (w && event.ctrl && event.key === 'x') {
       onCancel(w)
       event.stopPropagation()
     }
@@ -685,7 +685,7 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
   }
 
   return (
-    <PanelFrame title="Scheduled wake-ups" hint="enter or k cancel · esc close">
+    <PanelFrame title="Scheduled wake-ups" hint="j/k to move · enter or ctrl+x cancel (twice) · esc close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {wakeups.length === 0 ? (
           <text style={{ color: FAINT }}>no pending wake-ups · the agent schedules them with schedule_wakeup</text>
@@ -699,6 +699,7 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
             maxVisible={5}
             itemHeight={2}
             gap={1}
+            vimKeys
             onSubmit={(w) => onCancel(w)}
             onCancel={onClose}
             renderItem={(w, { active }) => (
@@ -856,7 +857,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       title="MCP servers"
       hint={adding()
         ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
-        : 'space/enter toggle · t tools · r reconnect · a add · d remove · esc close'}
+        : 'space/enter toggle · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {adding() ? (
@@ -916,7 +917,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
             if (key === 'a') setAdding(true)
             else if (s && key === ' ') onToggle(s.name)
             else if (s && key === 'r') onReconnect(s.name)
-            else if (s && key === 'd') onRemove(s.name)
+            else if (s && key === 'remove') onRemove(s.name)
             else if (s && key === 't') setViewing(s.name)
           }}
         />
@@ -928,7 +929,12 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
 function McpKeys({ focused, onKey }) {
   useInput((event) => {
     if (!focused) return
-    if ([' ', 'a', 'r', 'd', 't'].includes(event.key)) {
+    if (event.ctrl && event.key === 'x') {
+      onKey('remove')
+      event.stopPropagation()
+      return
+    }
+    if (!event.ctrl && [' ', 'a', 'r', 't'].includes(event.key)) {
       onKey(event.key)
       event.stopPropagation()
     }

@@ -60,7 +60,7 @@ The agent saves durable facts with the remember tool: one file per memory under 
 
 ## Wake-ups
 
-The agent can schedule one-time wake-ups for itself with the schedule_wakeup tool: after the delay it receives its own note as a system notification and acts on it. Recurring loops are just the agent rescheduling at the end of each wake-up. \`/wakeups\` lists pending ones with live countdowns; enter or \`k\` cancels. A \`⏰ N\` in the footer shows how many are pending. Wake-ups live in memory and are lost when pico exits.
+The agent can schedule one-time wake-ups for itself with the schedule_wakeup tool: after the delay it receives its own note as a system notification and acts on it. Recurring loops are just the agent rescheduling at the end of each wake-up. \`/wakeups\` lists pending ones with live countdowns; enter or \`ctrl+x\` cancels (press twice). A \`⏰ N\` in the footer shows how many are pending. Wake-ups live in memory and are lost when pico exits.
 
 ## Appearance
 
