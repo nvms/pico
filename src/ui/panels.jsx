@@ -857,7 +857,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       title="MCP servers"
       hint={adding()
         ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
-        : 'space/enter enable/disable · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
+        : 'enter enable/disable · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {adding() ? (
@@ -917,7 +917,6 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
           onKey={(key) => {
             const s = selected()
             if (key === 'a') setAdding(true)
-            else if (s && key === ' ') onToggle(s.name)
             else if (s && key === 'r') onReconnect(s.name)
             else if (s && key === 'remove') onRemove(s.name)
             else if (s && key === 't') setViewing(s.name)
@@ -936,7 +935,7 @@ function McpKeys({ focused, onKey }) {
       event.stopPropagation()
       return
     }
-    if (!event.ctrl && [' ', 'a', 'r', 't'].includes(event.key)) {
+    if (!event.ctrl && ['a', 'r', 't'].includes(event.key)) {
       onKey(event.key)
       event.stopPropagation()
     }

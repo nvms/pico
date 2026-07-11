@@ -174,12 +174,14 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       if (!server) return
       const config = await readProjectConfig(root)
       if (server.enabled) {
+        // flip the visible state first: a slow-closing server (headless
+        // browsers, heavy processes) must not make disable feel dead
         server.enabled = false
         server.status = 'disabled'
+        onChange()
         config.disabled[name] = true
         await writeProjectConfig(root, config)
-        await disconnect(name)
-        onChange()
+        disconnect(name).catch(() => {})
       } else {
         server.enabled = true
         delete config.disabled[name]
