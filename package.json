@@ -1,6 +1,6 @@
 {
   "name": "picocode",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "a TUI coding agent built on trend and @prsm/ai",
   "type": "module",
   "license": "MIT",
@@ -28,7 +28,7 @@
     "@modelcontextprotocol/sdk": "^1.12.0",
     "@prsm/ai": "^1.5.0",
     "@shikijs/cli": "^3.0.0",
-    "@trendr/core": "^0.4.7",
+    "@trendr/core": "^0.4.8",
     "diff": "^7.0.0",
     "fast-glob": "^3.3.0"
   },
