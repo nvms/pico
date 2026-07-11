@@ -857,7 +857,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       title="MCP servers"
       hint={adding()
         ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
-        : 'space/enter toggle · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
+        : 'space/enter enable/disable · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {adding() ? (
