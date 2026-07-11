@@ -15,6 +15,7 @@ import { createSkillIndex } from '../core/skills.js'
 import { createCommandIndex } from '../core/commands.js'
 import { revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
+import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpdate } from '../core/update.js'
 import { memoryIndex } from '../core/memory.js'
 import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
@@ -64,6 +65,7 @@ const COMMANDS = [
   { name: 'cost', desc: 'Show token usage and estimated cost so far' },
   { name: 'context', desc: "Show what's in the model's context and how big each piece is" },
   { name: 'export', desc: 'Save the current conversation to a markdown file' },
+  { name: 'update', desc: 'Update pico to the latest release from npm' },
   { name: 'help', desc: 'List every command and what it does' },
 ]
 
@@ -225,8 +227,27 @@ export function App({ boot }) {
     render: (message) => <text style={{ bg: accent(), color: 'black', bold: true }}>{` ${message} `}</text>,
   })
 
+  const updateToast = useToast({
+    duration: 8000,
+    position: 'top-center',
+    render: (message) => (
+      <box style={{ bg: accent() }}>
+        <Shimmer color="black" highlight={HIGHLIGHT} duration={1500}>{` ${message} `}</Shimmer>
+      </box>
+    ),
+  })
+
   function flash(msg) {
     toast(msg)
+  }
+
+  if (!refs.updateChecked) {
+    refs.updateChecked = true
+    checkForUpdate(version).then((found) => {
+      if (!found) return
+      updateToast(`pico v${found.version} available · /update`)
+      found.markNotified()
+    }).catch(() => {})
   }
 
   function ensureSession() {
@@ -739,6 +760,15 @@ export function App({ boot }) {
       if (level === 'default') return setSessionEffort(null)
       if (!EFFORT_LEVELS.some((l) => l.key === level)) return flash('usage: /effort <default|low|medium|high|max>')
       return setSessionEffort(level)
+    }
+    if (c.name === 'update') {
+      if (isDevInstall(import.meta.url)) return flash('this pico runs from a source checkout · update it with git')
+      const latest = await fetchLatestVersion().catch(() => null)
+      if (latest && !newerVersion(version, latest)) return flash(`pico v${version} is already the latest`)
+      flash(`updating${latest ? ` to v${latest}` : ''}...`)
+      const result = await runUpdate()
+      if (result.ok) return flash(`updated${latest ? ` to v${latest}` : ''} · restart pico to use it`)
+      return flash(`update failed: ${result.output.slice(0, 100)}`)
     }
     if (c.name === 'context') return openContextPanel()
     if (c.name === 'help') return setView('help')

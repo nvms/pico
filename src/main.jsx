@@ -33,6 +33,26 @@ if (cli.mode === 'version') {
   console.log(pkg.version)
   process.exit(0)
 }
+if (cli.mode === 'update') {
+  const { isDevInstall, runUpdate, fetchLatestVersion, newerVersion } = await import('./core/update.js')
+  if (isDevInstall(import.meta.url)) {
+    console.error('this pico runs from a source checkout; update it with git, not npm')
+    process.exit(1)
+  }
+  const latest = await fetchLatestVersion().catch(() => null)
+  if (latest && !newerVersion(pkg.version, latest)) {
+    console.log(`pico v${pkg.version} is already the latest`)
+    process.exit(0)
+  }
+  console.error(`updating picocode ${latest ? `to v${latest} ` : ''}via npm...`)
+  const result = await runUpdate()
+  if (result.ok) {
+    console.log(`updated${latest ? ` to v${latest}` : ''}`)
+    process.exit(0)
+  }
+  console.error(`update failed:\n${result.output}`)
+  process.exit(1)
+}
 if (cli.mode === 'connect') {
   const { connectOpenAI } = await import('./core/openai-auth.js')
   try {
