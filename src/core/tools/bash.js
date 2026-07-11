@@ -10,10 +10,10 @@ function capped(text) {
 export function createBash({ cwd, recorder, signal, shells }) {
   return {
     name: 'bash',
-    description: 'Run a shell command in the working directory. Returns stdout, stderr, and exit code. Set background true for long-running processes like dev servers: it returns a shell id immediately; check on it with shell_output and stop it with shell_kill.',
+    description: 'Run a shell command in the working directory. Returns stdout, stderr, and exit code. Foreground commands are killed at the timeout (default 120s), so never wait on long externals like CI runs, deploys, or watch loops in the foreground: run those with background true, finish your turn, and the shell\'s exit will notify you so you can report the outcome. Background also fits long-lived processes like dev servers; check on a background shell with shell_output and stop it with shell_kill.',
     schema: {
       command: { type: 'string', description: 'the command to run' },
-      timeout: { type: 'number', description: 'timeout in milliseconds, default 120000', optional: true },
+      timeout: { type: 'number', description: 'foreground timeout in milliseconds, default 120000; prefer background true over a large timeout', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
     },
     execute: ({ command, timeout, background }) => {
