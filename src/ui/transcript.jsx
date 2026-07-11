@@ -72,11 +72,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
 
 export function Banner({ version }) {
   return (
-    <box style={{ flexDirection: 'row', paddingX: 2, marginTop: 1 }}>
-      <box style={{ flexDirection: 'column' }}>
-        <text style={{ color: accent() }}>{'(\\_/)'}</text>
-        <text style={{ color: accent() }}>{'(•ᴗ•)'}</text>
-      </box>
+    <box style={{ flexDirection: 'row', paddingX: 0, marginTop: 1 }}>
       <box style={{ flexDirection: 'column' }}>
         <text style={{ bold: true, color: accent() }}>{'  pico'}</text>
         <text style={{ color: FAINT }}>{`  v${version}`}</text>

@@ -1356,7 +1356,14 @@ export function App({ boot }) {
             setHistIdx(-1)
             setFilesDismissed(false)
           }}
-          onCancel={() => { if (busy()) interrupt(); else { setInput(''); setCmdCycle(null) } }}
+          onCancel={() => {
+            if (busy()) interrupt()
+            else {
+              setCmdCycle(null)
+              setCompleting(false)
+              setFilesDismissed(true)
+            }
+          }}
           onSubmit={send}
           onKeyDown={(e) => {
             if (e.key === 'tab' && !e.ctrl && !e.meta && showFiles && matchedFiles.length > 0) {
