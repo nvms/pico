@@ -1053,9 +1053,12 @@ export function App({ boot }) {
       const tail = state.transcript.slice(target.index)
       const text = tail.filter((m) => m.text).map((m) => `${m.kind}: ${m.text}`).join('\n')
       flash('summarizing...')
-      summaryText = await summarizeText({ text, modelName: model().name }).catch(() =>
-        tail.filter((m) => m.text).slice(0, 3).map((m) => m.text.split(/\s+/).slice(0, 6).join(' ')).join(' · '),
-      )
+      let auth = null
+      if (model().provider === 'codex') auth = await openaiCredentials().catch(() => null)
+      summaryText = await summarizeText({ text, modelName: model().name, auth }).catch(() => {
+        flash('summary model call failed · kept a crude digest of the rewound turns')
+        return tail.filter((m) => m.text).slice(0, 3).map((m) => m.text.split(/\s+/).slice(0, 6).join(' ')).join(' · ')
+      })
     }
 
     const event = makeEvent('rewind', { target: target.eventId, mode: opt.key, summaryText, reverted, skipped })

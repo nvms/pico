@@ -56,11 +56,13 @@ export function compactProgress(streamed) {
   return { phase: 'writing', section: Math.min(8, sections), chars }
 }
 
-export async function summarizeText({ text, modelName }) {
+export async function summarizeText({ text, modelName, auth }) {
   const out = await compose(
     model({
       model: modelName,
       system: 'Summarize the following conversation excerpt in 2-4 dense sentences. Capture decisions, changes made, and open questions. Output only the summary.',
+      ...(auth?.apiKey && { apiKey: auth.apiKey }),
+      ...(auth?.headers && { headers: auth.headers }),
     }),
   )(text.slice(0, 30000))
   return getText(out.lastResponse?.content || '').trim()
