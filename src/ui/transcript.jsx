@@ -10,21 +10,32 @@ function diffPreviewLines(diff, revert) {
   return Math.max(String(revert?.after || '').split('\n').length, String(revert?.before || '').split('\n').length, 2)
 }
 
-function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose }) {
+function fmtDuration(ms) {
+  if (ms < 1000) return `${(ms / 1000).toFixed(2)}s`
+  if (ms < 10000) return `${(ms / 1000).toFixed(1)}s`
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  const secs = Math.round(ms / 1000)
+  return `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, startedAt, durationMs }) {
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'
   const failed = status === 'error'
   const outLines = fullOutput ? fullOutput.split('\n') : null
 
-  const info = running ? 'running'
+  const elapsed = running && startedAt ? Date.now() - startedAt : 0
+  const took = !running && !background && durationMs != null ? fmtDuration(durationMs) : null
+
+  const info = running ? (elapsed >= 5000 ? `running (${fmtDuration(elapsed)})` : 'running')
     : interrupted ? 'interrupted'
     : reverted ? 'reverted'
-    : failed ? 'failed'
+    : failed ? `failed${took ? ` · ${took}` : ''}`
     : background ? 'background · /shells'
-    : diff ? `+${diff.additions} -${diff.deletions}`
-    : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'} · ctrl+o`
-    : 'done'
+    : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
+    : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''} · ctrl+o`
+    : `done${took ? ` · ${took}` : ''}`
 
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>

@@ -427,6 +427,7 @@ export function App({ boot }) {
             name: event.call.function.name,
             title: uiTitle(event.call.function.name, args),
             status: 'running',
+            startedAt: Date.now(),
           })
           return next
         })
