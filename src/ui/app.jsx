@@ -1128,9 +1128,10 @@ export function App({ boot }) {
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
-  // the rich two-pane panels dim the conversation behind them; quick pickers
-  // (effort, theme) stay lightweight and leave it alone
-  const dimmingPanel = () => anyPanel() && !showEffortPanel() && !showThemePanel()
+  // every focus-taking panel dims the conversation behind it; the theme
+  // picker is the one exemption, since its job is previewing palettes on
+  // the undimmed ui
+  const dimmingPanel = () => anyPanel() && !showThemePanel()
 
   function killShell(shell) {
     if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
