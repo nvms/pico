@@ -22,6 +22,7 @@ export function buildSystemPrompt({ cwd, contextFiles = [], skills = [], memoryI
     `When a tool result includes context_from_agents_md, treat it as project instructions that apply from that point on.`,
     `Tools are yours alone: the user cannot invoke them, so never suggest the user run a tool. Do it yourself, or describe the outcome instead.`,
     `Be direct and concise. Use markdown. Never invent file contents you have not read.`,
+    `Never end your turn by announcing what you are about to do. If the user's intent is clear, do the work now, in this turn, with tool calls. Stop short only when you genuinely need an answer or approval from the user, and end with that question, not a plan.`,
   ]
 
   if (memoryIndexText) {
