@@ -81,28 +81,27 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       status: projectConfig.disabled[name] ? 'disabled' : 'idle',
       error: null,
       connection: null,
+      transport: null,
     })
   }
   for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
   for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
 
-  async function transportFactory(command) {
+  async function createTransport(command) {
     const spec = parseServerSpec(command)
     if (spec.type === 'http') {
       const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      return () =>
-        new StreamableHTTPClientTransport(new URL(spec.url), {
-          requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
-        })
+      return new StreamableHTTPClientTransport(new URL(spec.url), {
+        requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
+      })
     }
     const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-    return () =>
-      new StdioClientTransport({
-        command: spec.command,
-        args: spec.args,
-        env: { ...process.env, ...spec.env },
-        stderr: 'pipe',
-      })
+    return new StdioClientTransport({
+      command: spec.command,
+      args: spec.args,
+      env: { ...process.env, ...spec.env },
+      stderr: 'pipe',
+    })
   }
 
   async function connect(name) {
@@ -112,15 +111,17 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     server.error = null
     onChange()
     try {
+      server.transport = await createTransport(server.command)
       server.connection = await connectMCP({
         name,
-        transport: await transportFactory(server.command),
+        transport: () => server.transport,
       })
       server.status = 'connected'
     } catch (err) {
       server.status = 'error'
       server.error = String(err.message || err).slice(0, 300)
       server.connection = null
+      server.transport = null
     }
     onChange()
   }
@@ -151,7 +152,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         registry.servers[name] = command
         await writeRegistry(registry)
       }
-      servers.set(name, { name, command, scope, enabled: true, status: 'idle', error: null, connection: null })
+      servers.set(name, { name, command, scope, enabled: true, status: 'idle', error: null, connection: null, transport: null })
       await connect(name)
     },
     async remove(name) {
@@ -209,8 +210,18 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         .filter((s) => s.connection)
         .flatMap((s) => s.connection.tools)
     },
-    async closeAll() {
-      for (const name of servers.keys()) await disconnect(name)
+    closeAll() {
+      return Promise.allSettled([...servers.keys()].map(disconnect))
+    },
+    terminateAll() {
+      for (const server of servers.values()) {
+        const pid = server.transport?.pid
+        if (pid) {
+          try {
+            process.kill(pid, 'SIGTERM')
+          } catch {}
+        }
+      }
     },
   }
 }

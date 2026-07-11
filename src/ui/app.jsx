@@ -1181,7 +1181,8 @@ export function App({ boot }) {
       const now = Date.now()
       if (now - refs.quitAt < 1500) {
         boot.shells.killAll()
-        mcp.closeAll().catch(() => {}).finally(() => process.exit(0))
+        mcp.terminateAll()
+        process.exit(0)
       } else {
         refs.quitAt = now
         const running = boot.shells.running()
