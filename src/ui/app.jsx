@@ -1369,7 +1369,7 @@ export function App({ boot }) {
         </box>
       )}
 
-      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: 1 }}>
+      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: 1, dim: dimmingPanel() }}>
         <text style={{ color: accent(), bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
