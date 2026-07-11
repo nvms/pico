@@ -528,6 +528,8 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
 export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDismiss, onClose }) {
   const [viewing, setViewing] = createSignal(null)
   const [index, setIndex] = createSignal(0)
+  const [follow, setFollow] = createSignal(true)
+  const [offset, setOffset] = createSignal(0)
   useEscape(() => focused, () => (viewing() ? setViewing(null) : onClose()))
   void version
 
@@ -563,7 +565,16 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
             {lines.length === 0 ? (
               <text style={{ color: FAINT }}>no output yet</text>
             ) : (
-              <ScrollBox style={{ flexGrow: 1 }} focused={focused} scrollOffset={1e9} onScroll={() => {}} scrollbar>
+              <ScrollBox
+                style={{ flexGrow: 1 }}
+                focused={focused}
+                scrollOffset={follow() ? 1e9 : offset()}
+                onScroll={(next, meta) => {
+                  setFollow(!!meta?.atBottom)
+                  setOffset(next)
+                }}
+                scrollbar
+              >
                 {lines.map((line, i) => (
                   <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>
                 ))}
@@ -589,7 +600,11 @@ export function ShellsPanel({ version, shells, readOutput, focused, onKill, onDi
             focused={focused}
             maxVisible={6}
             vimKeys
-            onSubmit={(s) => setViewing(s.id)}
+            onSubmit={(s) => {
+              setFollow(true)
+              setOffset(0)
+              setViewing(s.id)
+            }}
             onCancel={onClose}
             renderItem={(s, { active }) => (
               <box style={{ flexDirection: 'row' }}>
