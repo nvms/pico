@@ -3,7 +3,7 @@ import { createSignal } from '@trendr/core'
 const PALETTES = {
   dark: {
     desc: 'light text for dark terminals',
-    accent: '#6BE795',
+    accent: '#22d3ee',
     fg: '#e5e7eb',
     fgSoft: '#9ca3af',
     muted: '#6b7280',

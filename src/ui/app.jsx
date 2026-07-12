@@ -1513,7 +1513,7 @@ export function App({ boot }) {
           clearOnSubmit
           focused={fm.is('input') && !anyPanel()}
           maxHeight={8}
-          placeholder="enter to send · / commands · @ files · tab to scroll"
+          placeholder="Ask anything"
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
       </box>
