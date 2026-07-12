@@ -1328,10 +1328,17 @@ export function App({ boot }) {
   })()
 
   const { usageActive: usage } = derived()
+  const contextPercent = model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name
+    ? Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
+    : 0
   const animatedPromptTokens = useAnimated(usage.promptTokens, ease(500))
   const animatedCompletionTokens = useAnimated(usage.completionTokens, ease(500))
+  const animatedThoughtTokens = useAnimated(usage.thoughtTokens, ease(500))
+  const animatedContextPercent = useAnimated(contextPercent, ease(500))
   animatedPromptTokens.set(usage.promptTokens)
   animatedCompletionTokens.set(usage.completionTokens)
+  animatedThoughtTokens.set(usage.thoughtTokens)
+  animatedContextPercent.set(contextPercent)
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   const pendingWakeups = boot.wakeups.pending()
@@ -1846,9 +1853,9 @@ export function App({ boot }) {
         <text style={{ color: MUTED }}>{`${compactNumber(animatedPromptTokens())} in`}</text>
         <text style={{ color: FAINT }}>↓</text>
         <text style={{ color: MUTED }}>{`${compactNumber(animatedCompletionTokens())} out`}</text>
-        {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${usage.thoughtTokens.toLocaleString()} think`}</text>}
-        {model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name && (() => {
-          const pct = Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
+        {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${Math.round(animatedThoughtTokens()).toLocaleString()} think`}</text>}
+        {contextPercent > 0 && (() => {
+          const pct = Math.round(animatedContextPercent())
           return <text style={{ color: pct >= 80 ? RED : MUTED }}>{`ctx ${pct}%`}</text>
         })()}
       </box>
