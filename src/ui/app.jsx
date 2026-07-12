@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, ease, useAnimated, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -29,6 +29,7 @@ import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeIma
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from './format.js'
+import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
@@ -1332,14 +1333,6 @@ export function App({ boot }) {
   const contextPercent = model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name
     ? Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
     : 0
-  const animatedPromptTokens = useAnimated(usage.promptTokens, ease(500))
-  const animatedCompletionTokens = useAnimated(usage.completionTokens, ease(500))
-  const animatedThoughtTokens = useAnimated(usage.thoughtTokens, ease(500))
-  const animatedContextPercent = useAnimated(contextPercent, ease(500))
-  animatedPromptTokens.set(usage.promptTokens)
-  animatedCompletionTokens.set(usage.completionTokens)
-  animatedThoughtTokens.set(usage.thoughtTokens)
-  animatedContextPercent.set(contextPercent)
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   const pendingWakeups = boot.wakeups.pending()
@@ -1844,7 +1837,7 @@ export function App({ boot }) {
               )}
             </box>
           )
-          : <text style={{ color: FAINT, overflow: 'truncate' }}>{boot.displayCwd}</text>}
+          : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}
         <box style={{ flexGrow: 1 }} />
         {process.env.PICO_PERF && (() => {
           const stats = useFrameStats()
@@ -1853,15 +1846,18 @@ export function App({ boot }) {
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
-        <text style={{ color: FAINT }}>↑</text>
-        <text style={{ color: MUTED }}>{`${compactNumber(animatedPromptTokens())} in`}</text>
-        <text style={{ color: FAINT }}>↓</text>
-        <text style={{ color: MUTED }}>{`${compactNumber(animatedCompletionTokens())} out`}</text>
-        {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${Math.round(animatedThoughtTokens()).toLocaleString()} think`}</text>}
-        {contextPercent > 0 && (() => {
-          const pct = Math.round(animatedContextPercent())
-          return <text style={{ color: pct >= 80 ? RED : MUTED }}>{`ctx ${pct}%`}</text>
-        })()}
+        <text style={{ color: MUTED }}>↑</text>
+        <box style={{ flexDirection: 'row' }}>
+          <AnimatedValue value={usage.promptTokens} color={MUTED} highlight={accent()} format={compactNumber} />
+          <text style={{ color: MUTED }}> in</text>
+        </box>
+        <text style={{ color: MUTED }}>↓</text>
+        <box style={{ flexDirection: 'row' }}>
+          <AnimatedValue value={usage.completionTokens} color={MUTED} highlight={accent()} format={compactNumber} />
+          <text style={{ color: MUTED }}> out</text>
+        </box>
+        {usage.thoughtTokens > 0 && <AnimatedValue value={usage.thoughtTokens} color={MUTED} highlight={accent()} format={(n) => `✦ ${Math.round(n).toLocaleString()} think`} />}
+        {contextPercent > 0 && <AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : MUTED} highlight={accent()} format={(n) => `ctx ${Math.round(n)}%`} />}
       </box>
     </box>
   )

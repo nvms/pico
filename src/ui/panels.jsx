@@ -1,5 +1,6 @@
 import { createSignal, Button, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
+import { AnimatedValue } from './animated-value.jsx'
 import { homedir } from 'node:os'
 import { fuzzyScore } from './fuzzy.js'
 
@@ -445,10 +446,8 @@ export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }
 
 function ContextOverview({ overview }) {
   const reveal = useAnimated(0, ease(700))
-  const animatedTokens = overview.segments.map(() => useAnimated(0, ease(1000)))
   const layout = useLayout()
   reveal.set(1)
-  overview.segments.forEach((segment, i) => animatedTokens[i].set(segment.tokens))
   const width = Math.max(1, layout.width || 1)
   const visible = Math.round(width * reveal())
   const total = overview.segments.reduce((sum, segment) => sum + segment.tokens, 0)
@@ -472,16 +471,20 @@ function ContextOverview({ overview }) {
     <box style={{ flexDirection: 'column', marginTop: 1 }}>
       <box style={{ flexDirection: 'row' }}>{cells}</box>
       <box style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-        {overview.segments.map((segment, i) => {
-          const tokens = Math.round(animatedTokens[i]())
-          return (
-            <box key={segment.label} style={{ flexDirection: 'row', marginRight: 2 }}>
-              <text style={{ color: segment.color }}>■</text>
-              <text style={{ color: MUTED }}>{` ${segment.label} `}</text>
-              <text style={{ color: FAINT }}>{tokens < 1000 ? `${tokens} tok` : `${(tokens / 1000).toFixed(1)}k`}</text>
-            </box>
-          )
-        })}
+        {overview.segments.map((segment) => (
+          <box key={segment.label} style={{ flexDirection: 'row', marginRight: 2 }}>
+            <text style={{ color: segment.color }}>■</text>
+            <text style={{ color: MUTED }}>{` ${segment.label} `}</text>
+            <AnimatedValue
+              value={segment.tokens}
+              initial={0}
+              duration={2000}
+              color={FAINT}
+              highlight={accent()}
+              format={(tokens) => tokens < 1000 ? `${Math.round(tokens)} tok` : `${(tokens / 1000).toFixed(1)}k`}
+            />
+          </box>
+        ))}
       </box>
       <text style={{ color: FAINT }}>{`~${(total / 1000).toFixed(1)}k of ${(overview.limit / 1000).toFixed(0)}k context`}</text>
     </box>
