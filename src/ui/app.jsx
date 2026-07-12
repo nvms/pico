@@ -1408,11 +1408,11 @@ export function App({ boot }) {
       )}
 
       <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && boot.clouds ? 0 : 1, dim: dimmingPanel() }}>
-        <text style={{ color: accent(), bold: true }}>{'❯'}</text>
+        <text style={{ color: fm.is('input') && !anyPanel() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
           <box style={{ position: 'absolute', top: 0, right: 0 }}>
-            <text style={{ bg: accent(), color: 'black', bold: true }}>{` ${derived().title} `}</text>
+            <text style={{ bg: fm.is('input') && !anyPanel() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>
           </box>
         )}
         <TextArea
