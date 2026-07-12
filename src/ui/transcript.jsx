@@ -84,17 +84,6 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
   )
 }
 
-export function Banner({ version }) {
-  return (
-    <box style={{ flexDirection: 'row', paddingX: 0, marginTop: 1 }}>
-      <box style={{ flexDirection: 'column' }}>
-        <text style={{ bold: true, color: accent() }}>{'  pico'}</text>
-        <text style={{ color: FAINT }}>{`  v${version}`}</text>
-      </box>
-    </box>
-  )
-}
-
 export function Message({ item, verbose }) {
   if (item.kind === 'tool') {
     return <ToolCard {...item} verbose={verbose} />

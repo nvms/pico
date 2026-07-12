@@ -29,7 +29,8 @@ import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeIma
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from './format.js'
-import { Message, Banner, uiTitle } from './transcript.jsx'
+import { Message, uiTitle } from './transcript.jsx'
+import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
@@ -1355,7 +1356,11 @@ export function App({ boot }) {
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
-      <ScrollBox
+      {transcript.length === 0 ? (
+        <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
+          <EmptyState version={version} clouds={boot.clouds} />
+        </box>
+      ) : <ScrollBox
         style={{ flexGrow: 1, dim: dimmingPanel() }}
         focused={fm.is('feed')}
         scrollOffset={follow() ? 1e9 : offset()}
@@ -1377,7 +1382,6 @@ export function App({ boot }) {
         }}
         scrollbar
       >
-        {items.length === 0 && <Banner version={version} />}
         {hiddenCount > 0 && (
           <box style={{ paddingX: 2 }}>
             <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
@@ -1387,7 +1391,7 @@ export function App({ boot }) {
         {streaming() !== null && streaming() !== '' && (
           <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
         )}
-      </ScrollBox>
+      </ScrollBox>}
 
       {queued().length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
@@ -1403,7 +1407,7 @@ export function App({ boot }) {
         </box>
       )}
 
-      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: 1, dim: dimmingPanel() }}>
+      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && boot.clouds ? 0 : 1, dim: dimmingPanel() }}>
         <text style={{ color: accent(), bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (

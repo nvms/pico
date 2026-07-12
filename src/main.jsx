@@ -137,6 +137,7 @@ const boot = {
   dredge: resolveDredge(config),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   autoCompact: config.autoCompact !== false,
+  clouds: config.animation?.clouds === true,
   refs: {},
   shells,
   wakeups,
