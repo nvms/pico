@@ -20,14 +20,19 @@ export function timeAgo(at) {
 
 function PanelFrame({ title, hint, right, children }) {
   return (
-    <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
-      <box style={{ flexDirection: 'row' }}>
-        <text style={{ color: accent(), bold: true }}>{title}</text>
-        <box style={{ flexGrow: 1 }} />
-        {right}
+    <box style={{ flexDirection: 'column', marginTop: 1, bg: PANEL_BG }}>
+      <box style={{ flexDirection: 'column', paddingX: 2, paddingTop: 1 }}>
+        <box style={{ flexDirection: 'row' }}>
+          <text style={{ color: accent(), bold: true }}>{title}</text>
+          <box style={{ flexGrow: 1 }} />
+          {right}
+        </box>
+        <text style={{ color: MUTED }}>{hint}</text>
       </box>
-      <text style={{ color: MUTED }}>{hint}</text>
-      {children}
+      <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>
+      <box style={{ flexDirection: 'column', paddingX: 2, paddingBottom: 1 }}>
+        {children}
+      </box>
     </box>
   )
 }
