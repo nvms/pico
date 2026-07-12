@@ -661,7 +661,20 @@ export function App({ boot }) {
       })
     }
 
-    setInfoPanel({ title: `Context · ${model().name}`, rows })
+    const contextSegments = [
+      { label: 'system', tokens: est(systemBase) },
+      { label: 'tools', tokens: toolTokens },
+      { label: 'project', tokens: Math.max(0, est(systemFull) - est(systemBase)) },
+      ...(summaryTokens ? [{ label: 'summary', tokens: summaryTokens }] : []),
+      { label: 'conversation', tokens: messageTokens },
+    ].filter((segment) => segment.tokens > 0)
+      .map((segment, i) => ({ ...segment, color: ['#67b7ff', '#c792ea', '#f7c66a', '#f78c6c', '#6be795'][i] }))
+
+    setInfoPanel({
+      title: `Context · ${model().name}`,
+      rows,
+      overview: limit ? { limit, segments: contextSegments } : null,
+    })
   }
 
   const themeItems = () => [
@@ -1671,6 +1684,7 @@ export function App({ boot }) {
         <InfoListPanel
           title={infoPanel().title}
           rows={infoPanel().rows}
+          overview={infoPanel().overview}
           focused={infoPanel() !== null}
           onClose={() => setInfoPanel(null)}
         />

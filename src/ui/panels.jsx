@@ -1,4 +1,4 @@
-import { createSignal, Button, Menu, PickList, Radio, ScrollBox, TextInput, useFocus, useInput, useInterval } from '@trendr/core'
+import { createSignal, Button, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
 import { homedir } from 'node:os'
 import { fuzzyScore } from './fuzzy.js'
@@ -438,11 +438,57 @@ export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }
   )
 }
 
-export function InfoListPanel({ title, rows, focused, onClose }) {
+function ContextOverview({ overview }) {
+  const reveal = useAnimated(0, ease(700))
+  const animatedTokens = overview.segments.map(() => useAnimated(0, ease(1000)))
+  const layout = useLayout()
+  reveal.set(1)
+  overview.segments.forEach((segment, i) => animatedTokens[i].set(segment.tokens))
+  const width = Math.max(1, layout.width || 1)
+  const visible = Math.round(width * reveal())
+  const total = overview.segments.reduce((sum, segment) => sum + segment.tokens, 0)
+  let boundary = 0
+  const cells = []
+
+  for (let i = 0; i < width; i++) {
+    const segment = overview.segments.find((item) => {
+      boundary += item.tokens / overview.limit * width
+      return i < boundary
+    })
+    boundary = 0
+    cells.push(
+      <text key={i} style={{ color: i >= visible ? PANEL_BG : segment?.color || FAINT }}>
+        {i >= visible ? ' ' : segment ? '█' : '░'}
+      </text>,
+    )
+  }
+
+  return (
+    <box style={{ flexDirection: 'column', marginTop: 1 }}>
+      <box style={{ flexDirection: 'row' }}>{cells}</box>
+      <box style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+        {overview.segments.map((segment, i) => {
+          const tokens = Math.round(animatedTokens[i]())
+          return (
+            <box key={segment.label} style={{ flexDirection: 'row', marginRight: 2 }}>
+              <text style={{ color: segment.color }}>■</text>
+              <text style={{ color: MUTED }}>{` ${segment.label} `}</text>
+              <text style={{ color: FAINT }}>{tokens < 1000 ? `${tokens} tok` : `${(tokens / 1000).toFixed(1)}k`}</text>
+            </box>
+          )
+        })}
+      </box>
+      <text style={{ color: FAINT }}>{`~${(total / 1000).toFixed(1)}k of ${(overview.limit / 1000).toFixed(0)}k context`}</text>
+    </box>
+  )
+}
+
+export function InfoListPanel({ title, rows, overview, focused, onClose }) {
   useEscape(() => focused, onClose)
 
   return (
     <PanelFrame title={title} hint="j/k or ↑↓ to scroll · esc close">
+      {overview && <ContextOverview overview={overview} />}
       <box style={{ flexDirection: 'column', height: 14, marginTop: 1 }}>
         {rows.length === 0 ? (
           <text style={{ color: FAINT }}>nothing here yet</text>
