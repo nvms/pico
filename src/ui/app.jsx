@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, ease, useAnimated, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -28,6 +28,7 @@ import { completionContext, applyCompletion } from './completion.js'
 import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths, inputTextFromContent } from './attachments.js'
 import { listFiles } from './files.js'
 import { highlightVersion } from './highlight.js'
+import { compactNumber } from './format.js'
 import { Message, Banner, uiTitle } from './transcript.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
@@ -1314,6 +1315,10 @@ export function App({ boot }) {
   })()
 
   const { usageActive: usage } = derived()
+  const animatedPromptTokens = useAnimated(usage.promptTokens, ease(500))
+  const animatedCompletionTokens = useAnimated(usage.completionTokens, ease(500))
+  animatedPromptTokens.set(usage.promptTokens)
+  animatedCompletionTokens.set(usage.completionTokens)
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   const pendingWakeups = boot.wakeups.pending()
@@ -1824,9 +1829,9 @@ export function App({ boot }) {
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
         <text style={{ color: FAINT }}>↑</text>
-        <text style={{ color: MUTED }}>{`${usage.promptTokens.toLocaleString()} in`}</text>
+        <text style={{ color: MUTED }}>{`${compactNumber(animatedPromptTokens())} in`}</text>
         <text style={{ color: FAINT }}>↓</text>
-        <text style={{ color: MUTED }}>{`${usage.completionTokens.toLocaleString()} out`}</text>
+        <text style={{ color: MUTED }}>{`${compactNumber(animatedCompletionTokens())} out`}</text>
         {usage.thoughtTokens > 0 && <text style={{ color: FAINT }}>{`✦ ${usage.thoughtTokens.toLocaleString()} think`}</text>}
         {model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name && (() => {
           const pct = Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
