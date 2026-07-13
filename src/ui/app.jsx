@@ -1864,6 +1864,10 @@ export function App({ boot }) {
             mcp.add(name, command, scope)
             flash(`added ${name} (${scope})`)
           }}
+          onEdit={(name, command) => {
+            mcp.update(name, command)
+            flash(`updated ${name}`)
+          }}
           onInvalid={flash}
           onClose={() => setShowMcpPanel(false)}
         />

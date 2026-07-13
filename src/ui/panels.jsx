@@ -3,6 +3,7 @@ import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './t
 import { AnimatedValue } from './animated-value.jsx'
 import { homedir } from 'node:os'
 import { fuzzyScore } from './fuzzy.js'
+import { formatHttpServerSpec, parseServerSpec, redactServerSpec, REDACTED_HEADER } from '../core/mcp.js'
 
 function shortenHome(path) {
   const home = homedir()
@@ -885,20 +886,27 @@ function FormField({ label, active, children }) {
   )
 }
 
-function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
-  const [name, setName] = createSignal('')
-  const [scope, setScope] = createSignal('global')
-  const [transport, setTransport] = createSignal('stdio')
-  const [target, setTarget] = createSignal('')
-  const [headers, setHeaders] = createSignal('')
+function McpServerForm({ focused, server, onSave, onInvalid, onCancel }) {
+  const initial = server ? parseServerSpec(server.command) : null
+  const editing = !!server
+  const [name, setName] = createSignal(server?.name || '')
+  const [scope, setScope] = createSignal(server?.scope || 'global')
+  const [transport, setTransport] = createSignal(initial?.type || 'stdio')
+  const [target, setTarget] = createSignal(initial?.type === 'http' ? initial.url : server?.command || '')
+  const initialHeaders = initial?.type === 'http'
+    ? Object.fromEntries(Object.keys(initial.headers).map((name) => [name, REDACTED_HEADER]))
+    : {}
+  const [headers, setHeaders] = createSignal(formatHttpServerSpec('', initialHeaders).trim())
 
-  const fm = useFocus({ initial: 'name' })
-  fm.item('name')
-  fm.item('scope')
+  const fm = useFocus({ initial: editing ? 'transport' : 'name' })
+  if (!editing) {
+    fm.item('name')
+    fm.item('scope')
+  }
   fm.item('transport')
   fm.item('target')
   if (transport() === 'http') fm.item('headers')
-  fm.item('add')
+  fm.item('save')
   fm.item('cancel')
 
   useInput((event) => {
@@ -919,19 +927,35 @@ function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
     if (http && !/^https?:\/\//.test(value)) return onInvalid('url must start with http:// or https://')
     if (!http && /^https?:\/\//.test(value)) return onInvalid('a stdio command cannot start with a url; pick the http transport')
     const extra = headers().trim()
-    onAdd(serverName, http && extra ? `${value} ${extra}` : value, scope())
+    let spec = http && extra ? `${value} ${extra}` : value
+    try {
+      const parsed = parseServerSpec(spec)
+      if (parsed.type === 'http' && initial?.type === 'http') {
+        for (const [header, headerValue] of Object.entries(parsed.headers)) {
+          if (headerValue === REDACTED_HEADER && initial.headers[header] !== undefined) parsed.headers[header] = initial.headers[header]
+        }
+        spec = formatHttpServerSpec(parsed.url, parsed.headers)
+      }
+    } catch (err) {
+      return onInvalid(err.message)
+    }
+    onSave(serverName, spec, scope())
   }
 
   return (
     <box style={{ flexDirection: 'column', marginTop: 1 }}>
-      <FormField label="name" active={fm.is('name')}>
-        <box style={{ bg: PANEL_BG, paddingX: 1 }}>
-          <TextInput focused={focused && fm.is('name')} placeholder="linear" onChange={setName} />
-        </box>
-      </FormField>
-      <FormField label="scope" active={fm.is('scope')}>
-        <Radio options={['global', 'project']} selected={scope()} onChange={setScope} focused={focused && fm.is('scope')} />
-      </FormField>
+      {!editing && (
+        <FormField label="name" active={fm.is('name')}>
+          <box style={{ bg: PANEL_BG, paddingX: 1 }}>
+            <TextInput focused={focused && fm.is('name')} placeholder="linear" onChange={setName} />
+          </box>
+        </FormField>
+      )}
+      {!editing && (
+        <FormField label="scope" active={fm.is('scope')}>
+          <Radio options={['global', 'project']} selected={scope()} onChange={setScope} focused={focused && fm.is('scope')} />
+        </FormField>
+      )}
       <FormField label="transport" active={fm.is('transport')}>
         <Radio options={['stdio', 'http']} selected={transport()} onChange={setTransport} focused={focused && fm.is('transport')} />
       </FormField>
@@ -940,6 +964,7 @@ function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
           <TextInput
             focused={focused && fm.is('target')}
             placeholder={http ? 'https://mcp.linear.app/mcp' : 'npx -y @modelcontextprotocol/server-filesystem /tmp'}
+            initialValue={target()}
             onChange={setTarget}
           />
         </box>
@@ -947,12 +972,12 @@ function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
       {http && (
         <FormField label="headers · optional" active={fm.is('headers')}>
           <box style={{ bg: PANEL_BG, paddingX: 1 }}>
-            <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' onChange={setHeaders} />
+            <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' initialValue={headers()} onChange={setHeaders} />
           </box>
         </FormField>
       )}
       <box style={{ flexDirection: 'row' }}>
-        <Button label="add" onPress={submit} focused={focused && fm.is('add')} />
+        <Button label={editing ? 'save' : 'add'} onPress={submit} focused={focused && fm.is('save')} />
         <text>  </text>
         <Button label="cancel" onPress={onCancel} focused={focused && fm.is('cancel')} variant="dim" />
       </box>
@@ -960,11 +985,11 @@ function McpAddForm({ focused, onAdd, onInvalid, onCancel }) {
   )
 }
 
-export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, onAdd, onInvalid, onClose }) {
-  const [adding, setAdding] = createSignal(false)
+export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, onAdd, onEdit, onInvalid, onClose }) {
+  const [form, setForm] = createSignal(null)
   const [index, setIndex] = createSignal(0)
   const [viewing, setViewing] = createSignal(null)
-  useEscape(() => focused && !adding(), () => (viewing() ? setViewing(null) : onClose()))
+  useEscape(() => focused && !form(), () => (viewing() ? setViewing(null) : onClose()))
 
   const selected = () => servers[Math.min(index(), servers.length - 1)] || null
   const viewed = () => servers.find((s) => s.name === viewing()) || null
@@ -998,20 +1023,22 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
   return (
     <PanelFrame
       title="MCP servers"
-      hint={adding()
+      hint={form()
         ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
-        : 'enter enable/disable · t tools · r reconnect · a add · ctrl+x remove (twice) · esc close'}
+        : 'enter enable/disable · t tools · e edit · r reconnect · a add · ctrl+x remove (twice) · esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
-        {adding() ? (
-          <McpAddForm
+        {form() ? (
+          <McpServerForm
             focused={focused}
-            onAdd={(name, spec, scope) => {
-              onAdd(name, spec, scope)
-              setAdding(false)
+            server={form() === 'add' ? null : form()}
+            onSave={(name, spec, scope) => {
+              if (form() === 'add') onAdd(name, spec, scope)
+              else onEdit(name, spec)
+              setForm(null)
             }}
             onInvalid={onInvalid}
-            onCancel={() => setAdding(false)}
+            onCancel={() => setForm(null)}
           />
         ) : servers.length === 0 ? (
           <text style={{ color: FAINT }}>no MCP servers configured · press a to add one</text>
@@ -1044,7 +1071,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                   <box style={{ flexDirection: 'row', height: 1 }}>
                     <text>{'     '}</text>
                     <box style={{ flexGrow: 1, height: 1 }}>
-                      <text style={{ overflow: 'truncate', color: FAINT }}>{shortenHome(s.command)}</text>
+                      <text style={{ overflow: 'truncate', color: FAINT }}>{shortenHome(redactServerSpec(s.command))}</text>
                     </box>
                     <text style={{ color: FAINT }}>{`  ${s.scope === 'project' ? 'project' : 'global'}`}</text>
                   </box>
@@ -1054,12 +1081,13 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
           />
         )}
       </box>
-      {!adding() && (
+      {!form() && (
         <McpKeys
           focused={focused}
           onKey={(key) => {
             const s = selected()
-            if (key === 'a') setAdding(true)
+            if (key === 'a') setForm('add')
+            else if (s && key === 'e') setForm(s)
             else if (s && key === 'r') onReconnect(s.name)
             else if (s && key === 'remove') onRemove(s.name)
             else if (s && key === 't') setViewing(s.name)
@@ -1078,7 +1106,7 @@ function McpKeys({ focused, onKey }) {
       event.stopPropagation()
       return
     }
-    if (!event.ctrl && ['a', 'r', 't'].includes(event.key)) {
+    if (!event.ctrl && ['a', 'e', 'r', 't'].includes(event.key)) {
       onKey(event.key)
       event.stopPropagation()
     }

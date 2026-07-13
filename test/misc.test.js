@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseLine, parseLines, makeEvent } from '../src/core/events.js'
-import { parseCommand, parseServerSpec } from '../src/core/mcp.js'
+import { parseCommand, parseServerSpec, redactServerSpec } from '../src/core/mcp.js'
 import { parseFrontmatter, createSkillIndex } from '../src/core/skills.js'
 import { discoverKeys } from '../src/core/keys.js'
 import { defaultModel, estimateCost, findModel } from '../src/core/models.js'
@@ -66,6 +66,14 @@ test('parseServerSpec routes urls to http and commands to stdio', () => {
   })
 })
 
+test('redactServerSpec hides sensitive http headers', () => {
+  assert.equal(
+    redactServerSpec('https://mcp.example.com/mcp Authorization="Bearer abc==" X-Team=core X-API-Key=secret'),
+    'https://mcp.example.com/mcp Authorization=•••••••• X-Team=core X-API-Key=••••••••',
+  )
+  assert.equal(redactServerSpec('TOKEN=secret node server.js'), 'TOKEN=secret node server.js')
+})
+
 test('mcp runtime merges global and project servers, scopes writes', async () => {
   const { createMcpRuntime, writeRegistry, writeProjectConfig, readProjectConfig, readRegistry } = await import('../src/core/mcp.js')
   const { mkdtemp } = await import('node:fs/promises')
@@ -84,6 +92,10 @@ test('mcp runtime merges global and project servers, scopes writes', async () =>
   assert.equal(byName.local.scope, 'project')
   assert.equal(byName.shared.scope, 'project')
   assert.equal(byName.shared.command, 'project-cmd')
+
+  await mcp.update('local', 'node changed.js')
+  assert.equal((await readProjectConfig(root)).servers.local, 'node changed.js')
+  assert.equal(mcp.list().find((s) => s.name === 'local').command, 'node changed.js')
 
   await mcp.remove('local')
   assert.deepEqual((await readProjectConfig(root)).servers, { shared: 'project-cmd' })
