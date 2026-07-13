@@ -14,8 +14,18 @@ export async function readConfig() {
   }
 }
 
+function mergeConfig(base, patch) {
+  const result = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    result[key] = value && typeof value === 'object' && !Array.isArray(value)
+      ? mergeConfig(base[key] && typeof base[key] === 'object' ? base[key] : {}, value)
+      : value
+  }
+  return result
+}
+
 export async function writeConfig(patch) {
-  const config = { ...(await readConfig()), ...patch }
+  const config = mergeConfig(await readConfig(), patch)
   ensureDir(picoHome())
   await writeFile(configFile(), JSON.stringify(config, null, 2) + '\n')
   return config

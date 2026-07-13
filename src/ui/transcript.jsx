@@ -21,7 +21,7 @@ function fmtRunning(ms) {
   return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`
 }
 
-function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, startedAt, durationMs }) {
+function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'
@@ -37,7 +37,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
     : failed ? `failed${took ? ` · ${took}` : ''}`
     : background ? 'background · /shells'
     : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
-    : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''} · ctrl+o`
+    : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}${showExpandHint ? ' · ctrl+o' : ''}`
     : `done${took ? ` · ${took}` : ''}`
 
   return (
@@ -85,6 +85,25 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
 }
 
 export function Message({ item, verbose }) {
+  if (item.kind === 'tool-group') {
+    if (verbose) {
+      return (
+        <box style={{ flexDirection: 'column' }}>
+          {item.tools.map((tool, i) => <ToolCard key={i} {...tool} verbose showExpandHint={false} />)}
+        </box>
+      )
+    }
+    const counts = new Map()
+    for (const tool of item.tools) counts.set(tool.name, (counts.get(tool.name) || 0) + 1)
+    const summary = [...counts].map(([name, count]) => count === 1 ? name : `${name} ${count} times`).join(', ')
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <text style={{ color: MUTED }}>{`✓ Called ${summary}`}</text>
+      </box>
+    )
+  }
+
   if (item.kind === 'tool') {
     return <ToolCard {...item} verbose={verbose} />
   }

@@ -1,4 +1,4 @@
-import { createSignal, Button, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
+import { createSignal, Button, Checkbox, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { homedir } from 'node:os'
@@ -35,6 +35,52 @@ function PanelFrame({ title, hint, right, children }) {
         {children}
       </box>
     </box>
+  )
+}
+
+function ConfigField({ field, value, focused, fm, onChange }) {
+  const layout = useLayout()
+  fm.item(field.name, layout)
+  return (
+    <box style={{ flexDirection: 'column', marginBottom: 1 }}>
+      <Checkbox checked={value} label={field.label} focused={focused} onChange={onChange} />
+      <text style={{ color: FAINT }}>{`    ${field.desc}`}</text>
+    </box>
+  )
+}
+
+export function ConfigPanel({ values, focused, onChange, onClose }) {
+  const fm = useFocus({ initial: 'clouds' })
+  const fields = [
+    { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen' },
+    { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row' },
+  ]
+
+  useInput((event) => {
+    if (!focused) return
+    if (event.key === 'escape') {
+      onClose()
+      event.stopPropagation()
+    }
+  })
+
+  return (
+    <PanelFrame title="Configuration" hint="tab: next setting · space: toggle · esc: close">
+      <box style={{ height: 10, marginTop: 1 }}>
+        <ScrollBox focused={false} scrollbar followFocus={fm} focusPadding={1}>
+          {fields.map((field) => (
+            <ConfigField
+              key={field.name}
+              field={field}
+              value={values[field.name]}
+              focused={focused && fm.is(field.name)}
+              fm={fm}
+              onChange={(value) => onChange(field.name, value)}
+            />
+          ))}
+        </ScrollBox>
+      </box>
+    </PanelFrame>
   )
 }
 

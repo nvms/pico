@@ -33,7 +33,7 @@ import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -59,6 +59,7 @@ const COMMANDS = [
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
+  { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
@@ -95,6 +96,22 @@ const SHELL_STRIP_MAX = 5
 const HISTORY_WINDOW = 50
 const RESUME_SCOPES = ['project', 'everywhere']
 
+function compactToolRuns(items) {
+  const result = []
+  for (let i = 0; i < items.length;) {
+    if (items[i].kind !== 'tool') {
+      result.push(items[i++])
+      continue
+    }
+    let end = i + 1
+    while (end < items.length && items[end].kind === 'tool') end++
+    const run = items.slice(i, end)
+    result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run })
+    i = end
+  }
+  return result
+}
+
 export function App({ boot }) {
   const { cwd, root, version, models, skills, mcp, tracker, startupContext } = boot
 
@@ -113,6 +130,9 @@ export function App({ boot }) {
   const [defaultEffort, setDefaultEffort] = createSignal(boot.initialEffort)
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
   const [showThemePanel, setShowThemePanel] = createSignal(false)
+  const [showConfigPanel, setShowConfigPanel] = createSignal(false)
+  const [clouds, setClouds] = createSignal(boot.clouds)
+  const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
@@ -730,6 +750,10 @@ export function App({ boot }) {
       flash(`session color: ${name || value}`)
       return
     }
+    if (c.name === 'config') {
+      setShowConfigPanel(true)
+      return
+    }
     if (c.name === 'theme') {
       if (!args) return setShowThemePanel(true)
       const choice = args.toLowerCase()
@@ -1147,7 +1171,7 @@ export function App({ boot }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showThemePanel() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
@@ -1345,13 +1369,15 @@ export function App({ boot }) {
 
   const transcript = derived().transcript
   const hiddenCount = Math.max(0, transcript.length - histWindow())
-  const items = [...transcript.slice(hiddenCount), ...overlay()]
+  const visibleTranscript = transcript.slice(hiddenCount)
+  const compactedTranscript = compactToolHistory() ? compactToolRuns(visibleTranscript) : visibleTranscript
+  const items = [...compactedTranscript, ...overlay()]
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
       {transcript.length === 0 ? (
         <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
-          <EmptyState version={version} clouds={boot.clouds} />
+          <EmptyState version={version} clouds={clouds()} />
         </box>
       ) : <ScrollBox
         style={{ flexGrow: 1, dim: dimmingPanel() }}
@@ -1400,7 +1426,7 @@ export function App({ boot }) {
         </box>
       )}
 
-      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && boot.clouds ? 0 : 1, dim: dimmingPanel() }}>
+      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() }}>
         <text style={{ color: fm.is('input') && !anyPanel() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
@@ -1646,6 +1672,23 @@ export function App({ boot }) {
             setShowThemePanel(false)
             previewPalette(themePref())
           }}
+        />
+      )}
+
+      {showConfigPanel() && (
+        <ConfigPanel
+          values={{ clouds: clouds(), compactTools: compactToolHistory() }}
+          focused={showConfigPanel()}
+          onChange={(name, value) => {
+            if (name === 'clouds') {
+              setClouds(value)
+              writeConfig({ animation: { clouds: value } })
+            } else {
+              setCompactToolHistory(value)
+              writeConfig({ display: { compactToolHistory: value } })
+            }
+          }}
+          onClose={() => setShowConfigPanel(false)}
         />
       )}
 

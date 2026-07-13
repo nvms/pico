@@ -138,6 +138,7 @@ const boot = {
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   autoCompact: config.autoCompact !== false,
   clouds: config.animation?.clouds === true,
+  compactToolHistory: config.display?.compactToolHistory === true,
   refs: {},
   shells,
   wakeups,
