@@ -50,7 +50,7 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, d
     local.push(
       {
         name: 'schedule_wakeup',
-        description: 'Schedule a one-time wake-up: after the delay you receive a system notification carrying your note and can act on it. For a recurring loop, schedule the next wake-up at the end of each one. Wake-ups are lost if pico exits.',
+        description: 'Schedule a one-time wake-up: after the delay you receive a system notification carrying your note and can act on it. For a recurring loop, schedule the next wake-up at the end of each one. Do not use this to poll a background shell; its exit already notifies you. Wake-ups are lost if pico exits.',
         schema: {
           delaySeconds: { type: 'number', description: 'seconds from now, minimum 5' },
           note: { type: 'string', description: 'what to do when you wake up; written to your future self' },
