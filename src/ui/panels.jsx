@@ -307,7 +307,7 @@ function useEscape(focused, onClose) {
   })
 }
 
-export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, onPick, onDelete, onClose }) {
+export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, currentId, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(sessions[0] || null)
   const selectedSession = () => {
     if (loading) return null
@@ -354,6 +354,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
                   <box style={{ flexGrow: 1, height: 1 }}>
                     <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{s.title.replace(/\n/g, ' ')}</text>
                   </box>
+                  {s.header.id === currentId && <text style={{ color: selected ? 'black' : accent(), dim: !selected }}> current</text>}
                   <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${timeAgo(s.at)}`}</text>
                 </box>
               )}

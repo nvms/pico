@@ -24,7 +24,7 @@ In the MCP panel: enter enables/disables a server (disabled is sticky across res
 - drag an image file into the terminal to attach it: it appears inline as \`[Image #N]\`, exactly where your cursor is, so images can sit between sentences; backspace after one removes the whole attachment
 - \`tab\` completes: \`/summ<tab>\` finishes the command name and cycles through matches on repeat; after an argument space it completes values (\`/model fla<tab>\`, \`/color <tab>\`, \`/effort <tab>\`) and file paths for skills and commands. Keep typing to narrow, tab or enter inserts
 - \`up\` and \`down\` on an empty composer recall messages you already sent
-- \`ctrl+r\` fuzzy-searches your prompt history with a preview; enter puts the match back in the composer
+- \`ctrl+r\` opens rewind (same as \`/rewind\`); \`/history\` fuzzy-searches your old prompts and puts the selected one back in the composer
 - \`ctrl+s\` opens the session picker (same as \`/resume\`); \`ctrl+t\` opens the model picker
 - \`ctrl+p\` switches projects: pick one and pico jumps to its most recent session, changing the working directory, tools, context, and MCP servers to match; \`ctrl+x\` twice deletes a project's pico history (all its sessions and memories); \`/new\` starts a fresh session in the current project
 - \`ctrl+b\` cycles thinking effort (default, low, medium, high, max) on models that support it; \`/effort\` opens the full picker

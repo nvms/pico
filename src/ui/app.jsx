@@ -57,6 +57,7 @@ const COMMANDS = [
   { name: 'commands', desc: 'List every command: builtin, global, and project' },
   { name: 'tools', desc: 'List builtin and user-defined tools; MCP tools live in /mcp' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
+  { name: 'history', desc: 'Search prompts you previously sent' },
   { name: 'rename', desc: 'Name this session: /rename <name>' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
@@ -808,6 +809,7 @@ export function App({ boot }) {
       return flash(`update failed: ${result.output.slice(0, 100)}`)
     }
     if (c.name === 'context') return openContextPanel()
+    if (c.name === 'history') return openHistorySearch()
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
     if (c.name === 'shells') return setShowShellsPanel(true)
@@ -965,7 +967,7 @@ export function App({ boot }) {
   function refreshSessions(scopeIndex) {
     setResumeLoading(true)
     listSessions({ scope: RESUME_SCOPES[scopeIndex], root })
-      .then((sessions) => setResumeSessions(sessions.filter((s) => s.header.id !== refs.session?.id)))
+      .then(setResumeSessions)
       .finally(() => setResumeLoading(false))
   }
 
@@ -1038,7 +1040,10 @@ export function App({ boot }) {
 
   async function deleteSessionMeta(meta) {
     if (refs.session?.id === meta.header.id) {
-      return flash('cannot delete the active session · /new first, then delete it')
+      if (busy()) return flash('finish or interrupt the current turn first')
+      setShowResumePanel(false)
+      setShowDeleteConfirm(true)
+      return
     }
     const armed = refs.deleteArm
     if (!armed || armed.file !== meta.file || Date.now() - armed.at > 3000) {
@@ -1262,7 +1267,9 @@ export function App({ boot }) {
       return
     }
     if (event.ctrl && event.key === 'r' && view() === 'chat' && !anyPanel()) {
-      openHistorySearch()
+      if (busy()) flash('finish or interrupt the current turn first')
+      else if (userEntries(derived()).length === 0) flash('nothing to rewind yet')
+      else setRewindStep('pick')
       event.stopPropagation()
       return
     }
@@ -1745,7 +1752,11 @@ export function App({ boot }) {
           scopeIndex={resumeScope()}
           loading={resumeLoading()}
           focused={showResumePanel()}
-          onPick={resumeSession}
+          currentId={refs.session?.id}
+          onPick={(meta) => {
+            if (meta.header.id === refs.session?.id) return flash('already in this session')
+            resumeSession(meta)
+          }}
           onDelete={deleteSessionMeta}
           onClose={() => setShowResumePanel(false)}
         />
