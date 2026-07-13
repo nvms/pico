@@ -96,7 +96,7 @@ const SHELL_STRIP_MAX = 5
 const HISTORY_WINDOW = 50
 const RESUME_SCOPES = ['project', 'everywhere']
 
-function compactToolRuns(items) {
+function compactToolRuns(items, active = false) {
   const result = []
   for (let i = 0; i < items.length;) {
     if (items[i].kind !== 'tool') {
@@ -106,7 +106,7 @@ function compactToolRuns(items) {
     let end = i + 1
     while (end < items.length && items[end].kind === 'tool') end++
     const run = items.slice(i, end)
-    result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run })
+    result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run, active: active && end === items.length })
     i = end
   }
   return result
@@ -118,7 +118,7 @@ export function App({ boot }) {
   const [derived, setDerived] = createSignal(deriveState([]))
   const [overlay, setOverlay] = createSignal([])
   const [streaming, setStreaming] = createSignal(null)
-  const [thinkingNow, setThinkingNow] = createSignal(false)
+  const [turnPhase, setTurnPhase] = createSignal('idle')
   const [busy, setBusy] = createSignal(false)
   const [compacting, setCompacting] = createSignal(false)
   const [compactStatus, setCompactStatus] = createSignal(null)
@@ -392,6 +392,7 @@ export function App({ boot }) {
     setFollow(true)
     setHistWindow(HISTORY_WINDOW)
     setBusy(true)
+    setTurnPhase('responding')
     setStartedAt(Date.now())
 
     const controller = new AbortController()
@@ -425,12 +426,12 @@ export function App({ boot }) {
     const onStream = (event) => {
       if (event.type === 'thinking') {
         refs.turnThoughts += event.content
-        setThinkingNow(true)
+        setTurnPhase('thinking')
       } else if (event.type === 'content') {
-        setThinkingNow(false)
+        setTurnPhase('responding')
         setStreaming((s) => (s || '') + event.content)
       } else if (event.type === 'tool_calls_ready') {
-        setThinkingNow(false)
+        setTurnPhase('tools')
         setOverlay((o) => {
           const next = [...o]
           flushStream(next)
@@ -487,7 +488,7 @@ export function App({ boot }) {
     } catch (err) {
       setOverlay([])
       setStreaming(null)
-      setThinkingNow(false)
+      setTurnPhase('idle')
       setBusy(false)
       refs.abort = null
       flash(`error: ${String(err.message || err).slice(0, 120)}`)
@@ -505,7 +506,7 @@ export function App({ boot }) {
 
     setOverlay([])
     setStreaming(null)
-    setThinkingNow(false)
+    setTurnPhase('idle')
     reDerive()
     setBusy(false)
     refs.abort = null
@@ -1369,9 +1370,8 @@ export function App({ boot }) {
 
   const transcript = derived().transcript
   const hiddenCount = Math.max(0, transcript.length - histWindow())
-  const visibleTranscript = transcript.slice(hiddenCount)
-  const compactedTranscript = compactToolHistory() ? compactToolRuns(visibleTranscript) : visibleTranscript
-  const items = [...compactedTranscript, ...overlay()]
+  const visibleItems = [...transcript.slice(hiddenCount), ...overlay()]
+  const items = compactToolHistory() ? compactToolRuns(visibleItems, turnPhase() === 'tools') : visibleItems
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
@@ -1870,7 +1870,7 @@ export function App({ boot }) {
               <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
                 {compacting()
                   ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
-                  : thinkingNow() ? 'Thinking' : 'Responding'}
+                  : turnPhase() === 'thinking' ? 'Thinking' : 'Responding'}
               </Shimmer>
               <text style={{ color: FAINT }}>{` (${elapsed}${compactStatus() ? ` · ↓ ${fmtTokens(Math.round(compactStatus().chars / 4))} tokens` : ''}) · esc to interrupt`}</text>
               {compactStatus()?.phase === 'writing' && (

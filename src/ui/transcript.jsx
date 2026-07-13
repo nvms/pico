@@ -99,7 +99,10 @@ export function Message({ item, verbose }) {
     return (
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
-        <text style={{ color: MUTED }}>{`✓ Called ${summary}`}</text>
+        <box style={{ flexDirection: 'row' }}>
+          {item.active ? <Spinner color={accent()} /> : <text style={{ color: MUTED }}>✓</text>}
+          <text style={{ color: item.active ? FG : MUTED }}>{` Called ${summary}`}</text>
+        </box>
       </box>
     )
   }
