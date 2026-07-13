@@ -669,13 +669,6 @@ export function App({ boot }) {
       note: tok(messageTokens),
     })
 
-    const total = est(systemFull) + toolTokens + summaryTokens + messageTokens
-    const limit = model().context
-    rows.push({
-      name: 'estimated next request',
-      desc: limit ? `of ${fmtTokens(limit)} context · ~${Math.round((total / limit) * 100)}%` : 'context size unknown for this model',
-      note: tok(total),
-    })
     if (state.lastPromptTokens && state.lastPromptModel === model().name) {
       rows.push({
         name: 'last measured request',
@@ -696,7 +689,7 @@ export function App({ boot }) {
     setInfoPanel({
       title: `Context · ${model().name}`,
       rows,
-      overview: limit ? { limit, segments: contextSegments } : null,
+      overview: contextSegments.length ? { segments: contextSegments } : null,
     })
   }
 

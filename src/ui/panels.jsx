@@ -502,7 +502,7 @@ function ContextOverview({ overview }) {
 
   for (let i = 0; i < width; i++) {
     const segment = overview.segments.find((item) => {
-      boundary += item.tokens / overview.limit * width
+      boundary += item.tokens / total * width
       return i < boundary
     })
     boundary = 0
@@ -532,7 +532,6 @@ function ContextOverview({ overview }) {
           </box>
         ))}
       </box>
-      <text style={{ color: FAINT }}>{`~${(total / 1000).toFixed(1)}k of ${(overview.limit / 1000).toFixed(0)}k context`}</text>
     </box>
   )
 }
