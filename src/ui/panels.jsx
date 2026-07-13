@@ -38,6 +38,28 @@ function PanelFrame({ title, hint, right, children }) {
   )
 }
 
+export function ConfirmPanel({ title, message, confirmLabel = 'Confirm', focused, onConfirm, onClose }) {
+  useInput((event) => {
+    if (!focused) return
+    if (event.key === 'escape') {
+      onClose()
+      event.stopPropagation()
+    } else if (event.key === 'return') {
+      onConfirm()
+      event.stopPropagation()
+    }
+  })
+
+  return (
+    <PanelFrame title={title} hint={`enter: ${confirmLabel.toLowerCase()} · esc: cancel`}>
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        <text style={{ color: FG }}>{message}</text>
+        <text style={{ color: RED, bold: true }}>This cannot be undone.</text>
+      </box>
+    </PanelFrame>
+  )
+}
+
 function ConfigField({ field, value, focused, fm, onChange }) {
   const layout = useLayout()
   fm.item(field.name, layout)

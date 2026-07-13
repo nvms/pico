@@ -33,7 +33,7 @@ import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -50,6 +50,7 @@ const COMMANDS = [
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
+  { name: 'delete', desc: 'Permanently delete the current session and start fresh' },
   { name: 'project', desc: 'Switch projects: jump to another project, same as ctrl+p' },
   { name: 'cwd', desc: 'Show the current working directory and project root' },
   { name: 'skills', desc: 'List every skill: builtin, global, and project' },
@@ -131,6 +132,7 @@ export function App({ boot }) {
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
   const [showThemePanel, setShowThemePanel] = createSignal(false)
   const [showConfigPanel, setShowConfigPanel] = createSignal(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false)
   const [clouds, setClouds] = createSignal(boot.clouds)
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
@@ -861,8 +863,13 @@ export function App({ boot }) {
       })
       return
     }
-    if (c.name === 'new') {
+    if (c.name === 'new' || c.name === 'delete') {
       if (busy()) return flash('finish or interrupt the current turn first')
+      if (c.name === 'delete') {
+        if (!refs.session) return flash('no current session to delete')
+        setShowDeleteConfirm(true)
+        return
+      }
       refs.session = null
       refs.allEvents = []
       refs.persisted = 0
@@ -1164,8 +1171,32 @@ export function App({ boot }) {
     })
   }
 
+  async function confirmDeleteCurrentSession() {
+    const session = refs.session
+    if (!session) return setShowDeleteConfirm(false)
+    try {
+      await session.flush()
+      await deleteSession(session.file)
+    } catch (err) {
+      setShowDeleteConfirm(false)
+      return flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+    refs.session = null
+    refs.allEvents = []
+    refs.persisted = 0
+    refs.rewindUndo = null
+    setQueued([])
+    setSent([])
+    setModel(defaultModel())
+    setEffort(defaultEffort())
+    setHistWindow(HISTORY_WINDOW)
+    setShowDeleteConfirm(false)
+    reDerive()
+    flash('session deleted')
+  }
+
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
@@ -1682,6 +1713,17 @@ export function App({ boot }) {
             }
           }}
           onClose={() => setShowConfigPanel(false)}
+        />
+      )}
+
+      {showDeleteConfirm() && (
+        <ConfirmPanel
+          title="Delete current session?"
+          message="The current conversation and its persisted history will be permanently deleted."
+          confirmLabel="Delete"
+          focused={showDeleteConfirm()}
+          onConfirm={confirmDeleteCurrentSession}
+          onClose={() => setShowDeleteConfirm(false)}
         />
       )}
 
