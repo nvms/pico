@@ -1,4 +1,4 @@
-import { Diff, Markdown, Spinner } from '@trendr/core'
+import { Diff, ease, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
@@ -19,6 +19,58 @@ function fmtDuration(ms) {
 function fmtRunning(ms) {
   const secs = Math.floor(ms / 1000)
   return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
+function mixColor(from, to, amount) {
+  const rgb = (color) => color?.startsWith('#') && color.length === 7
+    ? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16))
+    : [127, 127, 127]
+  const a = rgb(from)
+  const b = rgb(to)
+  return `#${a.map((value, i) => Math.round(value + (b[i] - value) * amount).toString(16).padStart(2, '0')).join('')}`
+}
+
+function ToolGroup({ item, verbose }) {
+  const latestCallId = item.tools.at(-1)?.callId
+  const glow = useAnimated(0, ease(500, linear))
+  if (latestCallId !== glow._callId) {
+    glow._callId = latestCallId
+    if (item.active) {
+      glow.snap(1)
+      glow.set(0)
+    }
+  }
+
+  if (verbose) {
+    return (
+      <box style={{ flexDirection: 'column' }}>
+        {item.tools.map((tool, i) => <ToolCard key={i} {...tool} verbose showExpandHint={false} />)}
+      </box>
+    )
+  }
+
+  const counts = new Map()
+  for (const tool of item.tools) counts.set(tool.name, (counts.get(tool.name) || 0) + 1)
+  const entries = [...counts]
+  const totalMs = item.tools.reduce((sum, tool) => sum + (tool.durationMs || 0), 0)
+  const latestName = item.tools.at(-1)?.name
+  return (
+    <box style={{ flexDirection: 'column', paddingX: 2 }}>
+      <text> </text>
+      <box style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+        {item.active ? <Spinner color={accent()} /> : <text style={{ color: MUTED }}>✓</text>}
+        <box style={{ flexDirection: 'row', flexWrap: 'wrap', flexGrow: 1, marginRight: 2 }}>
+          <text style={{ color: item.active ? FG : MUTED }}> Called </text>
+          {entries.map(([name, count], i) => (
+            <text key={name} style={{ color: item.active && name === latestName ? mixColor(FG, accent(), glow()) : item.active ? FG : MUTED }}>
+              {`${i ? ', ' : ''}${name}${count === 1 ? '' : ` ${count} times`}`}
+            </text>
+          ))}
+        </box>
+        {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
+      </box>
+    </box>
+  )
 }
 
 function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
@@ -85,27 +137,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
 }
 
 export function Message({ item, verbose }) {
-  if (item.kind === 'tool-group') {
-    if (verbose) {
-      return (
-        <box style={{ flexDirection: 'column' }}>
-          {item.tools.map((tool, i) => <ToolCard key={i} {...tool} verbose showExpandHint={false} />)}
-        </box>
-      )
-    }
-    const counts = new Map()
-    for (const tool of item.tools) counts.set(tool.name, (counts.get(tool.name) || 0) + 1)
-    const summary = [...counts].map(([name, count]) => count === 1 ? name : `${name} ${count} times`).join(', ')
-    return (
-      <box style={{ flexDirection: 'column', paddingX: 2 }}>
-        <text> </text>
-        <box style={{ flexDirection: 'row' }}>
-          {item.active ? <Spinner color={accent()} /> : <text style={{ color: MUTED }}>✓</text>}
-          <text style={{ color: item.active ? FG : MUTED }}>{` Called ${summary}`}</text>
-        </box>
-      </box>
-    )
-  }
+  if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
   if (item.kind === 'tool') {
     return <ToolCard {...item} verbose={verbose} />
