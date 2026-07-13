@@ -309,11 +309,17 @@ function useEscape(focused, onClose) {
 
 export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(sessions[0] || null)
+  const selectedSession = () => {
+    if (loading) return null
+    const selected = preview()
+    return sessions.includes(selected) ? selected : null
+  }
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
-    if (event.ctrl && event.key === 'x' && preview()) {
-      onDelete(preview())
+    const selected = selectedSession()
+    if (event.ctrl && event.key === 'x' && selected) {
+      onDelete(selected)
       event.stopPropagation()
     }
   })
@@ -355,12 +361,12 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, on
           )}
         </box>
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
-          {preview() ? (
+          {selectedSession() ? (
             <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FAINT }}>{`${preview().turns} ${preview().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(preview().at)}`}</text>
-              <text style={{ color: FAINT, overflow: 'truncate' }}>{preview().header.root}</text>
+              <text style={{ color: FAINT }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(selectedSession().at)}`}</text>
+              <text style={{ color: FAINT, overflow: 'truncate' }}>{selectedSession().header.root}</text>
               <text> </text>
-              <text style={{ color: FG }}>{preview().title.slice(0, 500)}</text>
+              <text style={{ color: FG }}>{selectedSession().title.slice(0, 500)}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no sessions</text>
