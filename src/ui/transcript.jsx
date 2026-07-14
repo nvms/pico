@@ -1,8 +1,37 @@
-import { Diff, ease, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
+import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
+
+function MarkdownSnippet({ value, language, highlight: highlightCode, codeBg }) {
+  const shown = highlightCode ? highlightCode(value, language) : value
+  return (
+    <box style={{ bg: codeBg, paddingX: 1 }}>
+      <text>{shown}</text>
+    </box>
+  )
+}
+
+function CodeSnippet({ value, language, highlight: highlightCode, codeBg }) {
+  const shown = highlightCode ? highlightCode(value, language) : value
+  const contentWidth = Math.max(0, ...value.split('\n').map((line) => [...line].length)) + 2
+  return (
+    <HorizontalScrollBox contentWidth={contentWidth} style={{ bg: codeBg, paddingX: 1 }}>
+      <box style={{ flexDirection: 'column' }}>
+        {shown.split('\n').map((line, key) => (
+          <text key={key} style={{ overflow: 'nowrap' }}>{line || ' '}</text>
+        ))}
+      </box>
+    </HorizontalScrollBox>
+  )
+}
+
+function TranscriptCodeBlock(props) {
+  const language = props.language?.toLowerCase()
+  const Component = language === 'md' || language === 'markdown' ? MarkdownSnippet : CodeSnippet
+  return <Component {...props} />
+}
 
 function diffPreviewLines(diff, revert) {
   if (diff?.hunks?.length) return diff.hunks.reduce((sum, h) => sum + h.lines.length, 0)
@@ -220,7 +249,7 @@ export function Message({ item, verbose }) {
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
       <text> </text>
-      <Markdown text={text} highlight={highlight} codeBg={null} />
+      <Markdown text={text} highlight={highlight} codeBg={null} codeBlock={TranscriptCodeBlock} />
     </box>
   )
 }
