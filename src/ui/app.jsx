@@ -1927,7 +1927,7 @@ export function App({ boot }) {
               <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
                 {compacting()
                   ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
-                  : turnPhase() === 'thinking' ? 'Thinking' : 'Responding'}
+                  : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
               </Shimmer>
               <text style={{ color: FAINT }}>{` (${elapsed}${compactStatus() ? ` · ↓ ${fmtTokens(Math.round(compactStatus().chars / 4))} tokens` : ''}) · esc to interrupt`}</text>
               {compactStatus()?.phase === 'writing' && (
