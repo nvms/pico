@@ -1039,18 +1039,18 @@ export function App({ boot }) {
   }
 
   async function deleteSessionMeta(meta) {
-    if (refs.session?.id === meta.header.id) {
-      if (busy()) return flash('finish or interrupt the current turn first')
-      setShowResumePanel(false)
-      setShowDeleteConfirm(true)
-      return
-    }
+    const current = refs.session?.id === meta.header.id
+    if (current && busy()) return flash('finish or interrupt the current turn first')
     const armed = refs.deleteArm
     if (!armed || armed.file !== meta.file || Date.now() - armed.at > 3000) {
       refs.deleteArm = { file: meta.file, at: Date.now() }
       return flash(`ctrl+x again to delete "${meta.title.slice(0, 50)}"`)
     }
     refs.deleteArm = null
+    if (current) {
+      if (await confirmDeleteCurrentSession()) refreshSessions(resumeScope())
+      return
+    }
     try {
       await deleteSession(meta.file)
       refreshSessions(resumeScope())
@@ -1178,13 +1178,17 @@ export function App({ boot }) {
 
   async function confirmDeleteCurrentSession() {
     const session = refs.session
-    if (!session) return setShowDeleteConfirm(false)
+    if (!session) {
+      setShowDeleteConfirm(false)
+      return false
+    }
     try {
       await session.flush()
       await deleteSession(session.file)
     } catch (err) {
       setShowDeleteConfirm(false)
-      return flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
+      flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
+      return false
     }
     refs.session = null
     refs.allEvents = []
@@ -1198,6 +1202,7 @@ export function App({ boot }) {
     setShowDeleteConfirm(false)
     reDerive()
     flash('session deleted')
+    return true
   }
 
   const anyPanel = () =>
