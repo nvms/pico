@@ -11,6 +11,7 @@ const PALETTES = {
     panelBg: '#1e1e22',
     selectBg: '#374151',
     red: '#f87171',
+    green: '#4ade80',
     highlight: '#ffffff',
     shiki: 'nord',
   },
@@ -24,6 +25,7 @@ const PALETTES = {
     panelBg: '#e9e9ee',
     selectBg: '#d4d4dc',
     red: '#dc2626',
+    green: '#16a34a',
     highlight: '#111827',
     shiki: 'github-light',
   },
@@ -37,6 +39,7 @@ const PALETTES = {
     panelBg: '#3b4252',
     selectBg: '#434c5e',
     red: '#bf616a',
+    green: '#a3be8c',
     highlight: '#eceff4',
     shiki: 'nord',
   },
@@ -50,6 +53,7 @@ export let FAINT = PALETTES.dark.faint
 export let PANEL_BG = PALETTES.dark.panelBg
 export let SELECT_BG = PALETTES.dark.selectBg
 export let RED = PALETTES.dark.red
+export let GREEN = PALETTES.dark.green
 export let HIGHLIGHT = PALETTES.dark.highlight
 
 let currentPalette = 'dark'
@@ -75,6 +79,7 @@ export function setPalette(name) {
   PANEL_BG = p.panelBg
   SELECT_BG = p.selectBg
   RED = p.red
+  GREEN = p.green
   HIGHLIGHT = p.highlight
   setAccentValue(explicitAccent || p.accent)
 }

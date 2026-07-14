@@ -12,6 +12,7 @@ import { buildProjectBoot } from './core/boot.js'
 import { resolveDredge } from './core/tools/web.js'
 import { createShellManager } from './core/shells.js'
 import { createWakeupManager } from './core/wakeups.js'
+import { createGitService } from './core/git.js'
 import { App } from './ui/app.jsx'
 import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
 
@@ -115,6 +116,10 @@ const wakeups = createWakeupManager({
   onFire: (wakeup) => wakeupsFire(wakeup),
 })
 
+let gitNotify = () => {}
+const git = createGitService({ onChange: () => gitNotify() })
+process.on('exit', () => git.dispose())
+
 const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotify() })
 
 const config = await readConfig()
@@ -139,16 +144,22 @@ const boot = {
   autoCompact: config.autoCompact !== false,
   clouds: config.animation?.clouds === true,
   compactToolHistory: config.display?.compactToolHistory === true,
+  gitFooter: config.display?.gitStatus !== false,
   refs: {},
   shells,
   wakeups,
+  git,
   setMcpNotify: (fn) => { mcpNotify = fn },
+  setGitNotify: (fn) => { gitNotify = fn },
   setShellsNotify: (fn) => { shellsNotify = fn },
   setShellsExit: (fn) => { shellsExit = fn },
   setWakeupsNotify: (fn) => { wakeupsNotify = fn },
   setWakeupsFire: (fn) => { wakeupsFire = fn },
   rebuild: bootProject,
 }
+
+git.retarget(boot.root)
+git.setEnabled(boot.gitFooter)
 
 const app = mount(() => <App boot={boot} />, { title: `pico · ${boot.root.split('/').pop()}`, theme })
 boot.setTheme = app.setTheme

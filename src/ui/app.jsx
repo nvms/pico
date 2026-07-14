@@ -34,7 +34,7 @@ import { Message, uiTitle } from './transcript.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, HIGHLIGHT } from './theme.js'
+import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -136,6 +136,7 @@ export function App({ boot }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = createSignal(false)
   const [clouds, setClouds] = createSignal(boot.clouds)
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
+  const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
@@ -166,6 +167,7 @@ export function App({ boot }) {
   const [showConnectPanel, setShowConnectPanel] = createSignal(false)
   const [authProviders, setAuthProviders] = createSignal([])
   const [shellsVersion, setShellsVersion] = createSignal(0)
+  const [gitVersion, setGitVersion] = createSignal(0)
   const [projects, setProjects] = createSignal([])
   const [projectsLoading, setProjectsLoading] = createSignal(false)
   const [mcpServers, setMcpServers] = createSignal(mcp.list())
@@ -190,6 +192,7 @@ export function App({ boot }) {
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
   boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
   boot.setWakeupsNotify(() => setShellsVersion((v) => v + 1))
+  boot.setGitNotify(() => setGitVersion((v) => v + 1))
   boot.setWakeupsFire((wakeup) => {
     flash(`wake-up ${wakeup.id} fired`)
     noteSystem(
@@ -459,6 +462,7 @@ export function App({ boot }) {
           return next
         })
       } else if (event.type === 'tool_complete' || event.type === 'tool_error') {
+        boot.git.refresh()
         const entry = recorder.entries.at(-1)
         setOverlay((o) =>
           o.map((item) =>
@@ -513,6 +517,7 @@ export function App({ boot }) {
     reDerive()
     setBusy(false)
     refs.abort = null
+    boot.git.refresh()
     if (result.stalled) {
       flash('model stalled · turn interrupted')
       noteSystem(
@@ -1028,6 +1033,7 @@ export function App({ boot }) {
       previousMcp.closeAll().catch(() => {})
       process.chdir(next.cwd)
       Object.assign(boot, next)
+      boot.git.retarget(next.root)
       process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
       next.mcp.connectAll()
       setMcpServers(next.mcp.list())
@@ -1399,6 +1405,8 @@ export function App({ boot }) {
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   const pendingWakeups = boot.wakeups.pending()
+  gitVersion()
+  const gitInfo = gitFooter() ? boot.git.status() : null
 
   if (view() === 'help') {
     return <Help commands={COMMANDS} onClose={() => setView('chat')} />
@@ -1715,12 +1723,17 @@ export function App({ boot }) {
 
       {showConfigPanel() && (
         <ConfigPanel
-          values={{ clouds: clouds(), compactTools: compactToolHistory() }}
+          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter() }}
           focused={showConfigPanel()}
           onChange={(name, value) => {
             if (name === 'clouds') {
               setClouds(value)
               writeConfig({ animation: { clouds: value } })
+            } else if (name === 'gitStatus') {
+              setGitFooter(value)
+              boot.gitFooter = value
+              boot.git.setEnabled(value)
+              writeConfig({ display: { gitStatus: value } })
             } else {
               setCompactToolHistory(value)
               writeConfig({ display: { compactToolHistory: value } })
@@ -1943,6 +1956,13 @@ export function App({ boot }) {
           const stats = useFrameStats()
           return <text style={{ color: MUTED }}>{`⏱ ${(stats.renderMs ?? 0).toFixed(1)}ms · ${stats.fps}fps · ${derived().transcript.length} items`}</text>
         })()}
+        {gitInfo?.branch && (
+          <box style={{ flexDirection: 'row', gap: 1 }}>
+            <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>
+            {gitInfo.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
+            {gitInfo.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
+          </box>
+        )}
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}

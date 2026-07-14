@@ -66,7 +66,11 @@ function ConfigField({ field, value, focused, fm, onChange }) {
   fm.item(field.name, layout)
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
-      <Checkbox checked={value} label={field.label} focused={focused} onChange={onChange} />
+      <box style={{ flexDirection: 'row' }}>
+        <Checkbox checked={value} label={field.label} focused={focused} onChange={onChange} />
+        <box style={{ flexGrow: 1 }} />
+        <text style={{ color: FAINT }}>{field.path}</text>
+      </box>
       <text style={{ color: FAINT }}>{`    ${field.desc}`}</text>
     </box>
   )
@@ -75,8 +79,9 @@ function ConfigField({ field, value, focused, fm, onChange }) {
 export function ConfigPanel({ values, focused, onChange, onClose }) {
   const fm = useFocus({ initial: 'clouds' })
   const fields = [
-    { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen' },
-    { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row' },
+    { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
+    { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row', path: 'display.compactToolHistory' },
+    { name: 'gitStatus', label: 'Git in footer', desc: 'Show branch and changed line counts in the footer', path: 'display.gitStatus' },
   ]
 
   useInput((event) => {
