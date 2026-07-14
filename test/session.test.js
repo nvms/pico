@@ -58,6 +58,11 @@ test('listSessions surfaces title, turns, scopes', async () => {
   await b.flush()
   const renamed = await listSessions({ scope: 'project', root: rootB })
   assert.equal(renamed[0].title, 'auth refactor')
+
+  b.append(makeEvent('title', { text: null }))
+  await b.flush()
+  const reset = await listSessions({ scope: 'project', root: rootB })
+  assert.equal(reset[0].title, 'session in project b')
   delete process.env.PICO_HOME
 })
 

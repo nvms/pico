@@ -39,13 +39,14 @@ async function sessionMeta(file) {
   const lines = handle.split('\n')
   const header = parseLine(lines[0])
   if (!header || header.type !== 'session') return null
-  let title = null
+  let automaticTitle = null
+  let customTitle = null
   let color = null
   let turns = 0
   for (const line of lines.slice(1)) {
     const event = parseLine(line)
     if (!event) continue
-    if (event.type === 'title') title = event.data.text
+    if (event.type === 'title') customTitle = event.data.text
     if (event.type === 'color') color = event.data.value
     if (event.type === 'message' && event.data.message?.role === 'user') {
       turns++
@@ -53,9 +54,10 @@ async function sessionMeta(file) {
       const text = Array.isArray(content)
         ? content.filter((p) => p.type === 'text').map((p) => p.text).join(' ')
         : String(content)
-      if (!title && text.trim()) title = text.trim().slice(0, 200)
+      if (!automaticTitle && text.trim()) automaticTitle = text.trim().slice(0, 200)
     }
   }
+  const title = customTitle || automaticTitle
   if (!title) return null
   return { file, header, title, color, turns, at: info.mtimeMs }
 }

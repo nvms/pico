@@ -21,6 +21,15 @@ test('folds a plain conversation', () => {
   assert.equal(state.providerHistory.length, 2)
 })
 
+test('clears a custom session title', () => {
+  const state = deriveState([
+    user('automatic title'),
+    makeEvent('title', { text: 'custom title' }),
+    makeEvent('title', { text: null }),
+  ])
+  assert.equal(state.title, null)
+})
+
 test('folds tool calls with meta', () => {
   const events = [
     user('edit the file'),

@@ -58,7 +58,7 @@ const COMMANDS = [
   { name: 'tools', desc: 'List builtin and user-defined tools; MCP tools live in /mcp' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'history', desc: 'Search prompts you previously sent' },
-  { name: 'rename', desc: 'Name this session: /rename <name>' },
+  { name: 'rename', desc: 'Name this session; omit the name to restore its automatic title' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'config', desc: 'Configure pico display and behavior' },
@@ -722,11 +722,13 @@ export function App({ boot }) {
     setInput('')
     setCmdCycle(null)
     if (c.name === 'rename') {
-      if (!args) return flash('usage: /rename <new name>')
-      persist(makeEvent('title', { text: args }))
+      const automaticTitle = userEntries(derived())[0]?.text.trim().slice(0, 200)
+      persist(makeEvent('title', { text: args || null }))
       ensureSession()
       reDerive()
-      flash(`session renamed to "${args}"`)
+      if (args) flash(`session renamed to "${args}"`)
+      else if (automaticTitle) flash(`session name reset to "${automaticTitle}"`)
+      else flash('session name reset')
       return
     }
     if (c.name === 'color') {
