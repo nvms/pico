@@ -1933,7 +1933,16 @@ export function App({ boot }) {
         </box>
       )}
 
-      <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
+      {gitInfo?.branch && (
+        <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
+          <box style={{ flexGrow: 1 }} />
+          <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>
+          {gitInfo.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
+          {gitInfo.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
+        </box>
+      )}
+
+      <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: gitInfo?.branch ? 0 : 1 }}>
         {busy()
           ? (
             <box style={{ flexDirection: 'row' }}>
@@ -1956,13 +1965,6 @@ export function App({ boot }) {
           const stats = useFrameStats()
           return <text style={{ color: MUTED }}>{`⏱ ${(stats.renderMs ?? 0).toFixed(1)}ms · ${stats.fps}fps · ${derived().transcript.length} items`}</text>
         })()}
-        {gitInfo?.branch && (
-          <box style={{ flexDirection: 'row', gap: 1 }}>
-            <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>
-            {gitInfo.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
-            {gitInfo.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
-          </box>
-        )}
         {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
         <text style={{ color: accent() }}>{model().name}</text>
         {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
