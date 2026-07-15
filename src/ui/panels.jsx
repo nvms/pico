@@ -1,5 +1,5 @@
 import { createSignal, Button, Checkbox, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { homedir } from 'node:os'
 import { fuzzyScore } from './fuzzy.js'
@@ -76,7 +76,49 @@ function ConfigField({ field, value, focused, fm, onChange }) {
   )
 }
 
-export function ConfigPanel({ values, focused, onChange, onClose }) {
+function ConfigNumberField({ value, focused, fm, onChange }) {
+  const layout = useLayout()
+  fm.item('researchAgentLimit', layout)
+  return (
+    <box style={{ flexDirection: 'column', marginBottom: 1 }}>
+      <box style={{ flexDirection: 'row' }}>
+        <box style={{ width: 5 }}>
+          <TextInput
+            key={String(value)}
+            initialValue={String(value)}
+            focused={focused}
+            onSubmit={(text) => {
+              const parsed = Number(text)
+              if (Number.isInteger(parsed)) onChange(Math.max(1, Math.min(100, parsed)))
+              else onChange(value)
+            }}
+          />
+        </box>
+        <text style={{ color: FG }}> Research agent limit</text>
+        <box style={{ flexGrow: 1 }} />
+        <text style={{ color: FAINT }}>research.agentLimit</text>
+      </box>
+      <text style={{ color: FAINT }}>    Maximum agents per deep research run (1-100)</text>
+    </box>
+  )
+}
+
+function ConfigModelField({ model, focused, fm, onPick }) {
+  const layout = useLayout()
+  fm.item('researchModel', layout)
+  return (
+    <box style={{ flexDirection: 'column', marginBottom: 1 }}>
+      <box style={{ flexDirection: 'row' }}>
+        <Button label="Research worker model" focused={focused} onPress={onPick} />
+        <box style={{ flexGrow: 1 }} />
+        <text style={{ color: FAINT }}>models.researchWorker</text>
+      </box>
+      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'} · model used by background research agents`}</text>
+    </box>
+  )
+}
+
+export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onClose }) {
   const fm = useFocus({ initial: 'clouds' })
   const fields = [
     { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
@@ -93,8 +135,8 @@ export function ConfigPanel({ values, focused, onChange, onClose }) {
   })
 
   return (
-    <PanelFrame title="Configuration" hint="tab: next setting · space: toggle · esc: close">
-      <box style={{ height: 10, marginTop: 1 }}>
+    <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close">
+      <box style={{ height: 12, marginTop: 1 }}>
         <ScrollBox focused={false} scrollbar followFocus={fm} focusPadding={1}>
           {fields.map((field) => (
             <ConfigField
@@ -106,6 +148,8 @@ export function ConfigPanel({ values, focused, onChange, onClose }) {
               onChange={(value) => onChange(field.name, value)}
             />
           ))}
+          <ConfigModelField model={values.researchModel} focused={focused && fm.is('researchModel')} fm={fm} onPick={onPickResearchModel} />
+          <ConfigNumberField value={values.researchAgentLimit} focused={focused && fm.is('researchAgentLimit')} fm={fm} onChange={(value) => onChange('researchAgentLimit', value)} />
         </ScrollBox>
       </box>
     </PanelFrame>
@@ -122,7 +166,7 @@ export function ScopeTabs({ scopes, active }) {
   )
 }
 
-export function ModelPanel({ models, current, defaultName, focused, onPick, onPickDefault, onClose }) {
+export function ModelPanel({ models, current, defaultName, focused, onPick, onPickDefault, onClose, title = 'Select model', hint = 'enter: this session · ctrl+s: set as default · esc: close' }) {
   const [cursor, setCursor] = createSignal(models[0] || null)
 
   useInput((event) => {
@@ -134,7 +178,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
   })
 
   return (
-    <PanelFrame title="Select model" hint="enter: this session · ctrl+s: set as default · esc: close">
+    <PanelFrame title={title} hint={hint}>
       <box style={{ flexDirection: 'column', height: 12, marginTop: 1 }}>
         <PickList
           counter
@@ -1117,4 +1161,75 @@ function McpKeys({ focused, onKey }) {
     }
   })
   return null
+}
+
+export function AgentsPanel({ version, agents, focused, onCancel, onDismiss, onClose }) {
+  const [viewing, setViewing] = createSignal(null)
+  const [index, setIndex] = createSignal(0)
+  useEscape(() => focused, () => (viewing() ? setViewing(null) : onClose()))
+  void version
+  const selected = () => agents[Math.min(index(), agents.length - 1)] || null
+
+  useInput((event) => {
+    if (!focused || viewing()) return
+    if (event.ctrl && event.key === 'x' && selected()) {
+      if (['queued', 'running'].includes(selected().status)) onCancel(selected())
+      else onDismiss(selected())
+      event.stopPropagation()
+    }
+  })
+
+  if (viewing()) {
+    const agent = agents.find((a) => a.id === viewing())
+    if (!agent) setViewing(null)
+    else {
+      const activity = agent.events.filter((event) => ['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)).map((event) => {
+        const name = event.call?.function?.name || 'unknown'
+        if (event.type === 'tool_executing') {
+          let args = event.call?.function?.arguments || ''
+          try { args = JSON.stringify(JSON.parse(args), null, 2) } catch {}
+          return `▶ ${name}\n${args}`
+        }
+        if (event.type === 'tool_error') return `✕ ${name}\n${event.error}`
+        const output = typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
+        return `✓ ${name}\n${output}`
+      }).join('\n\n')
+      return (
+        <PanelFrame title={`agent ${agent.id} · ${agent.description}`} hint={`${agent.status} · ${agent.model || 'no model'} · esc back`}>
+          <box style={{ flexDirection: 'column', height: 16, marginTop: 1 }}>
+            <ScrollBox focused={focused} scrollbar>
+              <text style={{ color: accent(), bold: true }}>Prompt</text>
+              <text style={{ color: FG_SOFT }}>{agent.prompt}</text>
+              <text> </text>
+              <text style={{ color: accent(), bold: true }}>Tool activity</text>
+              <text style={{ color: FG_SOFT }}>{activity || 'no tool calls recorded'}</text>
+              {(agent.result || agent.error) && <text> </text>}
+              {(agent.result || agent.error) && <text style={{ color: accent(), bold: true }}>{agent.error ? 'Error' : 'Result'}</text>}
+              {(agent.result || agent.error) && <text style={{ color: agent.error ? RED : FG_SOFT }}>{agent.error || agent.result}</text>}
+            </ScrollBox>
+          </box>
+        </PanelFrame>
+      )
+    }
+  }
+
+  return (
+    <PanelFrame title="Agents" hint="j/k to move · enter inspect · ctrl+x cancel or dismiss · esc close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        {agents.length === 0 ? <text style={{ color: FAINT }}>no background agents yet</text> : (
+          <Menu
+            counter items={agents} selected={index()} onSelect={setIndex} focused={focused}
+            maxVisible={8} vimKeys onSubmit={(a) => setViewing(a.id)} onCancel={onClose}
+            renderItem={(a, { active }) => (
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: active ? accent() : FG }}>{`${a.id.padStart(3)}  ${a.description}`}</text>
+                <box style={{ flexGrow: 1 }} />
+                <text style={{ color: a.status === 'failed' ? RED : a.status === 'completed' ? GREEN : MUTED }}>{a.status}</text>
+              </box>
+            )}
+          />
+        )}
+      </box>
+    </PanelFrame>
+  )
 }

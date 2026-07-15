@@ -7,8 +7,10 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, dredge, mcpTools = [], userTools = [], signal, maxToolCalls }) {
+export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, agents, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
+  let agentStarts = 0
+  let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
   const deps = { cwd, recorder, tracker, signal, shells }
 
   const local = [
@@ -84,6 +86,60 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, d
     )
   }
 
+  if (agents) {
+    local.push(
+      {
+        name: 'agent_plan',
+        description: 'Set the total agent budget for this research run before starting workers. Interpret any user-requested count semantically; otherwise use the configured default. The harness enforces the declared budget.',
+        schema: {
+          count: { type: 'integer', description: `total agents to permit (1-${maxAgentStarts || 100})` },
+          reason: { type: 'string', description: 'brief explanation of how the count follows the user request or research scope' },
+        },
+        execute: ({ count, reason }) => {
+          const ceiling = maxAgentStarts || 100
+          if (!Number.isInteger(count) || count < 1 || count > ceiling) throw new Error(`agent budget must be between 1 and ${ceiling}`)
+          if (agentStarts > 0) throw new Error('agent budget must be declared before starting agents')
+          plannedAgentStarts = count
+          return { agentLimit: count, reason }
+        },
+      },
+      {
+        name: 'agent_start',
+        description: 'Start an isolated background agent for a focused task. Use workers for parallel investigation, not conversation. Returns immediately with an agent id.',
+        schema: {
+          prompt: { type: 'string', description: 'complete, self-contained task and desired output' },
+          description: { type: 'string', description: 'short label shown to the user' },
+          tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured safe worker tools', optional: true },
+        },
+        execute: ({ prompt, description, tools }) => {
+          if (plannedAgentStarts == null) throw new Error('call agent_plan before starting research agents')
+          if (agentStarts >= plannedAgentStarts) throw new Error(`agent limit reached for this run (${plannedAgentStarts}); collect existing agents and finish without spawning more`)
+          agentStarts++
+          const agent = agents.start({ prompt, description, tools })
+          return { agentId: agent.id, status: agent.status, model: agent.model }
+        },
+      },
+      {
+        name: 'agent_list',
+        description: 'List background agents and their current status.',
+        schema: {},
+        execute: () => ({ agents: agents.list().map(({ id, description, model, status, result, error }) => ({ id, description, model, status, result: result || undefined, error: error || undefined })) }),
+      },
+      {
+        name: 'agent_wait',
+        description: 'Wait for background agents to finish and return their results.',
+        schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids to wait for' } },
+        execute: async ({ ids }) => ({ agents: (await agents.wait(ids)).map(({ id, status, result, error }) => ({ id, status, result, error })) }),
+      },
+      {
+        name: 'agent_cancel',
+        description: 'Cancel a queued or running background agent.',
+        schema: { id: { type: 'string', description: 'agent id' } },
+        execute: ({ id }) => ({ cancelled: agents.cancel(id) }),
+      },
+    )
+  }
+
   if (memory) {
     local.push(
       {
@@ -137,6 +193,7 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, d
 
   const byName = new Map()
   for (const tool of [...local, ...userTools, ...mcpTools]) {
+    if (allowNames && !allowNames.includes(tool.name)) continue
     if (!byName.has(tool.name)) byName.set(tool.name, tool)
   }
   const tools = [...byName.values()].map((tool) => ({

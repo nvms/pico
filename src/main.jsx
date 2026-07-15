@@ -137,6 +137,10 @@ const boot = {
   models,
   providers,
   initialModel: configuredDefault || defaultModel(models),
+  researchModel: config.models?.researchWorker || null,
+  researchAgentLimit: Number.isInteger(config.research?.agentLimit) && config.research.agentLimit >= 1 && config.research.agentLimit <= 100
+    ? config.research.agentLimit
+    : 10,
   detectedTheme,
   themePref: themeOverride || 'auto',
   dredge: resolveDredge(config),

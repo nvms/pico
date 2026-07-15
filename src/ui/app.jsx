@@ -8,6 +8,7 @@ import { createSession, openSession, loadSession, listSessions, deleteSession, d
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
+import { createAgentManager } from '../core/agents.js'
 import { compactionPrompt, formatCompactSummary, summarySections } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
@@ -33,7 +34,7 @@ import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, AgentsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -64,6 +65,8 @@ const COMMANDS = [
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
+  { name: 'agents', desc: 'View and manage background agents' },
+  { name: 'deep-research', desc: 'Research with parallel agents: /deep-research [--agents N] <question>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
@@ -137,6 +140,7 @@ export function App({ boot }) {
   const [clouds, setClouds] = createSignal(boot.clouds)
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
+  const [researchAgentLimit, setResearchAgentLimit] = createSignal(boot.researchAgentLimit)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
@@ -152,6 +156,11 @@ export function App({ boot }) {
   const [view, setView] = createSignal('chat')
   const [verbose, setVerbose] = createSignal(false)
   const [showModelPanel, setShowModelPanel] = createSignal(false)
+  const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
+  const [researchModelReturn, setResearchModelReturn] = createSignal(null)
+  const [pendingResearch, setPendingResearch] = createSignal(null)
+  const [showAgentsPanel, setShowAgentsPanel] = createSignal(false)
+  const [agentsVersion, setAgentsVersion] = createSignal(0)
   const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
   const [histScope, setHistScope] = createSignal(0)
   const [histPrompts, setHistPrompts] = createSignal([])
@@ -188,6 +197,44 @@ export function App({ boot }) {
   refs.quitAt ??= 0
   refs.attachments ??= new Map()
   refs.imageCount ??= 0
+
+  refs.agents ??= createAgentManager({
+    concurrency: 8,
+    defaults: () => ({ model: boot.researchModel }),
+    onChange: () => setAgentsVersion((v) => v + 1),
+    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, tools: agent.tools })),
+    onEvent: (agent, event) => {
+      if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
+    },
+    onFinish: (agent) => persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error })),
+    run: async (agent, signal, onStream) => {
+      const worker = models.find((m) => m.name === agent.model)
+      if (!worker || worker.available === false) throw new Error(`research model unavailable: ${agent.model}`)
+      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
+      const workerTools = ['read', 'glob', 'grep', 'web_search', 'web_fetch']
+      const requestedTools = agent.tools?.length ? agent.tools.filter((name) => workerTools.includes(name)) : workerTools
+      const { tools, recorder } = createToolset({
+        cwd,
+        tracker,
+        dredge: boot.dredge,
+        signal,
+        maxToolCalls: 30,
+        allowNames: requestedTools,
+      })
+      return runTurn({
+        history: [{ role: 'user', content: agent.prompt }],
+        tools,
+        recorder,
+        modelName: worker.name,
+        effort: worker.effort ? 'low' : null,
+        auth,
+        system: 'You are an isolated research worker. Complete only the assigned task. Use primary sources where possible, distinguish evidence from inference, include source URLs, and return a concise self-contained result. Do not ask the user questions.',
+        signal,
+        onStream,
+      })
+    },
+  })
+  const agents = refs.agents
 
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
   boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
@@ -387,6 +434,8 @@ export function App({ boot }) {
   }
 
   async function runAgentTurn() {
+    const researchAgentLimit = refs.nextResearchAgentLimit || null
+    refs.nextResearchAgentLimit = null
     let auth = null
     if (model().provider === 'codex') {
       auth = await openaiCredentials().catch(() => null)
@@ -422,10 +471,14 @@ export function App({ boot }) {
       shells: boot.shells,
       wakeups: boot.wakeups,
       memory: boot.memory,
+      agents: boot.researchModel ? agents : null,
       dredge: boot.dredge,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
+      maxAgentStarts: researchAgentLimit ? 100 : undefined,
+      requireAgentPlan: !!researchAgentLimit,
+      allowNames: researchAgentLimit ? ['agent_plan', 'agent_start', 'agent_list', 'agent_wait', 'agent_cancel'] : undefined,
     })
 
     refs.turnThoughts = ''
@@ -780,6 +833,21 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'connect') return openConnectPanel()
+    if (c.name === 'agents') return setShowAgentsPanel(true)
+    if (c.name === 'deep-research') {
+      const match = args.match(/^(?:--agents(?:=|\s+)(\d+)\s+)?([\s\S]+)$/)
+      const question = match?.[2]?.trim()
+      const agentLimit = match?.[1] ? Number(match[1]) : researchAgentLimit()
+      if (!question || !Number.isInteger(agentLimit) || agentLimit < 1 || agentLimit > 100) return flash('usage: /deep-research [--agents 1-100] <question>')
+      if (!boot.researchModel || !models.some((m) => m.name === boot.researchModel && m.available !== false)) {
+        setPendingResearch({ question, agentLimit })
+        setShowResearchModelPanel(true)
+        return
+      }
+      refs.nextResearchAgentLimit = agentLimit
+      send(`Conduct deep research on the following question: ${question}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's question semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to investigate distinct angles with the configured research worker model. Collect workers with agent_wait, critically evaluate their evidence, and synthesize a concise cited report. When the budget permits, use independent workers to check important disputed or weak claims. Do not delegate final synthesis. Do not emit progress updates while researching; Pico displays agent activity automatically.`)
+      return
+    }
     if (c.name === 'model') {
       if (!args) return setShowModelPanel(true)
       const exact = models.find((m) => m.name === args)
@@ -883,6 +951,7 @@ export function App({ boot }) {
       refs.allEvents = []
       refs.persisted = 0
       refs.rewindUndo = null
+      agents.clear()
       setQueued([])
       setSent([])
       setModel(defaultModel())
@@ -1078,6 +1147,7 @@ export function App({ boot }) {
       refs.allEvents = [...events]
       refs.persisted = events.length
       refs.rewindUndo = null
+      agents.restore(events)
       reDerive()
       const catalogMatch = models.find((m) => m.name === derived().model && m.available !== false)
       const restored = derived().model
@@ -1214,8 +1284,8 @@ export function App({ boot }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
+    showModelPanel() || showResearchModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showProjectPanel() || showShellsPanel() || showAgentsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
   // every focus-taking panel dims the conversation behind it; the theme
@@ -1404,6 +1474,8 @@ export function App({ boot }) {
     : 0
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
+  agentsVersion()
+  const visibleAgents = agents.list().filter((a) => ['queued', 'running'].includes(a.status))
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
   const gitInfo = gitFooter() ? boot.git.status() : null
@@ -1686,6 +1758,36 @@ export function App({ boot }) {
         />
       )}
 
+      {showResearchModelPanel() && (
+        <ModelPanel
+          models={models.filter((m) => m.available !== false)}
+          current={boot.researchModel}
+          defaultName={null}
+          title="Choose research worker model"
+          hint="enter: save worker model · esc: cancel"
+          focused={showResearchModelPanel()}
+          onPick={(m) => {
+            boot.researchModel = m.name
+            writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
+            setShowResearchModelPanel(false)
+            flash(`research workers: ${m.name}`)
+            const pending = pendingResearch()
+            const returnTo = researchModelReturn()
+            setPendingResearch(null)
+            setResearchModelReturn(null)
+            if (pending) runCommand({ name: 'deep-research' }, `--agents ${pending.agentLimit} ${pending.question}`)
+            else if (returnTo === 'config') setShowConfigPanel(true)
+          }}
+          onPickDefault={() => {}}
+          onClose={() => {
+            setShowResearchModelPanel(false)
+            setPendingResearch(null)
+            if (researchModelReturn() === 'config') setShowConfigPanel(true)
+            setResearchModelReturn(null)
+          }}
+        />
+      )}
+
       {showEffortPanel() && (
         <EffortPanel
           levels={EFFORT_LEVELS}
@@ -1723,8 +1825,13 @@ export function App({ boot }) {
 
       {showConfigPanel() && (
         <ConfigPanel
-          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter() }}
+          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
           focused={showConfigPanel()}
+          onPickResearchModel={() => {
+            setResearchModelReturn('config')
+            setShowConfigPanel(false)
+            setShowResearchModelPanel(true)
+          }}
           onChange={(name, value) => {
             if (name === 'clouds') {
               setClouds(value)
@@ -1734,6 +1841,10 @@ export function App({ boot }) {
               boot.gitFooter = value
               boot.git.setEnabled(value)
               writeConfig({ display: { gitStatus: value } })
+            } else if (name === 'researchAgentLimit') {
+              setResearchAgentLimit(value)
+              boot.researchAgentLimit = value
+              writeConfig({ research: { agentLimit: value } })
             } else {
               setCompactToolHistory(value)
               writeConfig({ display: { compactToolHistory: value } })
@@ -1829,6 +1940,19 @@ export function App({ boot }) {
           onKill={killShell}
           onDismiss={(s) => boot.shells.dismiss(s.id)}
           onClose={() => setShowShellsPanel(false)}
+        />
+      )}
+
+      {showAgentsPanel() && (
+        <AgentsPanel
+          version={agentsVersion()}
+          agents={agents.list()}
+          focused={showAgentsPanel()}
+          onCancel={(a) => agents.cancel(a.id)}
+          onDismiss={(a) => {
+            if (agents.dismiss(a.id)) persist(makeEvent('agent_dismiss', { agentId: a.id }))
+          }}
+          onClose={() => setShowAgentsPanel(false)}
         />
       )}
 
@@ -1930,6 +2054,26 @@ export function App({ boot }) {
               {`  ${liveShells.length > SHELL_STRIP_MAX ? `+${liveShells.length - SHELL_STRIP_MAX} more · ` : ''}/shells`}
             </text>
           </box>
+        </box>
+      )}
+
+      {visibleAgents.length > 0 && !showAgentsPanel() && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          {visibleAgents.slice(0, SHELL_STRIP_MAX).map((a) => (
+            <box key={a.id} style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent() }}>{'◆ '}</text>
+              <text style={{ color: MUTED }}>{`${a.id} · `}</text>
+              <box style={{ flexGrow: 1, height: 1 }}>
+                <text style={{ overflow: 'truncate', color: FG_SOFT }}>{a.description}</text>
+              </box>
+              <box style={{ flexDirection: 'row', marginLeft: 2 }}>
+                <AnimatedValue value={a.usage?.promptTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} in`} />
+                <text style={{ color: MUTED }}> · </text>
+                <AnimatedValue value={a.usage?.completionTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} out`} />
+              </box>
+            </box>
+          ))}
+          <text style={{ color: MUTED }}>{`  ${visibleAgents.length > SHELL_STRIP_MAX ? `+${visibleAgents.length - SHELL_STRIP_MAX} more · ` : ''}/agents`}</text>
         </box>
       )}
 
