@@ -1925,7 +1925,7 @@ export function App({ boot }) {
           focused={showResumePanel()}
           currentId={refs.session?.id}
           onPick={(meta) => {
-            if (meta.header.id === refs.session?.id) return flash('already in this session')
+            if (meta.header.id === refs.session?.id) return setShowResumePanel(false)
             resumeSession(meta)
           }}
           onDelete={deleteSessionMeta}
