@@ -1,6 +1,7 @@
 import { createSignal, Button, Checkbox, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
+import { compactNumber } from './format.js'
 import { homedir } from 'node:os'
 import { fuzzyScore } from './fuzzy.js'
 import { formatHttpServerSpec, parseServerSpec, redactServerSpec, REDACTED_HEADER } from '../core/mcp.js'
@@ -1163,10 +1164,30 @@ function McpKeys({ focused, onKey }) {
   return null
 }
 
+function agentElapsed(agent, now = Date.now()) {
+  if (!agent.startedAt) return agent.status === 'queued' ? 'waiting to start' : 'not started'
+  const seconds = Math.max(0, Math.floor(((agent.endedAt || now) - agent.startedAt) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  if (hours > 0) return `${hours}h${String(minutes % 60).padStart(2, '0')}m${String(seconds % 60).padStart(2, '0')}s`
+  if (minutes > 0) return `${minutes}m${String(seconds % 60).padStart(2, '0')}s`
+  return `${seconds}s`
+}
+
+function agentCurrentActivity(agent) {
+  if (agent.status === 'queued') return 'waiting to start'
+  if (agent.status !== 'running') return agent.status
+  const event = agent.events.at(-1)
+  if (event?.type === 'tool_executing') return `running ${event.call?.function?.name || 'tool'}`
+  return 'working'
+}
+
 export function AgentsPanel({ version, agents, focused, onCancel, onDismiss, onClose }) {
   const [viewing, setViewing] = createSignal(null)
   const [index, setIndex] = createSignal(0)
+  const [now, setNow] = createSignal(Date.now())
   useEscape(() => focused, () => (viewing() ? setViewing(null) : onClose()))
+  useInterval(() => setNow(Date.now()), 1000)
   void version
   const selected = () => agents[Math.min(index(), agents.length - 1)] || null
 
@@ -1198,6 +1219,16 @@ export function AgentsPanel({ version, agents, focused, onCancel, onDismiss, onC
         <PanelFrame title={`agent ${agent.id} · ${agent.description}`} hint={`${agent.status} · ${agent.model || 'no model'} · esc back`}>
           <box style={{ flexDirection: 'column', height: 16, marginTop: 1 }}>
             <ScrollBox focused={focused} scrollbar>
+              <text style={{ color: accent(), bold: true }}>Live details</text>
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: MUTED }}>Input </text>
+                <AnimatedValue value={agent.usage?.promptTokens || 0} color={FG_SOFT} highlight={accent()} format={compactNumber} />
+                <text style={{ color: MUTED }}> tok  ·  Output </text>
+                <AnimatedValue value={agent.usage?.completionTokens || 0} color={FG_SOFT} highlight={accent()} format={compactNumber} />
+                <text style={{ color: MUTED }}>{` tok  ·  ${agentElapsed(agent, now())}`}</text>
+              </box>
+              <text style={{ color: FG_SOFT }}>{agentCurrentActivity(agent)}</text>
+              <text> </text>
               <text style={{ color: accent(), bold: true }}>Prompt</text>
               <text style={{ color: FG_SOFT }}>{agent.prompt}</text>
               <text> </text>
@@ -1219,12 +1250,26 @@ export function AgentsPanel({ version, agents, focused, onCancel, onDismiss, onC
         {agents.length === 0 ? <text style={{ color: FAINT }}>no background agents yet</text> : (
           <Menu
             counter items={agents} selected={index()} onSelect={setIndex} focused={focused}
-            maxVisible={8} vimKeys onSubmit={(a) => setViewing(a.id)} onCancel={onClose}
+            maxVisible={6} itemHeight={2} vimKeys onSubmit={(a) => setViewing(a.id)} onCancel={onClose}
             renderItem={(a, { active }) => (
-              <box style={{ flexDirection: 'row' }}>
-                <text style={{ color: active ? accent() : FG }}>{`${a.id.padStart(3)}  ${a.description}`}</text>
-                <box style={{ flexGrow: 1 }} />
-                <text style={{ color: a.status === 'failed' ? RED : a.status === 'completed' ? GREEN : MUTED }}>{a.status}</text>
+              <box style={{ flexDirection: 'column' }}>
+                <box style={{ flexDirection: 'row' }}>
+                  <box style={{ flexGrow: 1, height: 1 }}>
+                    <text style={{ color: active ? accent() : FG, overflow: 'truncate' }}>{`${a.id.padStart(3)}  ${a.description}`}</text>
+                  </box>
+                  <text style={{ color: a.status === 'failed' ? RED : a.status === 'completed' ? GREEN : MUTED }}>{`  ${a.status}`}</text>
+                </box>
+                <box style={{ flexDirection: 'row', paddingLeft: 5 }}>
+                  <box style={{ flexGrow: 1, height: 1 }}>
+                    <text style={{ color: MUTED, overflow: 'truncate' }}>{`${agentCurrentActivity(a)} · ${a.model || 'no model'}`}</text>
+                  </box>
+                  <box style={{ flexDirection: 'row', marginLeft: 2 }}>
+                    <AnimatedValue value={a.usage?.promptTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} in`} />
+                    <text style={{ color: MUTED }}> · </text>
+                    <AnimatedValue value={a.usage?.completionTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} out`} />
+                    <text style={{ color: MUTED }}>{` · ${agentElapsed(a, now())}`}</text>
+                  </box>
+                </box>
               </box>
             )}
           />
