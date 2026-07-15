@@ -7,7 +7,7 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, agents, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
+export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -84,6 +84,53 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, a
         }),
       },
     )
+  }
+
+  if (askUser) {
+    local.push({
+      name: 'ask_user',
+      description: 'Ask the user one or more focused questions when their answers are genuinely needed to continue. Supports free text, one choice, or multiple choices. Do not ask questions you can answer from available context.',
+      schema: {
+        questions: {
+          type: 'array',
+          description: 'questions to present, in order',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'short unique identifier' },
+              question: { type: 'string', description: 'clear question shown to the user' },
+              description: { type: 'string', description: 'brief context explaining why this matters', optional: true },
+              type: { type: 'string', enum: ['single', 'multi', 'text'], description: 'answer control' },
+              options: {
+                type: 'array', optional: true, description: 'choices for single or multi questions',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string' },
+                    description: { type: 'string', optional: true },
+                  },
+                  required: ['label'],
+                },
+              },
+              allowOther: { type: 'boolean', optional: true, description: 'allow a custom answer; defaults to true for choice questions' },
+            },
+            required: ['id', 'question', 'type'],
+          },
+        },
+      },
+      execute: ({ questions }) => {
+        if (!Array.isArray(questions) || questions.length === 0 || questions.length > 10) throw new Error('ask_user requires 1-10 questions')
+        const ids = new Set()
+        for (const question of questions) {
+          if (!question.id?.trim() || ids.has(question.id)) throw new Error('each question needs a unique non-empty id')
+          if (!question.question?.trim()) throw new Error(`question ${question.id} has no prompt`)
+          if (!['single', 'multi', 'text'].includes(question.type)) throw new Error(`question ${question.id} has an invalid type`)
+          if (question.type !== 'text' && (!Array.isArray(question.options) || question.options.length === 0)) throw new Error(`question ${question.id} needs at least one option`)
+          ids.add(question.id)
+        }
+        return askUser(questions)
+      },
+    })
   }
 
   if (agents) {

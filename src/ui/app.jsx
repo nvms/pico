@@ -32,6 +32,7 @@ import { highlightVersion } from './highlight.js'
 import { compactNumber } from './format.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
+import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, AgentsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
@@ -141,6 +142,7 @@ export function App({ boot }) {
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
   const [researchAgentLimit, setResearchAgentLimit] = createSignal(boot.researchAgentLimit)
+  const [questionRequest, setQuestionRequest] = createSignal(null)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
@@ -472,6 +474,10 @@ export function App({ boot }) {
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
+      askUser: (questions) => new Promise((resolve) => {
+        setQuestionRequest({ questions, resolve })
+        fm.focus('question')
+      }),
       dredge: boot.dredge,
       mcpTools: mcp.tools(),
       userTools: userToolScan.tools,
@@ -643,6 +649,12 @@ export function App({ boot }) {
 
   function interrupt() {
     if (!busy()) return
+    const request = questionRequest()
+    if (request) {
+      setQuestionRequest(null)
+      refs.focusComposerAfterQuestion = true
+      request.resolve({ cancelled: true })
+    }
     refs.abort?.abort()
   }
 
@@ -1318,7 +1330,16 @@ export function App({ boot }) {
 
   const fm = useFocus({ initial: 'input' })
   fm.item('feed')
-  fm.item('input')
+  if (questionRequest()) {
+    fm.item('question')
+    if (!fm.is('question')) fm.focus('question')
+  } else {
+    fm.item('input')
+    if (refs.focusComposerAfterQuestion) {
+      refs.focusComposerAfterQuestion = false
+      fm.focus('input')
+    }
+  }
   useFocusTrap(anyPanel() || view() === 'help')
   useSelection({
     onCopy: (text) => flash(`copied ${text.length} ${text.length === 1 ? 'character' : 'characters'}`),
@@ -1544,12 +1565,31 @@ export function App({ boot }) {
         </box>
       )}
 
-      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() }}>
-        <text style={{ color: fm.is('input') && !anyPanel() ? accent() : MUTED, bold: true }}>{'❯'}</text>
+      {questionRequest() && (
+        <QuestionForm
+          request={questionRequest()}
+          focused={fm.is('question') && !anyPanel()}
+          onSubmit={(answers) => {
+            const request = questionRequest()
+            setQuestionRequest(null)
+            refs.focusComposerAfterQuestion = true
+            request.resolve({ answers })
+          }}
+          onCancel={() => {
+            const request = questionRequest()
+            setQuestionRequest(null)
+            refs.focusComposerAfterQuestion = true
+            request.resolve({ cancelled: true })
+          }}
+        />
+      )}
+
+      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+        <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
           <box style={{ position: 'absolute', top: 0, right: 0 }}>
-            <text style={{ bg: fm.is('input') && !anyPanel() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>
+            <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>
           </box>
         )}
         <TextArea
@@ -1655,7 +1695,7 @@ export function App({ boot }) {
           }}
           submitOnEnter
           clearOnSubmit
-          focused={fm.is('input') && !anyPanel()}
+          focused={fm.is('input') && !anyPanel() && !questionRequest()}
           maxHeight={8}
           placeholder="Ask anything"
           cursor={{ blink: true, bg: accent(), color: 'black' }}
