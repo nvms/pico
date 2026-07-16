@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseLine, parseLines, makeEvent } from '../src/core/events.js'
-import { parseCommand, parseServerSpec, redactServerSpec } from '../src/core/mcp.js'
+import { createMcpTransport, parseCommand, parseServerSpec, redactServerSpec } from '../src/core/mcp.js'
 import { parseFrontmatter, createSkillIndex } from '../src/core/skills.js'
 import { discoverKeys } from '../src/core/keys.js'
 import { defaultModel, estimateCost, findModel } from '../src/core/models.js'
@@ -64,6 +64,27 @@ test('parseServerSpec routes urls to http and commands to stdio', () => {
     args: ['some-server', '--endpoint', 'https://api.example.com'],
     env: {},
   })
+})
+
+test('http MCP transport uses request responses instead of a standalone SSE stream', async () => {
+  const originalFetch = globalThis.fetch
+  const requests = []
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init)
+    return new Response(null, { status: 202 })
+  }
+  try {
+    const transport = await createMcpTransport('https://mcp.example.com Authorization="Bearer token"')
+    const response = await transport._fetch(new URL('https://mcp.example.com'), { method: 'GET' })
+    assert.equal(response.status, 405)
+    assert.equal(requests.length, 0)
+
+    await transport._fetch(new URL('https://mcp.example.com'), { method: 'POST' })
+    assert.equal(requests.length, 1)
+    assert.equal(requests[0].method, 'POST')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('redactServerSpec hides sensitive http headers', () => {

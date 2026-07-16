@@ -97,6 +97,27 @@ export async function writeProjectConfig(root, config) {
   await writeFile(projectMcpFile(root), JSON.stringify(config, null, 2) + '\n')
 }
 
+export async function createMcpTransport(command) {
+  const spec = parseServerSpec(command)
+  if (spec.type === 'http') {
+    const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
+    const fetch = (url, init) => init?.method === 'GET'
+      ? Promise.resolve(new Response(null, { status: 405 }))
+      : globalThis.fetch(url, init)
+    return new StreamableHTTPClientTransport(new URL(spec.url), {
+      requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
+      fetch,
+    })
+  }
+  const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
+  return new StdioClientTransport({
+    command: spec.command,
+    args: spec.args,
+    env: { ...process.env, ...spec.env },
+    stderr: 'pipe',
+  })
+}
+
 export async function createMcpRuntime({ root, onChange = () => {} }) {
   const registry = await readRegistry()
   const projectConfig = await readProjectConfig(root)
@@ -117,23 +138,6 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
   for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
   for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
 
-  async function createTransport(command) {
-    const spec = parseServerSpec(command)
-    if (spec.type === 'http') {
-      const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-      return new StreamableHTTPClientTransport(new URL(spec.url), {
-        requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
-      })
-    }
-    const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
-    return new StdioClientTransport({
-      command: spec.command,
-      args: spec.args,
-      env: { ...process.env, ...spec.env },
-      stderr: 'pipe',
-    })
-  }
-
   async function connect(name) {
     const server = servers.get(name)
     if (!server) return
@@ -141,7 +145,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     server.error = null
     onChange()
     try {
-      server.transport = await createTransport(server.command)
+      server.transport = await createMcpTransport(server.command)
       server.connection = await connectMCP({
         name,
         transport: () => server.transport,
