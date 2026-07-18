@@ -65,7 +65,7 @@ async function sessionMeta(file) {
   }
   const title = customTitle || automaticTitle
   if (!title) return null
-  return { file, header, title, color, turns, at: info.mtimeMs }
+  return { file, header, title, customTitle, automaticTitle, color, turns, at: info.mtimeMs }
 }
 
 async function listDir(dir) {

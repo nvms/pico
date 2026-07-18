@@ -3,7 +3,7 @@ import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } fr
 import { AnimatedValue } from './animated-value.jsx'
 import { compactNumber } from './format.js'
 import { homedir } from 'node:os'
-import { fuzzyScore } from './fuzzy.js'
+import { fuzzyScore, rankFuzzy } from './fuzzy.js'
 import { formatHttpServerSpec, parseServerSpec, redactServerSpec, REDACTED_HEADER } from '../core/mcp.js'
 
 function shortenHome(path) {
@@ -23,7 +23,7 @@ export function timeAgo(at) {
 
 function PanelFrame({ title, hint, right, children }) {
   return (
-    <box style={{ flexDirection: 'column', marginTop: 1, bg: PANEL_BG }}>
+    <box style={{ flexDirection: 'column', bg: PANEL_BG }}>
       <box style={{ flexDirection: 'column', paddingX: 2, paddingTop: 1 }}>
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: accent(), bold: true }}>{title}</text>
@@ -153,6 +153,8 @@ export function ScopeTabs({ scopes, active }) {
 
 export function ModelPanel({ models, current, defaultName, focused, onPick, onPickDefault, onClose, title = 'Select model', hint = 'enter: this session · ctrl+s: set as default · esc: close' }) {
   const [cursor, setCursor] = createSignal(models[0] || null)
+  const [query, setQuery] = createSignal('')
+  const rankedModels = rankFuzzy(models, query(), (q, model) => fuzzyScore(q, model.name))
 
   useInput((event) => {
     if (!focused) return
@@ -167,10 +169,11 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
       <box style={{ flexDirection: 'column', height: 12, marginTop: 1 }}>
         <PickList
           counter
-          items={models}
+          items={rankedModels}
           focused={focused}
           placeholder="filter models..."
-          filter={(q, m) => fuzzyScore(q, m.name) >= 0}
+          filter={() => true}
+          onChange={setQuery}
           onCursorChange={setCursor}
           onSubmit={onPick}
           onCancel={onClose}
@@ -344,6 +347,12 @@ function useEscape(focused, onClose) {
 
 export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, currentId, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(sessions[0] || null)
+  const [query, setQuery] = createSignal('')
+  const rankedSessions = rankFuzzy(sessions, query(), (q, session) => {
+    const customScore = session.customTitle ? fuzzyScore(q, session.customTitle) : -1
+    if (customScore >= 0) return 20_000 + customScore
+    return fuzzyScore(q, session.automaticTitle || session.title)
+  })
   const selectedSession = () => {
     if (loading) return null
     const selected = preview()
@@ -374,10 +383,11 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
           ) : (
             <PickList
               counter
-              items={sessions}
+              items={rankedSessions}
               focused={focused && !loading}
               placeholder="filter sessions..."
-              filter={(q, s) => fuzzyScore(q, s.title) >= 0}
+              filter={() => true}
+              onChange={setQuery}
               onCursorChange={(s) => setPreview(s)}
               onSubmit={onPick}
               onCancel={onClose}
@@ -630,6 +640,8 @@ export function InfoListPanel({ title, rows, overview, focused, onClose }) {
 
 export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(projects[0] || null)
+  const [query, setQuery] = createSignal('')
+  const rankedProjects = rankFuzzy(projects, query(), (q, project) => fuzzyScore(q, project.path))
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
@@ -650,10 +662,11 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
           ) : (
             <PickList
               counter
-              items={projects}
+              items={rankedProjects}
               focused={focused && !loading}
               placeholder="filter projects..."
-              filter={(q, p) => fuzzyScore(q, p.path) >= 0}
+              filter={() => true}
+              onChange={setQuery}
               onCursorChange={(p) => setPreview(p)}
               onSubmit={onPick}
               onCancel={onClose}

@@ -2353,7 +2353,7 @@ export function App({ boot }) {
       {wideLayout && <box style={{ flexGrow: 1 }} />}
 
       {wideLayout ? (
-        <box style={{ flexDirection: 'column', paddingX: 2, paddingY: 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, paddingTop: 1 }}>
           {busy() && (
             <box style={{ flexDirection: 'column', marginBottom: 1 }}>
               <box style={{ flexDirection: 'row' }}>
