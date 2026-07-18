@@ -2392,23 +2392,37 @@ export function App({ boot }) {
         </box>
       ) : (
         <box style={{ flexDirection: 'column' }}>
-          {gitInfo?.branch && (
-            <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
-              <box style={{ flexGrow: 1 }} />
-              <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>
-              {gitInfo.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
-              {gitInfo.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
+          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
+            <box style={{ flexGrow: 1, height: 1 }}>
+              {busy()
+                ? (
+                  <box style={{ flexDirection: 'row' }}>
+                    <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
+                      {compacting()
+                        ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
+                        : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
+                    </Shimmer>
+                    <text style={{ color: FAINT, overflow: 'truncate' }}>{` · ${elapsed} · esc to interrupt`}</text>
+                  </box>
+                )
+                : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}
             </box>
-          )}
-          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: gitInfo?.branch ? 0 : 1 }}>
-            {busy() ? <text style={{ color: accent() }}>{`${turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'} (${elapsed}) · esc to interrupt`}</text> : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}
+            {gitInfo?.branch && <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>}
+            {gitInfo?.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
+            {gitInfo?.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
+          </box>
+          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1 }}>
+            <text style={{ color: MUTED }}>{model().name}</text>
+            {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
             <box style={{ flexGrow: 1 }} />
             {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
-            <text style={{ color: accent() }}>{model().name}</text>
-            {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
-            <text style={{ color: MUTED }}>{`↑ ${compactNumber(usage.promptTokens)} in · ↓ ${compactNumber(usage.completionTokens)} out`}</text>
-            {usage.thoughtTokens > 0 && <text style={{ color: MUTED }}>{`✦ ${Math.round(usage.thoughtTokens).toLocaleString()} think`}</text>}
-            {contextPercent > 0 && <text style={{ color: contextPercent >= 80 ? RED : MUTED }}>{`ctx ${contextPercent}%`}</text>}
+            <AnimatedValue value={usage.promptTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} input`} />
+            <text style={{ color: MUTED }}>{'·'}</text>
+            <AnimatedValue value={usage.completionTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} output`} />
+            {usage.thoughtTokens > 0 && <text style={{ color: MUTED }}>{'·'}</text>}
+            {usage.thoughtTokens > 0 && <AnimatedValue value={usage.thoughtTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} thought`} />}
+            {contextPercent > 0 && <text style={{ color: MUTED }}>{'·'}</text>}
+            {contextPercent > 0 && <AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : MUTED} highlight={accent()} format={(n) => `${Math.round(n)}% context`} />}
           </box>
         </box>
       )}
