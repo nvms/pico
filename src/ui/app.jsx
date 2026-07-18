@@ -23,6 +23,7 @@ import { findModel, estimateCost } from '../core/models.js'
 import { adhocModel } from '../core/catalog.js'
 import { writeConfig } from '../core/config.js'
 import { connectOpenAI, openaiCredentials, openaiStatus, disconnectOpenAI } from '../core/openai-auth.js'
+import { agentScratchDir, ensureDir } from '../core/paths.js'
 import { loadCodexModels } from '../core/codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
 import { completionContext, applyCompletion } from './completion.js'
@@ -208,16 +209,24 @@ export function App({ boot }) {
     onEvent: (agent, event) => {
       if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
     },
-    onFinish: (agent) => persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error })),
+    onFinish: (agent) => {
+      persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
+      noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id })
+    },
     run: async (agent, signal, onStream) => {
       const worker = models.find((m) => m.name === agent.model)
       if (!worker || worker.available === false) throw new Error(`research model unavailable: ${agent.model}`)
       const auth = worker.provider === 'codex' ? await openaiCredentials() : null
-      const workerTools = ['read', 'glob', 'grep', 'web_search', 'web_fetch']
+      const sessionId = refs.session?.id
+      if (!sessionId) throw new Error('worker requires an active session')
+      const scratchpad = ensureDir(agentScratchDir(root, sessionId, agent.id))
+      const workerTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
       const requestedTools = agent.tools?.length ? agent.tools.filter((name) => workerTools.includes(name)) : workerTools
       const { tools, recorder } = createToolset({
         cwd,
+        env: { PICO_SCRATCHPAD: scratchpad },
         tracker,
+        shells: boot.shells,
         dredge: boot.dredge,
         signal,
         maxToolCalls: 30,
@@ -230,7 +239,7 @@ export function App({ boot }) {
         modelName: worker.name,
         effort: worker.effort ? 'low' : null,
         auth,
-        system: 'You are an isolated research worker. Complete only the assigned task. Use primary sources where possible, distinguish evidence from inference, include source URLs, and return a concise self-contained result. Do not ask the user questions.',
+        system: `You are an isolated worker operating in the user's real project. Complete only the assigned task and do not ask the user questions. You may read, modify, and test project files. Put disposable scripts, generated data, experiments, and temporary package installs in your session-persistent scratchpad at ${scratchpad}, also available as $PICO_SCRATCHPAD. Use primary sources where possible, distinguish evidence from inference, and return a concise self-contained result.`,
         signal,
         onStream,
       })
@@ -270,16 +279,17 @@ export function App({ boot }) {
     )
   })
 
-  function noteSystem(text, { wake }) {
+  function noteSystem(text, { wake, agentId } = {}) {
     refs.pendingSystemNotes ??= []
-    refs.pendingSystemNotes.push({ text, wake })
+    refs.pendingSystemNotes.push({ text, wake, agentId })
     flushSystemNotes()
   }
 
   function flushSystemNotes() {
     if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    const notes = refs.pendingSystemNotes
+    const notes = refs.pendingSystemNotes.filter((note) => !note.agentId || !agents.get(note.agentId)?.collectedAt)
     refs.pendingSystemNotes = []
+    if (!notes.length) return
     persist(makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
     reDerive()
     if (notes.some((n) => n.wake)) runAgentTurn()
@@ -484,7 +494,7 @@ export function App({ boot }) {
       signal: controller.signal,
       maxAgentStarts: researchAgentLimit ? 100 : undefined,
       requireAgentPlan: !!researchAgentLimit,
-      allowNames: researchAgentLimit ? ['agent_plan', 'agent_start', 'agent_list', 'agent_wait', 'agent_cancel'] : undefined,
+      allowNames: researchAgentLimit ? ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel'] : undefined,
     })
 
     refs.turnThoughts = ''
@@ -857,7 +867,7 @@ export function App({ boot }) {
         return
       }
       refs.nextResearchAgentLimit = agentLimit
-      send(`Conduct deep research on the following question: ${question}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's question semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to investigate distinct angles with the configured research worker model. Collect workers with agent_wait, critically evaluate their evidence, and synthesize a concise cited report. When the budget permits, use independent workers to check important disputed or weak claims. Do not delegate final synthesis. Do not emit progress updates while researching; Pico displays agent activity automatically.`)
+      send(`Conduct deep research on the following question: ${question}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's question semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to investigate distinct angles with the configured research worker model. Collect workers with agent_collect, critically evaluate their evidence, and synthesize a concise cited report. When the budget permits, use independent workers to check important disputed or weak claims. Do not delegate final synthesis. Do not emit progress updates while researching; Pico displays agent activity automatically.`)
       return
     }
     if (c.name === 'model') {

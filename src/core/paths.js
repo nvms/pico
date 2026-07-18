@@ -29,6 +29,14 @@ export function sessionsDir(root) {
   return join(projectDir(root), 'sessions')
 }
 
+export function sessionScratchDir(root, sessionId) {
+  return join(projectDir(root), 'scratchpads', sessionId)
+}
+
+export function agentScratchDir(root, sessionId, agentId) {
+  return join(sessionScratchDir(root, sessionId), `agent-${agentId}`)
+}
+
 export function projectHistoryFile(root) {
   return join(projectDir(root), 'history.jsonl')
 }

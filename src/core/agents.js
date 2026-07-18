@@ -176,7 +176,13 @@ export function createAgentManager({ run, concurrency = 8, onChange = () => {}, 
     clear: () => restore([]),
     get: (id) => agents.get(String(id)) || null,
     list: () => [...agents.values()].sort((a, b) => Number(b.id) - Number(a.id)),
-    wait: async (ids) => Promise.all(ids.map((id) => agents.get(String(id))?.done).filter(Boolean)),
+    collect: async (ids) => {
+      const selected = await Promise.all(ids.map((id) => agents.get(String(id))?.done).filter(Boolean))
+      const at = Date.now()
+      for (const agent of selected) agent.collectedAt = at
+      changed()
+      return selected
+    },
     dismiss(id) {
       const agent = agents.get(String(id))
       if (!agent || ['queued', 'running'].includes(agent.status)) return false

@@ -1,10 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { access, mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createSession, loadSession, listSessions, deleteProjectData } from '../src/core/session.js'
+import { createSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../src/core/session.js'
 import { makeEvent } from '../src/core/events.js'
+import { agentScratchDir } from '../src/core/paths.js'
 
 async function isolatedHome() {
   process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
@@ -64,6 +65,20 @@ test('listSessions surfaces title, turns, scopes', async () => {
   const reset = await listSessions({ scope: 'project', root: rootB })
   assert.equal(reset[0].title, 'session in project b')
   delete process.env.PICO_HOME
+})
+
+test('deleteSession removes its scratchpads', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  await session.flush()
+  const scratchpad = agentScratchDir(root, session.id, '1')
+  await mkdir(scratchpad, { recursive: true })
+
+  await deleteSession(session.file)
+
+  await assert.rejects(access(session.file))
+  await assert.rejects(access(scratchpad))
 })
 
 test('deleteProjectData removes every session for that root and nothing else', async () => {

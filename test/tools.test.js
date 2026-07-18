@@ -89,6 +89,17 @@ test('bash runs commands and captures exit codes', async () => {
   assert.equal(recorder.entries[0].title, 'echo hello && exit 0')
 })
 
+test('bash receives additional environment variables', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'pico-tools-'))
+  const tracker = createContextTracker({ stopDir: cwd, loaded: new Set() })
+  const { tools } = createToolset({ cwd, tracker, env: { PICO_SCRATCHPAD: '/scratch/example' } })
+  const bash = tools.find((tool) => tool.name === 'bash')
+
+  const result = await bash.execute({ command: "printf '%s' \"$PICO_SCRATCHPAD\"" })
+
+  assert.equal(result.stdout, '/scratch/example')
+})
+
 test('glob finds files and ignores node_modules', async () => {
   const { cwd, byName } = await fixture()
   await mkdir(join(cwd, 'node_modules/junk'), { recursive: true })

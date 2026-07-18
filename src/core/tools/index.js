@@ -7,11 +7,11 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
+export function createToolset({ cwd, env, tracker, skills, shells, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
-  const deps = { cwd, recorder, tracker, signal, shells }
+  const deps = { cwd, env, recorder, tracker, signal, shells }
 
   const local = [
     createRead(deps),
@@ -152,11 +152,11 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, a
       },
       {
         name: 'agent_start',
-        description: 'Start an isolated background agent for a focused task. Use workers for parallel investigation, not conversation. Returns immediately with an agent id.',
+        description: 'Start a background agent for a focused task in the current project. Workers can inspect, modify, and test the project with the configured tools. Returns immediately with an agent id; collect its result with agent_collect.',
         schema: {
           prompt: { type: 'string', description: 'complete, self-contained task and desired output' },
           description: { type: 'string', description: 'short label shown to the user' },
-          tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured safe worker tools', optional: true },
+          tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured worker tools', optional: true },
         },
         execute: ({ prompt, description, tools }) => {
           if (plannedAgentStarts == null) throw new Error('call agent_plan before starting research agents')
@@ -170,13 +170,13 @@ export function createToolset({ cwd, tracker, skills, shells, wakeups, memory, a
         name: 'agent_list',
         description: 'List background agents and their current status.',
         schema: {},
-        execute: () => ({ agents: agents.list().map(({ id, description, model, status, result, error }) => ({ id, description, model, status, result: result || undefined, error: error || undefined })) }),
+        execute: () => ({ agents: agents.list().map(({ id, description, model, status }) => ({ id, description, model, status })) }),
       },
       {
-        name: 'agent_wait',
-        description: 'Wait for background agents to finish and return their results.',
-        schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids to wait for' } },
-        execute: async ({ ids }) => ({ agents: (await agents.wait(ids)).map(({ id, status, result, error }) => ({ id, status, result, error })) }),
+        name: 'agent_collect',
+        description: 'Collect background agent results. Waits for any selected agents that are still running.',
+        schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids whose results to collect' } },
+        execute: async ({ ids }) => ({ agents: (await agents.collect(ids)).map(({ id, status, result, error }) => ({ id, status, result, error })) }),
       },
       {
         name: 'agent_cancel',

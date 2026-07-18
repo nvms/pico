@@ -22,12 +22,12 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     }
   }
 
-  function start(command, { cwd, description } = {}) {
+  function start(command, { cwd, env, description } = {}) {
     const id = String(nextId++)
     const child = spawn(command, {
       shell: true,
       cwd: cwd || process.cwd(),
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+      env: { ...process.env, ...env, FORCE_COLOR: '0', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const shell = {

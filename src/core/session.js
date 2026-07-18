@@ -1,5 +1,5 @@
-import { appendFile, readFile, readdir, rm, stat, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { appendFile, readFile, readdir, rm, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { makeHeader, serializeLine, parseLines, parseLine } from './events.js'
 
@@ -71,8 +71,11 @@ async function listDir(dir) {
   }
 }
 
-export function deleteSession(file) {
-  return unlink(file)
+export async function deleteSession(file) {
+  const sessionId = basename(file, '.jsonl')
+  const project = dirname(dirname(file))
+  await rm(file)
+  await rm(join(project, 'scratchpads', sessionId), { recursive: true, force: true })
 }
 
 export function deleteProjectData(root) {

@@ -31,7 +31,7 @@ test('agent manager queues, runs, and collects isolated results', async () => {
   assert.equal(second.status, 'queued')
   assert.equal(first.model, 'provider/small')
   release()
-  const results = await manager.wait([first.id, second.id])
+  const results = await manager.collect([first.id, second.id])
   assert.deepEqual(results.map((a) => a.result), ['done one', 'done two'])
   assert.ok(first.events.length)
 })
@@ -68,7 +68,7 @@ test('returned agent errors are failures', async () => {
 test('agent tools enforce a model-declared per-turn spawn limit', async () => {
   const { createToolset } = await import('../src/core/tools/index.js')
   const started = []
-  const agents = { start: (options) => { const agent = { id: String(started.length + 1), status: 'queued', ...options }; started.push(agent); return agent }, list: () => [], wait: async () => [], cancel: () => true }
+  const agents = { start: (options) => { const agent = { id: String(started.length + 1), status: 'queued', ...options }; started.push(agent); return agent }, list: () => [], collect: async () => [], cancel: () => true }
   const { tools } = createToolset({ cwd: process.cwd(), agents, maxAgentStarts: 10, requireAgentPlan: true, allowNames: ['agent_plan', 'agent_start'] })
   const plan = tools.find((tool) => tool.name === 'agent_plan')
   const start = tools.find((tool) => tool.name === 'agent_start')
@@ -100,12 +100,12 @@ test('agent events restore completed and interrupted agents', () => {
   assert.equal(restored.some((agent) => agent.id === '5'), false)
 })
 
-test('manager restore replaces agents, supports waits, and continues ids', async () => {
+test('manager restore replaces agents, supports collection, and continues ids', async () => {
   const manager = createAgentManager({ concurrency: 0, run: async () => '' })
   manager.start({ prompt: 'discarded' })
   manager.restore([{ type: 'agent_start', at: 1, data: { agentId: '8', prompt: 'restored' } }])
   assert.deepEqual(manager.list().map((agent) => agent.id), ['8'])
-  assert.deepEqual((await manager.wait(['8'])).map((agent) => agent.id), ['8'])
+  assert.deepEqual((await manager.collect(['8'])).map((agent) => agent.id), ['8'])
   assert.equal(manager.start({ prompt: 'next' }).id, '9')
 })
 
