@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useLayout, useMouse, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -96,6 +96,81 @@ const SESSION_COLORS = {
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
 const MEMORY_SCOPES = ['all', 'project', 'global']
 const SHELL_STRIP_MAX = 5
+const AGENT_STRIP_MAX = 5
+
+function agentTranscript(agent) {
+  if (!agent) return []
+  const items = [{ kind: 'user', text: agent.prompt }]
+  const tools = new Map()
+  let response = ''
+
+  for (const event of agent.events) {
+    if (event.type === 'content') response += event.content
+    if (event.type === 'tool_executing') {
+      const call = event.call || {}
+      const item = {
+        kind: 'tool',
+        callId: call.id,
+        name: call.function?.name || 'tool',
+        args: call.function?.arguments || {},
+        title: call.function?.name || 'tool',
+        status: 'running',
+        startedAt: event.at || agent.updatedAt,
+      }
+      tools.set(call.id, item)
+      items.push(item)
+    }
+    if (event.type === 'tool_complete' || event.type === 'tool_error') {
+      const item = tools.get(event.call?.id)
+      if (item) {
+        item.status = event.type === 'tool_error' ? 'error' : 'done'
+        item.error = event.error ? String(event.error) : null
+        item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
+      }
+    }
+  }
+
+  const text = agent.result || response
+  if (text) items.push({ kind: 'assistant', text, interrupted: agent.status === 'cancelled' })
+  else if (agent.error) items.push({ kind: 'assistant', text: agent.error, interrupted: true })
+  return items
+}
+
+function agentElapsed(agent, now = Date.now()) {
+  if (!agent.startedAt) return 'waiting'
+  const seconds = Math.max(0, Math.floor(((agent.endedAt || now) - agent.startedAt) / 1000))
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  if (hours) return `${hours}h ${minutes % 60}m`
+  if (minutes) return `${minutes}m ${seconds % 60}s`
+  return `${seconds}s`
+}
+
+function agentStatus(agent) {
+  if (agent.status === 'queued') return { icon: '◌', label: 'queued', color: MUTED }
+  if (agent.status === 'completed') return { icon: '●', label: '', color: GREEN }
+  if (agent.status === 'failed') return { icon: '×', label: 'failed', color: RED }
+  return { icon: '■', label: 'cancelled', color: MUTED }
+}
+
+function AgentStripRow({ selected, children, onPress }) {
+  const layout = useLayout()
+  const [hovered, setHovered] = createSignal(false)
+  useMouse((event) => {
+    const inside = event.x >= layout.x && event.x < layout.x + layout.width && event.y >= layout.y && event.y < layout.y + layout.height
+    if (event.action === 'move') setHovered(inside)
+    if (inside && event.action === 'press' && event.button === 'left') {
+      onPress()
+      event.stopPropagation()
+    }
+  })
+  return (
+    <box style={{ flexDirection: 'row', color: hovered() ? FG_SOFT : MUTED }}>
+      <text style={{ color: selected ? accent() : MUTED, bold: selected }}>{selected ? '❯ ' : '  '}</text>
+      {children}
+    </box>
+  )
+}
 
 // only the newest slice of a long transcript renders; older items load in
 // batches when the user scrolls to the top. render cost is per-item, so this
@@ -164,6 +239,7 @@ export function App({ boot }) {
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [showAgentsPanel, setShowAgentsPanel] = createSignal(false)
   const [agentsVersion, setAgentsVersion] = createSignal(0)
+  const [viewedAgentId, setViewedAgentId] = createSignal(null)
   const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
   const [histScope, setHistScope] = createSignal(0)
   const [histPrompts, setHistPrompts] = createSignal([])
@@ -635,6 +711,7 @@ export function App({ boot }) {
   }
 
   function send(text) {
+    if (viewedAgentId()) return
     const value = text.trim()
     if (!value) return
     dismissCompletion()
@@ -974,6 +1051,7 @@ export function App({ boot }) {
       refs.persisted = 0
       refs.rewindUndo = null
       agents.clear()
+      setViewedAgentId(null)
       setQueued([])
       setSent([])
       setModel(defaultModel())
@@ -1170,6 +1248,7 @@ export function App({ boot }) {
       refs.persisted = events.length
       refs.rewindUndo = null
       agents.restore(events)
+      setViewedAgentId(null)
       reDerive()
       const catalogMatch = models.find((m) => m.name === derived().model && m.available !== false)
       const restored = derived().model
@@ -1506,7 +1585,8 @@ export function App({ boot }) {
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   agentsVersion()
-  const visibleAgents = agents.list().filter((a) => ['queued', 'running'].includes(a.status))
+  const visibleAgents = agents.list()
+  const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
   const gitInfo = gitFooter() ? boot.git.status() : null
@@ -1517,10 +1597,11 @@ export function App({ boot }) {
 
   highlightVersion()
 
-  const transcript = derived().transcript
+  const mainTranscript = derived().transcript
+  const transcript = viewedAgent ? agentTranscript(viewedAgent) : mainTranscript
   const hiddenCount = Math.max(0, transcript.length - histWindow())
-  const visibleItems = [...transcript.slice(hiddenCount), ...overlay()]
-  const items = compactToolHistory() ? compactToolRuns(visibleItems, turnPhase() === 'tools') : visibleItems
+  const visibleItems = viewedAgent ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
+  const items = compactToolHistory() ? compactToolRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : turnPhase() === 'tools') : visibleItems
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
@@ -1556,7 +1637,7 @@ export function App({ boot }) {
           </box>
         )}
         {items.map((item, i) => <Message key={hiddenCount + i} item={item} verbose={verbose()} />)}
-        {streaming() !== null && streaming() !== '' && (
+        {!viewedAgent && streaming() !== null && streaming() !== '' && (
           <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
         )}
       </ScrollBox>}
@@ -1603,9 +1684,11 @@ export function App({ boot }) {
           </box>
         )}
         <TextArea
-          color={FG}
+          color={viewedAgent ? MUTED : FG}
           lineCounter
-          value={input()}
+          focused={!viewedAgent && fm.is('input') && !anyPanel() && !questionRequest()}
+          placeholder={viewedAgent ? 'Agent transcript is read-only - select main to send a message' : undefined}
+          value={viewedAgent ? '' : input()}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
               attachments: refs.attachments,
@@ -1705,9 +1788,7 @@ export function App({ boot }) {
           }}
           submitOnEnter
           clearOnSubmit
-          focused={fm.is('input') && !anyPanel() && !questionRequest()}
           maxHeight={8}
-          placeholder="Ask anything"
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
       </box>
@@ -2109,21 +2190,27 @@ export function App({ boot }) {
 
       {visibleAgents.length > 0 && !showAgentsPanel() && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
-          {visibleAgents.slice(0, SHELL_STRIP_MAX).map((a) => (
-            <box key={a.id} style={{ flexDirection: 'row' }}>
-              <text style={{ color: accent() }}>{'◆ '}</text>
-              <text style={{ color: MUTED }}>{`${a.id} · `}</text>
-              <box style={{ flexGrow: 1, height: 1 }}>
-                <text style={{ overflow: 'truncate', color: FG_SOFT }}>{a.description}</text>
-              </box>
-              <box style={{ flexDirection: 'row', marginLeft: 2 }}>
-                <AnimatedValue value={a.usage?.promptTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} in`} />
-                <text style={{ color: MUTED }}> · </text>
-                <AnimatedValue value={a.usage?.completionTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} out`} />
-              </box>
-            </box>
-          ))}
-          <text style={{ color: MUTED }}>{`  ${visibleAgents.length > SHELL_STRIP_MAX ? `+${visibleAgents.length - SHELL_STRIP_MAX} more · ` : ''}/agents`}</text>
+          <AgentStripRow selected={!viewedAgent} onPress={() => { setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+            <text style={{ color: accent() }}>{'● '}</text>
+            <text style={{ color: !viewedAgent ? FG : MUTED }}>{'main'}</text>
+          </AgentStripRow>
+          {visibleAgents.slice(0, AGENT_STRIP_MAX).map((a) => {
+            const status = agentStatus(a)
+            return (
+              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} onPress={() => { setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+                {a.status === 'running' ? <Spinner color={accent()} variant="dots" /> : <text style={{ color: status.color }}>{status.icon}</text>}
+                <text>{' '}</text>
+                <text style={{ color: viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'}  `}</text>
+                <box style={{ flexGrow: 1, height: 1 }}>
+                  <text style={{ overflow: 'truncate', color: MUTED }}>{a.description}</text>
+                </box>
+                {status.label && <text style={{ color: status.color }}>{`  ${status.label}`}</text>}
+                <text style={{ color: MUTED }}>{`${status.label ? ' ·' : '  '} ${agentElapsed(a)} · ↓ `}</text>
+                <AnimatedValue value={a.usage?.totalTokens || a.usage?.promptTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} tokens`} />
+              </AgentStripRow>
+            )
+          })}
+          {visibleAgents.length > AGENT_STRIP_MAX && <text style={{ color: MUTED }}>{`  +${visibleAgents.length - AGENT_STRIP_MAX} more · /agents`}</text>}
         </box>
       )}
 
