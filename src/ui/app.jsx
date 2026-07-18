@@ -116,12 +116,18 @@ function agentTranscript(agent) {
     if (event.type === 'content') response += event.content
     if (event.type === 'tool_executing') {
       const call = event.call || {}
+      let args = {}
+      try {
+        args = typeof call.function?.arguments === 'string'
+          ? JSON.parse(call.function.arguments)
+          : call.function?.arguments || {}
+      } catch {}
       const item = {
         kind: 'tool',
         callId: call.id,
         name: call.function?.name || 'tool',
-        args: call.function?.arguments || {},
-        title: call.function?.name || 'tool',
+        args,
+        title: uiTitle(call.function?.name || 'tool', args),
         status: 'running',
         startedAt: event.at || agent.updatedAt,
       }
