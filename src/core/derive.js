@@ -239,10 +239,17 @@ export function deriveState(events) {
         state.transcript.push({ kind: 'thoughts', text: event.data.text })
         break
       case 'shell_note':
-      case 'system_note':
+      case 'system_note': {
         pushHistory(state, { role: 'user', content: event.data.text }, event.id)
-        state.transcript.push({ kind: 'notice', text: event.data.text.split('\n')[0] })
+        const lines = event.data.text.split('\n').filter(Boolean)
+        const agentCompletions = lines.filter((line) => /^Agent \d+ \(.+\) finished with status /.test(line))
+        if (agentCompletions.length) {
+          for (const text of agentCompletions) state.transcript.push({ kind: 'notice', text, agentCompletion: true })
+        } else {
+          state.transcript.push({ kind: 'notice', text: lines[0] || '' })
+        }
         break
+      }
     }
   }
 

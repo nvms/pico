@@ -187,18 +187,26 @@ function AgentStripRow({ selected, focused, children, onPress }) {
 const HISTORY_WINDOW = 50
 const RESUME_SCOPES = ['project', 'everywhere']
 
-function compactToolRuns(items, active = false) {
+function compactTranscriptRuns(items, active = false) {
   const result = []
   for (let i = 0; i < items.length;) {
-    if (items[i].kind !== 'tool') {
-      result.push(items[i++])
+    if (items[i].kind === 'tool') {
+      let end = i + 1
+      while (end < items.length && items[end].kind === 'tool') end++
+      const run = items.slice(i, end)
+      result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run, active: active && end === items.length })
+      i = end
       continue
     }
-    let end = i + 1
-    while (end < items.length && items[end].kind === 'tool') end++
-    const run = items.slice(i, end)
-    result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run, active: active && end === items.length })
-    i = end
+    if (items[i].kind === 'notice' && items[i].agentCompletion) {
+      let end = i + 1
+      while (end < items.length && items[end].kind === 'notice' && items[end].agentCompletion) end++
+      const run = items.slice(i, end)
+      result.push(run.length === 1 ? run[0] : { kind: 'agent-notice-group', notices: run })
+      i = end
+      continue
+    }
+    result.push(items[i++])
   }
   return result
 }
@@ -373,7 +381,7 @@ export function App({ boot }) {
 
   function flushSystemNotes() {
     if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    const notes = refs.pendingSystemNotes.filter((note) => !note.agentId || !agents.get(note.agentId)?.collectedAt)
+    const notes = refs.pendingSystemNotes
     refs.pendingSystemNotes = []
     if (!notes.length) return
     persist(makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
@@ -1695,7 +1703,7 @@ export function App({ boot }) {
   const hiddenCount = Math.max(0, transcript.length - histWindow())
   const isolatedTranscript = viewedAgent || viewedShell
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
-  const items = compactToolHistory() ? compactToolRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : viewedShell ? false : turnPhase() === 'tools') : visibleItems
+  const items = compactToolHistory() ? compactTranscriptRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : viewedShell ? false : turnPhase() === 'tools') : visibleItems
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>

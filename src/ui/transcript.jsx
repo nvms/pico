@@ -168,6 +168,26 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
 export function Message({ item, verbose }) {
   if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
+  if (item.kind === 'agent-notice-group') {
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <box style={{ flexDirection: 'row' }}>
+          <text style={{ color: MUTED, italic: true }}>{`⚙ ${item.notices.length} agents finished`}</text>
+          <box style={{ flexGrow: 1 }} />
+          <text style={{ color: FAINT }}>{'ctrl+o'}</text>
+        </box>
+        {verbose && (
+          <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
+            {item.notices.map((notice, i) => (
+              <text key={i} style={{ color: FG_SOFT }}>{notice.text.replace(/^\[system notification\]\s*/, '')}</text>
+            ))}
+          </box>
+        )}
+      </box>
+    )
+  }
+
   if (item.kind === 'tool') {
     return <ToolCard {...item} verbose={verbose} />
   }
