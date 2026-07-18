@@ -49,9 +49,11 @@ export function parseArgs(argv) {
       opts.resume = takeValue(arg, i)
       i++
     } else if (arg === '--max-tool-calls') {
-      opts.maxToolCalls = parseInt(takeValue(arg, i), 10)
-      if (!Number.isFinite(opts.maxToolCalls) || opts.maxToolCalls < 1) {
-        throw new Error('--max-tool-calls requires a positive number')
+      const value = takeValue(arg, i)
+      if (!/^\d+$/.test(value)) throw new Error('--max-tool-calls requires a positive integer')
+      opts.maxToolCalls = Number(value)
+      if (!Number.isSafeInteger(opts.maxToolCalls) || opts.maxToolCalls < 1) {
+        throw new Error('--max-tool-calls requires a positive integer')
       }
       i++
     } else if (arg === '--connect') opts.mode = 'connect'
