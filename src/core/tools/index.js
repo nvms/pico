@@ -152,7 +152,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       },
       {
         name: 'agent_start',
-        description: 'Start a background agent for a focused task in the current project. Workers can inspect, modify, and test the project with the configured tools. Returns immediately with an agent id; collect its result with agent_collect.',
+        description: 'Start a background agent for a focused task whose result you intend to use. Workers can inspect, modify, and test the current project with the configured tools. Continue only independent work until you collect its result with agent_collect.',
         schema: {
           prompt: { type: 'string', description: 'complete, self-contained task and desired output' },
           description: { type: 'string', description: 'short label shown to the user' },
