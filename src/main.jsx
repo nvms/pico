@@ -149,6 +149,7 @@ const boot = {
   clouds: config.animation?.clouds === true,
   compactToolHistory: config.display?.compactToolHistory === true,
   gitFooter: config.display?.gitStatus !== false,
+  wideSidebar: config.display?.wideSidebar !== false,
   refs: {},
   shells,
   wakeups,

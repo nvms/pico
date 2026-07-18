@@ -242,6 +242,7 @@ export function App({ boot }) {
   const [clouds, setClouds] = createSignal(boot.clouds)
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
+  const [wideSidebar, setWideSidebar] = createSignal(boot.wideSidebar)
   const [researchAgentLimit, setResearchAgentLimit] = createSignal(boot.researchAgentLimit)
   const [questionRequest, setQuestionRequest] = createSignal(null)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
@@ -1735,7 +1736,7 @@ export function App({ boot }) {
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
   const items = compactToolHistory() ? compactTranscriptRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : viewedShell ? false : turnPhase() === 'tools') : visibleItems
 
-  const wideLayout = terminalWidth() > 160
+  const wideLayout = wideSidebar() && terminalWidth() > 160
 
   return (
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
@@ -2101,7 +2102,7 @@ export function App({ boot }) {
 
       {showConfigPanel() && (
         <ConfigPanel
-          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
+          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
           focused={showConfigPanel()}
           onPickResearchModel={() => {
             setResearchModelReturn('config')
@@ -2117,6 +2118,10 @@ export function App({ boot }) {
               boot.gitFooter = value
               boot.git.setEnabled(value)
               writeConfig({ display: { gitStatus: value } })
+            } else if (name === 'wideSidebar') {
+              setWideSidebar(value)
+              boot.wideSidebar = value
+              writeConfig({ display: { wideSidebar: value } })
             } else if (name === 'researchAgentLimit') {
               setResearchAgentLimit(value)
               boot.researchAgentLimit = value

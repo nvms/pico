@@ -125,6 +125,7 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
     { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
     { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row', path: 'display.compactToolHistory' },
     { name: 'gitStatus', label: 'Git in footer', desc: 'Show branch and changed line counts in the footer', path: 'display.gitStatus' },
+    { name: 'wideSidebar', label: 'Wide sidebar', desc: 'Move panels and status details to a right sidebar when the terminal is wider than 160 columns', path: 'display.wideSidebar' },
   ]
 
   useInput((event) => {
@@ -138,7 +139,7 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
   return (
     <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close">
       <box style={{ height: 12, marginTop: 1 }}>
-        <ScrollBox focused={false} scrollbar followFocus={fm} focusPadding={1}>
+        <ScrollBox focused={focused} scrollbar followFocus={fm} focusPadding={1}>
           {fields.map((field) => (
             <ConfigField
               key={field.name}
