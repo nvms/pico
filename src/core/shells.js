@@ -12,6 +12,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       command: shell.command,
       description: shell.description,
       sessionId: shell.sessionId,
+      sessionFile: shell.sessionFile,
       cwd: shell.cwd,
       status: shell.status,
       exitCode: shell.exitCode,
@@ -23,7 +24,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     }
   }
 
-  function start(command, { cwd, env, description, sessionId } = {}) {
+  function start(command, { cwd, env, description, sessionId, sessionFile } = {}) {
     const id = String(nextId++)
     const child = spawn(command, {
       shell: true,
@@ -36,6 +37,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       command,
       description: description || null,
       sessionId: sessionId || null,
+      sessionFile: sessionFile || null,
       cwd: cwd || process.cwd(),
       child,
       status: 'running',

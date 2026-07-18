@@ -3,6 +3,14 @@ import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { makeHeader, serializeLine, parseLines, parseLine } from './events.js'
 
+const appendQueues = new Map()
+
+export function appendSessionEvent(file, event) {
+  const queued = (appendQueues.get(file) || Promise.resolve()).then(() => appendFile(file, serializeLine(event)))
+  appendQueues.set(file, queued)
+  return queued
+}
+
 export function createSession({ cwd, root }) {
   const header = makeHeader({ cwd, root })
   const file = join(ensureDir(sessionsDir(root)), `${header.id}.jsonl`)
@@ -12,17 +20,15 @@ export function createSession({ cwd, root }) {
 }
 
 export function openSession({ file, header }) {
-  let queue = Promise.resolve()
   return {
     id: header.id,
     file,
     header,
     append(event) {
-      queue = queue.then(() => appendFile(file, serializeLine(event)))
-      return queue
+      return appendSessionEvent(file, event)
     },
     flush() {
-      return queue
+      return appendQueues.get(file) || Promise.resolve()
     },
   }
 }

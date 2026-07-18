@@ -69,7 +69,7 @@ test('agent tools enforce a model-declared per-turn spawn limit', async () => {
   const { createToolset } = await import('../src/core/tools/index.js')
   const started = []
   const agents = { start: (options) => { const agent = { id: String(started.length + 1), status: 'queued', ...options }; started.push(agent); return agent }, list: () => [], collect: async () => [], cancel: () => true }
-  const { tools } = createToolset({ cwd: process.cwd(), agents, maxAgentStarts: 10, requireAgentPlan: true, allowNames: ['agent_plan', 'agent_start'] })
+  const { tools } = createToolset({ cwd: process.cwd(), agents, sessionId: 'session-1', sessionFile: '/tmp/session-1.jsonl', maxAgentStarts: 10, requireAgentPlan: true, allowNames: ['agent_plan', 'agent_start'] })
   const plan = tools.find((tool) => tool.name === 'agent_plan')
   const start = tools.find((tool) => tool.name === 'agent_start')
   await assert.rejects(() => start.execute({ prompt: 'early', description: 'early' }), /agent_plan/)
@@ -78,11 +78,13 @@ test('agent tools enforce a model-declared per-turn spawn limit', async () => {
   await start.execute({ prompt: 'two', description: 'two' })
   await assert.rejects(() => start.execute({ prompt: 'three', description: 'three' }), /agent limit reached.*2/)
   assert.equal(started.length, 2)
+  assert.equal(started[0].sessionId, 'session-1')
+  assert.equal(started[0].sessionFile, '/tmp/session-1.jsonl')
 })
 
 test('agent events restore completed and interrupted agents', () => {
   const restored = reduceAgentEvents([
-    { type: 'agent_start', at: 10, data: { agentId: '3', prompt: 'research', description: 'worker', model: 'provider/small' } },
+    { type: 'agent_start', at: 10, data: { agentId: '3', prompt: 'research', description: 'worker', model: 'provider/small', sessionId: 'session-1', sessionFile: '/tmp/session-1.jsonl' } },
     { type: 'agent_event', at: 20, data: { agentId: '3', event: { type: 'tool_executing', call: { function: { name: 'web_search' } } } } },
     { type: 'agent_event', at: 30, data: { agentId: '3', event: { type: 'usage', usage: { promptTokens: 10, completionTokens: 2 } } } },
     { type: 'agent_result', at: 40, data: { agentId: '3', messages: [{ role: 'assistant', content: 'finding' }], usage: { promptTokens: 10, completionTokens: 3 } } },
@@ -95,6 +97,8 @@ test('agent events restore completed and interrupted agents', () => {
   assert.equal(restored[0].result, 'finding')
   assert.equal(restored[0].events.length, 2)
   assert.equal(restored[0].usage.completionTokens, 3)
+  assert.equal(restored[0].sessionId, 'session-1')
+  assert.equal(restored[0].sessionFile, '/tmp/session-1.jsonl')
   assert.equal(restored[1].status, 'cancelled')
   assert.equal(restored[0].done instanceof Promise, true)
   assert.equal(restored.some((agent) => agent.id === '5'), false)

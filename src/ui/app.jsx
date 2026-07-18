@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useLayout, useMouse, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
-import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../core/session.js'
+import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
@@ -299,13 +299,13 @@ export function App({ boot }) {
     concurrency: 8,
     defaults: () => ({ model: boot.researchModel }),
     onChange: () => setAgentsVersion((v) => v + 1),
-    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, tools: agent.tools })),
+    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools })),
     onEvent: (agent, event) => {
       if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
     },
     onFinish: (agent) => {
       persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
-      noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id })
+      noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id, sessionId: agent.sessionId, sessionFile: agent.sessionFile })
     },
     run: async (agent, signal, onStream) => {
       const worker = models.find((m) => m.name === agent.model)
@@ -322,6 +322,7 @@ export function App({ boot }) {
         tracker,
         shells: boot.shells,
         sessionId,
+        sessionFile: refs.session?.file,
         dredge: boot.dredge,
         signal,
         maxToolCalls: 30,
@@ -360,7 +361,7 @@ export function App({ boot }) {
     }
     if (shell.killedBy === 'user') {
       flash(`shell ${shell.id} killed`)
-      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false })
+      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false, sessionId: shell.sessionId, sessionFile: shell.sessionFile })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
@@ -370,24 +371,30 @@ export function App({ boot }) {
     noteSystem(
       `[system notification] background shell ${shell.id} (${shell.description || shell.command}) exited with code ${shell.exitCode} after ${ran}.` +
         (tail ? `\nRecent output:\n${tail}` : ''),
-      { wake: true },
+      { wake: true, sessionId: shell.sessionId, sessionFile: shell.sessionFile },
     )
   })
 
-  function noteSystem(text, { wake, agentId } = {}) {
+  function noteSystem(text, { wake, agentId, sessionId = refs.session?.id, sessionFile = refs.session?.file } = {}) {
     refs.pendingSystemNotes ??= []
-    refs.pendingSystemNotes.push({ text, wake, agentId })
+    refs.pendingSystemNotes.push({ text, wake, agentId, sessionId, sessionFile })
     flushSystemNotes()
   }
 
   function flushSystemNotes() {
     if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    const notes = refs.pendingSystemNotes
+    const currentSessionId = refs.session.id
+    const current = refs.pendingSystemNotes.filter((note) => !note.sessionId || note.sessionId === currentSessionId)
+    const elsewhere = refs.pendingSystemNotes.filter((note) => note.sessionId && note.sessionId !== currentSessionId)
     refs.pendingSystemNotes = []
-    if (!notes.length) return
-    persist(makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
+    for (const notes of Map.groupBy(elsewhere, (note) => note.sessionId).values()) {
+      const sessionFile = notes.find((note) => note.sessionFile)?.sessionFile
+      if (sessionFile) appendSessionEvent(sessionFile, makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
+    }
+    if (!current.length) return
+    persist(makeEvent('system_note', { text: current.map((n) => n.text).join('\n\n') }))
     reDerive()
-    if (notes.some((n) => n.wake)) runAgentTurn()
+    if (current.some((n) => n.wake)) runAgentTurn()
   }
 
   const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
@@ -577,6 +584,7 @@ export function App({ boot }) {
       skills: freshSkills,
       shells: boot.shells,
       sessionId: refs.session?.id,
+      sessionFile: refs.session?.file,
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
@@ -1011,6 +1019,7 @@ export function App({ boot }) {
       return setShowMemoryPanel(true)
     }
     if (c.name === 'resume') {
+      if (busy()) return flash('finish or interrupt the current turn before switching sessions')
       setShowResumePanel(true)
       refreshSessions(resumeScope())
       return
@@ -1173,6 +1182,7 @@ export function App({ boot }) {
   }
 
   function openProjectPanel() {
+    if (busy()) return flash('finish or interrupt the current turn before switching sessions')
     setShowProjectPanel(true)
     setProjectsLoading(true)
     listSessions({ scope: 'everywhere', root })
@@ -1258,6 +1268,7 @@ export function App({ boot }) {
   }
 
   async function resumeSession(meta) {
+    if (busy()) return flash('finish or interrupt the current turn before switching sessions')
     setShowResumePanel(false)
     setShowProjectPanel(false)
     if (meta.header.root !== boot.root) return switchProject(meta)
@@ -1546,8 +1557,11 @@ export function App({ boot }) {
       return
     }
     if (event.ctrl && event.key === 's' && view() === 'chat' && !anyPanel()) {
-      setShowResumePanel(true)
-      refreshSessions(resumeScope())
+      if (busy()) flash('finish or interrupt the current turn before switching sessions')
+      else {
+        setShowResumePanel(true)
+        refreshSessions(resumeScope())
+      }
       event.stopPropagation()
       return
     }

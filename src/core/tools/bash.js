@@ -7,7 +7,7 @@ function capped(text) {
   return text.slice(0, MAX_OUTPUT_CHARS) + `\n[output truncated at ${MAX_OUTPUT_CHARS} characters]`
 }
 
-export function createBash({ cwd, env, recorder, signal, shells, sessionId }) {
+export function createBash({ cwd, env, recorder, signal, shells, sessionId, sessionFile }) {
   return {
     name: 'bash',
     description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands are killed at the timeout (default 120s), so never wait on long externals like CI runs, deploys, or watch loops in the foreground: run those with background true, finish your turn, and the shell\'s exit will notify you so you can report the outcome. Background also fits long-lived processes like dev servers; check on a background shell with shell_output and stop it with shell_kill.',
@@ -20,7 +20,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId }) {
     execute: ({ command, timeout, background, description }) => {
       if (background && shells) {
         recorder.extra({ title: description || command, background: true })
-        const { id } = shells.start(command, { cwd, env, description, sessionId })
+        const { id } = shells.start(command, { cwd, env, description, sessionId, sessionFile })
         return { shellId: id, status: 'running' }
       }
       return new Promise((resolve) => {

@@ -7,11 +7,11 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
-  const deps = { cwd, env, recorder, tracker, signal, shells, sessionId }
+  const deps = { cwd, env, recorder, tracker, signal, shells, sessionId, sessionFile }
 
   const local = [
     createRead(deps),
@@ -162,7 +162,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, wa
           if (plannedAgentStarts == null) throw new Error('call agent_plan before starting research agents')
           if (agentStarts >= plannedAgentStarts) throw new Error(`agent limit reached for this run (${plannedAgentStarts}); collect existing agents and finish without spawning more`)
           agentStarts++
-          const agent = agents.start({ prompt, description, tools })
+          const agent = agents.start({ prompt, description, tools, sessionId, sessionFile })
           return { agentId: agent.id, status: agent.status, model: agent.model }
         },
       },
