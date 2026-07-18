@@ -1795,7 +1795,7 @@ export function App({ boot }) {
               <box style={{ flexGrow: 1, height: 1 }}>
                 <text style={{ overflow: 'truncate', color: MUTED }}>{q.replace(/\n/g, ' ')}</text>
               </box>
-              {i === 0 && <text style={{ color: FAINT, dim: true }}>{'  pending · ↑ to edit'}</text>}
+              {i === 0 && <text style={{ color: MUTED }}>{'  pending · ↑ to edit'}</text>}
             </box>
           ))}
         </box>

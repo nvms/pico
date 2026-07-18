@@ -1,4 +1,4 @@
-import { createSignal, Button, Checkbox, ease, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
+import { createSignal, Button, Checkbox, ease, Field, FieldList, Menu, NumberInput, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { compactNumber } from './format.js'
@@ -62,9 +62,7 @@ export function ConfirmPanel({ title, message, confirmLabel = 'Confirm', focused
   )
 }
 
-function ConfigField({ field, value, focused, fm, onChange }) {
-  const layout = useLayout()
-  fm.item(field.name, layout)
+function ConfigField({ field, value, focused, onChange }) {
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
@@ -77,24 +75,11 @@ function ConfigField({ field, value, focused, fm, onChange }) {
   )
 }
 
-function ConfigNumberField({ value, focused, fm, onChange }) {
-  const layout = useLayout()
-  fm.item('researchAgentLimit', layout)
+function ConfigNumberField({ value, focused, onChange }) {
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
-        <box style={{ width: 5 }}>
-          <TextInput
-            key={String(value)}
-            initialValue={String(value)}
-            focused={focused}
-            onSubmit={(text) => {
-              const parsed = Number(text)
-              if (Number.isInteger(parsed)) onChange(Math.max(1, Math.min(100, parsed)))
-              else onChange(value)
-            }}
-          />
-        </box>
+        <NumberInput focused={focused} value={value} onChange={onChange} min={1} max={100} width={5} />
         <text style={{ color: FG }}> Research agent limit</text>
         <box style={{ flexGrow: 1 }} />
         <text style={{ color: FAINT }}>research.agentLimit</text>
@@ -104,9 +89,7 @@ function ConfigNumberField({ value, focused, fm, onChange }) {
   )
 }
 
-function ConfigModelField({ model, focused, fm, onPick }) {
-  const layout = useLayout()
-  fm.item('researchModel', layout)
+function ConfigModelField({ model, focused, onPick }) {
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
@@ -120,7 +103,6 @@ function ConfigModelField({ model, focused, fm, onPick }) {
 }
 
 export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onClose }) {
-  const fm = useFocus({ initial: 'clouds' })
   const fields = [
     { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
     { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row', path: 'display.compactToolHistory' },
@@ -139,20 +121,21 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
   return (
     <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close">
       <box style={{ height: 12, marginTop: 1 }}>
-        <ScrollBox focused={focused} scrollbar followFocus={fm} focusPadding={1}>
+        <FieldList focused={focused} initialFocus="clouds" scrollbar focusPadding={1}>
           {fields.map((field) => (
-            <ConfigField
-              key={field.name}
-              field={field}
-              value={values[field.name]}
-              focused={focused && fm.is(field.name)}
-              fm={fm}
-              onChange={(value) => onChange(field.name, value)}
-            />
+            <Field key={field.name} name={field.name}>
+              {({ focused: fieldFocused }) => (
+                <ConfigField field={field} value={values[field.name]} focused={fieldFocused} onChange={(value) => onChange(field.name, value)} />
+              )}
+            </Field>
           ))}
-          <ConfigModelField model={values.researchModel} focused={focused && fm.is('researchModel')} fm={fm} onPick={onPickResearchModel} />
-          <ConfigNumberField value={values.researchAgentLimit} focused={focused && fm.is('researchAgentLimit')} fm={fm} onChange={(value) => onChange('researchAgentLimit', value)} />
-        </ScrollBox>
+          <Field name="researchModel">
+            {({ focused: fieldFocused }) => <ConfigModelField model={values.researchModel} focused={fieldFocused} onPick={onPickResearchModel} />}
+          </Field>
+          <Field name="researchAgentLimit">
+            {({ focused: fieldFocused }) => <ConfigNumberField value={values.researchAgentLimit} focused={fieldFocused} onChange={(value) => onChange('researchAgentLimit', value)} />}
+          </Field>
+        </FieldList>
       </box>
     </PanelFrame>
   )
