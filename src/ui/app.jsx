@@ -153,7 +153,7 @@ function agentStatus(agent) {
   return { icon: '■', label: 'cancelled', color: MUTED }
 }
 
-function AgentStripRow({ selected, children, onPress }) {
+function AgentStripRow({ selected, focused, children, onPress }) {
   const layout = useLayout()
   const [hovered, setHovered] = createSignal(false)
   useMouse((event) => {
@@ -165,8 +165,8 @@ function AgentStripRow({ selected, children, onPress }) {
     }
   })
   return (
-    <box style={{ flexDirection: 'row', color: hovered() ? FG_SOFT : MUTED }}>
-      <text style={{ color: selected ? accent() : MUTED, bold: selected }}>{selected ? '❯ ' : '  '}</text>
+    <box style={{ flexDirection: 'row', bg: focused ? accent() : null, color: focused ? 'black' : hovered() ? FG_SOFT : MUTED }}>
+      <text style={{ color: focused ? 'black' : selected ? accent() : MUTED, bold: selected }}>{selected ? '❯ ' : '  '}</text>
       {children}
     </box>
   )
@@ -1419,12 +1419,15 @@ export function App({ boot }) {
 
   const fm = useFocus({ initial: 'input' })
   fm.item('feed')
+  agentsVersion()
+  const agentRows = agents.list()
   if (questionRequest()) {
     fm.item('question')
     if (!fm.is('question')) fm.focus('question')
   } else {
-    fm.item('input')
-    if (refs.focusComposerAfterQuestion) {
+    if (!viewedAgentId()) fm.item('input')
+    if (agentRows.length > 0) fm.group('agent-strip', { items: ['agent-main', ...agentRows.map((a) => `agent-${a.id}`)], navigate: 'both', wrap: true })
+    if (refs.focusComposerAfterQuestion && !viewedAgentId()) {
       refs.focusComposerAfterQuestion = false
       fm.focus('input')
     }
@@ -1435,6 +1438,14 @@ export function App({ boot }) {
   })
 
   useInput((event) => {
+    if (fm.is('agent-strip') && event.key === 'return') {
+      const target = fm.current()
+      setViewedAgentId(target === 'agent-main' ? null : target.slice('agent-'.length))
+      setFollow(true)
+      setHistWindow(HISTORY_WINDOW)
+      event.stopPropagation()
+      return
+    }
     if (event.key === 'escape' && busy() && !anyPanel()) {
       interrupt()
       event.stopPropagation()
@@ -1585,7 +1596,7 @@ export function App({ boot }) {
   shellsVersion()
   const liveShells = boot.shells.list().filter((s) => s.status === 'running')
   agentsVersion()
-  const visibleAgents = agents.list()
+  const visibleAgents = agentRows
   const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
@@ -1675,7 +1686,7 @@ export function App({ boot }) {
         />
       )}
 
-      <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+      {!viewedAgent && <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
@@ -1684,11 +1695,10 @@ export function App({ boot }) {
           </box>
         )}
         <TextArea
-          color={viewedAgent ? MUTED : FG}
+          color={FG}
           lineCounter
-          focused={!viewedAgent && fm.is('input') && !anyPanel() && !questionRequest()}
-          placeholder={viewedAgent ? 'Agent transcript is read-only - select main to send a message' : undefined}
-          value={viewedAgent ? '' : input()}
+          focused={fm.is('input') && !anyPanel() && !questionRequest()}
+          value={input()}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
               attachments: refs.attachments,
@@ -1791,7 +1801,7 @@ export function App({ boot }) {
           maxHeight={8}
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
-      </box>
+      </box>}
 
       {showCommands && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
@@ -2190,23 +2200,24 @@ export function App({ boot }) {
 
       {visibleAgents.length > 0 && !showAgentsPanel() && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
-          <AgentStripRow selected={!viewedAgent} onPress={() => { setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
-            <text style={{ color: accent() }}>{'● '}</text>
-            <text style={{ color: !viewedAgent ? FG : MUTED }}>{'main'}</text>
+          <AgentStripRow selected={!viewedAgent} focused={fm.current() === 'agent-main'} onPress={() => { fm.focus('agent-main'); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+            <text style={{ color: fm.current() === 'agent-main' ? 'black' : accent() }}>{'● '}</text>
+            <text style={{ color: fm.current() === 'agent-main' ? 'black' : !viewedAgent ? FG : MUTED }}>{'main'}</text>
           </AgentStripRow>
           {visibleAgents.slice(0, AGENT_STRIP_MAX).map((a) => {
             const status = agentStatus(a)
+            const focused = fm.current() === `agent-${a.id}`
             return (
-              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} onPress={() => { setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
-                {a.status === 'running' ? <Spinner color={accent()} variant="dots" /> : <text style={{ color: status.color }}>{status.icon}</text>}
+              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+                {a.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : status.color }}>{status.icon}</text>}
                 <text>{' '}</text>
-                <text style={{ color: viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'}  `}</text>
+                <text style={{ color: focused ? 'black' : viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'}  `}</text>
                 <box style={{ flexGrow: 1, height: 1 }}>
-                  <text style={{ overflow: 'truncate', color: MUTED }}>{a.description}</text>
+                  <text style={{ overflow: 'truncate', color: focused ? 'black' : MUTED }}>{a.description}</text>
                 </box>
-                {status.label && <text style={{ color: status.color }}>{`  ${status.label}`}</text>}
-                <text style={{ color: MUTED }}>{`${status.label ? ' ·' : '  '} ${agentElapsed(a)} · ↓ `}</text>
-                <AnimatedValue value={a.usage?.totalTokens || a.usage?.promptTokens || 0} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} tokens`} />
+                {status.label && <text style={{ color: focused ? 'black' : status.color }}>{`  ${status.label}`}</text>}
+                <text style={{ color: focused ? 'black' : MUTED }}>{`${status.label ? ' ·' : '  '} ${agentElapsed(a)} · ↓ `}</text>
+                <AnimatedValue value={a.usage?.totalTokens || a.usage?.promptTokens || 0} color={focused ? 'black' : MUTED} highlight={focused ? 'black' : accent()} format={(n) => `${compactNumber(n)} tokens`} />
               </AgentStripRow>
             )
           })}
