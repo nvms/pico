@@ -36,7 +36,7 @@ import { Message, uiTitle } from './transcript.jsx'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -66,7 +66,6 @@ const COMMANDS = [
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
-  { name: 'shells', desc: 'View and manage background shells' },
   { name: 'deep-research', desc: 'Research with parallel agents: /deep-research [--agents N] <question>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
@@ -96,6 +95,16 @@ const HISTORY_SCOPES = ['session', 'project', 'everywhere']
 const MEMORY_SCOPES = ['all', 'project', 'global']
 const SHELL_STRIP_MAX = 5
 const AGENT_STRIP_MAX = 5
+const STRIP_SCROLLOFF = 1
+
+function stripWindowStart(current, target, length, size) {
+  const max = Math.max(0, length - size)
+  const start = Math.max(0, Math.min(current, max))
+  if (target < 0) return start
+  if (target < start + STRIP_SCROLLOFF) return Math.max(0, target - STRIP_SCROLLOFF)
+  if (target >= start + size - STRIP_SCROLLOFF) return Math.min(max, target - size + STRIP_SCROLLOFF + 1)
+  return start
+}
 
 function agentTranscript(agent) {
   if (!agent) return []
@@ -239,6 +248,7 @@ export function App({ boot }) {
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [agentsVersion, setAgentsVersion] = createSignal(0)
   const [viewedAgentId, setViewedAgentId] = createSignal(null)
+  const [agentWindowOffset, setAgentWindowOffset] = createSignal(0)
   const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
   const [histScope, setHistScope] = createSignal(0)
   const [histPrompts, setHistPrompts] = createSignal([])
@@ -249,7 +259,8 @@ export function App({ boot }) {
   const [showMcpPanel, setShowMcpPanel] = createSignal(false)
   const [showProjectPanel, setShowProjectPanel] = createSignal(false)
   const [infoPanel, setInfoPanel] = createSignal(null)
-  const [showShellsPanel, setShowShellsPanel] = createSignal(false)
+  const [viewedShellId, setViewedShellId] = createSignal(null)
+  const [shellWindowOffset, setShellWindowOffset] = createSignal(0)
   const [showWakeupsPanel, setShowWakeupsPanel] = createSignal(false)
   const [showConnectPanel, setShowConnectPanel] = createSignal(false)
   const [authProviders, setAuthProviders] = createSignal([])
@@ -710,7 +721,7 @@ export function App({ boot }) {
   }
 
   function send(text) {
-    if (viewedAgentId()) return
+    if (viewedAgentId() || viewedShellId()) return
     const value = text.trim()
     if (!value) return
     dismissCompletion()
@@ -984,7 +995,6 @@ export function App({ boot }) {
     if (c.name === 'history') return openHistorySearch()
     if (c.name === 'help') return setView('help')
     if (c.name === 'mcp') return setShowMcpPanel(true)
-    if (c.name === 'shells') return setShowShellsPanel(true)
     if (c.name === 'wakeups') return setShowWakeupsPanel(true)
     if (c.name === 'memory') {
       await refreshMemories()
@@ -1384,7 +1394,7 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showResearchModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
+    showProjectPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
   // every focus-taking panel dims the conversation behind it; the theme
@@ -1400,6 +1410,11 @@ export function App({ boot }) {
     if (!agents.dismiss(agent.id)) return
     persist(makeEvent('agent_dismiss', { agentId: agent.id }))
     if (viewedAgentId() === agent.id) setViewedAgentId(null)
+  }
+
+  function dismissShell(shell) {
+    boot.shells.dismiss(shell.id)
+    if (viewedShellId() === shell.id) setViewedShellId(null)
   }
 
   function killShell(shell) {
@@ -1429,13 +1444,16 @@ export function App({ boot }) {
   fm.item('feed')
   agentsVersion()
   const agentRows = agents.list()
+  shellsVersion()
+  const shellRows = boot.shells.list().sort((a, b) => Number(b.id) - Number(a.id))
   if (questionRequest()) {
     fm.item('question')
     if (!fm.is('question')) fm.focus('question')
   } else {
-    if (!viewedAgentId()) fm.item('input')
+    if (!viewedAgentId() && !viewedShellId()) fm.item('input')
+    if (shellRows.length > 0) fm.group('shell-strip', { items: ['shell-main', ...shellRows.map((s) => `shell-${s.id}`)], navigate: 'both', wrap: true })
     if (agentRows.length > 0) fm.group('agent-strip', { items: ['agent-main', ...agentRows.map((a) => `agent-${a.id}`)], navigate: 'both', wrap: true })
-    if (refs.focusComposerAfterQuestion && !viewedAgentId()) {
+    if (refs.focusComposerAfterQuestion && !viewedAgentId() && !viewedShellId()) {
       refs.focusComposerAfterQuestion = false
       fm.focus('input')
     }
@@ -1446,6 +1464,22 @@ export function App({ boot }) {
   })
 
   useInput((event) => {
+    if (fm.is('shell-strip') && event.key === 'return') {
+      const target = fm.current()
+      setViewedShellId(target === 'shell-main' ? null : target.slice('shell-'.length))
+      setFollow(true)
+      event.stopPropagation()
+      return
+    }
+    if (fm.is('shell-strip') && event.ctrl && event.key === 'x') {
+      const shell = fm.current() === 'shell-main' ? null : shellRows.find((s) => `shell-${s.id}` === fm.current())
+      if (shell) {
+        if (shell.status === 'running') killShell(shell)
+        else dismissShell(shell)
+      }
+      event.stopPropagation()
+      return
+    }
     if (fm.is('agent-strip') && event.key === 'return') {
       const target = fm.current()
       setViewedAgentId(target === 'agent-main' ? null : target.slice('agent-'.length))
@@ -1611,8 +1645,17 @@ export function App({ boot }) {
   const contextPercent = model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name
     ? Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
     : 0
-  shellsVersion()
-  const liveShells = boot.shells.list().filter((s) => s.status === 'running')
+  const visibleShells = shellRows
+  const viewedShell = viewedShellId() ? visibleShells.find((s) => s.id === viewedShellId()) : null
+  const shellStripFocus = fm.is('shell-strip') ? fm.current() : null
+  const focusedShellId = shellStripFocus && shellStripFocus !== 'shell-main' ? shellStripFocus.slice('shell-'.length) : null
+  const focusedShell = focusedShellId ? visibleShells.find((s) => s.id === focusedShellId) : null
+  const hintedShell = focusedShell || viewedShell
+  const shellActionHint = hintedShell ? `ctrl+x ${hintedShell.status === 'running' ? 'kill' : 'dismiss'}` : ''
+  const shellWindowTarget = shellStripFocus === 'shell-main' ? 0 : visibleShells.findIndex((s) => s.id === (focusedShellId || viewedShellId()))
+  const shellWindowStart = stripWindowStart(shellWindowOffset(), shellWindowTarget, visibleShells.length, SHELL_STRIP_MAX)
+  if (shellWindowStart !== shellWindowOffset()) setShellWindowOffset(shellWindowStart)
+  const shellWindow = visibleShells.slice(shellWindowStart, shellWindowStart + SHELL_STRIP_MAX)
   agentsVersion()
   const visibleAgents = agentRows
   const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
@@ -1626,10 +1669,8 @@ export function App({ boot }) {
   const agentWindowTarget = agentStripFocus === 'agent-main'
     ? 0
     : visibleAgents.findIndex((a) => a.id === (focusedAgentId || viewedAgentId()))
-  const agentWindowStart = Math.max(0, Math.min(
-    agentWindowTarget > 1 ? agentWindowTarget - 1 : 0,
-    visibleAgents.length - AGENT_STRIP_MAX,
-  ))
+  const agentWindowStart = stripWindowStart(agentWindowOffset(), agentWindowTarget, visibleAgents.length, AGENT_STRIP_MAX)
+  if (agentWindowStart !== agentWindowOffset()) setAgentWindowOffset(agentWindowStart)
   const agentWindow = visibleAgents.slice(agentWindowStart, agentWindowStart + AGENT_STRIP_MAX)
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
@@ -1642,10 +1683,19 @@ export function App({ boot }) {
   highlightVersion()
 
   const mainTranscript = derived().transcript
-  const transcript = viewedAgent ? agentTranscript(viewedAgent) : mainTranscript
+  let shellOutput = null
+  if (viewedShell) {
+    try { shellOutput = boot.shells.output(viewedShell.id, { tail: 2000 }) } catch {}
+  }
+  const shellTranscript = viewedShell ? [
+    { kind: 'user', text: viewedShell.command },
+    { kind: 'assistant', text: shellOutput?.output || 'no output yet' },
+  ] : null
+  const transcript = shellTranscript || (viewedAgent ? agentTranscript(viewedAgent) : mainTranscript)
   const hiddenCount = Math.max(0, transcript.length - histWindow())
-  const visibleItems = viewedAgent ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
-  const items = compactToolHistory() ? compactToolRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : turnPhase() === 'tools') : visibleItems
+  const isolatedTranscript = viewedAgent || viewedShell
+  const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
+  const items = compactToolHistory() ? compactToolRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : viewedShell ? false : turnPhase() === 'tools') : visibleItems
 
   return (
     <box style={{ flexDirection: 'column', height: '100%' }}>
@@ -1728,7 +1778,7 @@ export function App({ boot }) {
         />
       )}
 
-      {!viewedAgent && <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+      {!viewedAgent && !viewedShell && <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
@@ -2108,24 +2158,6 @@ export function App({ boot }) {
         />
       )}
 
-      {showShellsPanel() && (
-        <ShellsPanel
-          version={shellsVersion()}
-          shells={boot.shells.list()}
-          readOutput={(id) => {
-            try {
-              return boot.shells.output(id, { tail: 2000 })
-            } catch {
-              return null
-            }
-          }}
-          focused={showShellsPanel()}
-          onKill={killShell}
-          onDismiss={(s) => boot.shells.dismiss(s.id)}
-          onClose={() => setShowShellsPanel(false)}
-        />
-      )}
-
       {showConnectPanel() && (
         <ConnectPanel
           providers={authProviders()}
@@ -2207,23 +2239,34 @@ export function App({ boot }) {
         />
       )}
 
-      {liveShells.length > 0 && !showShellsPanel() && (
+      {visibleShells.length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
-          {liveShells.slice(0, SHELL_STRIP_MAX).map((s) => (
-            <box key={s.id} style={{ flexDirection: 'row' }}>
-              <text style={{ color: accent() }}>{'⚙ '}</text>
-              <text style={{ color: MUTED }}>{`${s.id} · `}</text>
-              <box style={{ flexGrow: 1, height: 1 }}>
-                <text style={{ overflow: 'truncate', color: FG_SOFT }}>{s.description || s.command.replace(/\n/g, ' ')}</text>
-              </box>
-              <text style={{ color: MUTED }}>{`  ${Date.now() - s.startedAt < 60000 ? '<1m' : timeAgo(s.startedAt).replace(' ago', '')}`}</text>
-            </box>
-          ))}
-          <box style={{ flexDirection: 'row' }}>
-            <text style={{ color: MUTED }}>
-              {`  ${liveShells.length > SHELL_STRIP_MAX ? `+${liveShells.length - SHELL_STRIP_MAX} more · ` : ''}/shells`}
-            </text>
+          <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <text style={{ color: MUTED }}>{`enter view${shellActionHint ? ` · ${shellActionHint}` : ''} · j/k move`}</text>
           </box>
+          <AgentStripRow selected={!viewedShell} focused={fm.current() === 'shell-main'} onPress={() => { fm.focus('shell-main'); setViewedShellId(null); setFollow(true) }}>
+            <text style={{ color: fm.current() === 'shell-main' ? 'black' : accent() }}>{'● '}</text>
+            <text style={{ color: fm.current() === 'shell-main' ? 'black' : !viewedShell ? FG : MUTED }}>{'main'}</text>
+          </AgentStripRow>
+          {shellWindow.map((s) => {
+            const focused = fm.current() === `shell-${s.id}`
+            const selected = viewedShellId() === s.id
+            const elapsed = agentElapsed({ startedAt: s.startedAt, endedAt: s.endedAt })
+            return (
+              <AgentStripRow key={s.id} selected={selected} focused={focused} onPress={() => { fm.focus(`shell-${s.id}`); setViewedShellId(s.id); setFollow(true) }}>
+                {s.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : s.exitCode === 0 ? GREEN : RED }}>{s.exitCode === 0 ? '●' : '×'}</text>}
+                <text>{' '}</text>
+                <text style={{ color: focused ? 'black' : selected ? FG : MUTED }}>{`shell [${s.id}]  `}</text>
+                <box style={{ flexGrow: 1, height: 1 }}>
+                  <text style={{ overflow: 'truncate', color: focused ? 'black' : MUTED }}>{s.description || s.command.replace(/\n/g, ' ')}</text>
+                </box>
+                <text style={{ color: focused ? 'black' : MUTED }}>{`  ${s.status === 'running' ? '' : `exit ${s.exitCode} · `}${elapsed}`}</text>
+              </AgentStripRow>
+            )
+          })}
+          {visibleShells.length > SHELL_STRIP_MAX && (
+            <text style={{ color: MUTED }}>{`  ${shellWindowStart > 0 ? `↑ ${shellWindowStart}` : ''}${shellWindowStart > 0 && shellWindowStart + shellWindow.length < visibleShells.length ? ' · ' : ''}${shellWindowStart + shellWindow.length < visibleShells.length ? `↓ ${visibleShells.length - shellWindowStart - shellWindow.length}` : ''} more`}</text>
+          )}
         </box>
       )}
 
