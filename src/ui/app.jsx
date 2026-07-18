@@ -36,7 +36,7 @@ import { Message, uiTitle } from './transcript.jsx'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, AgentsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, ShellsPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const EFFORT_LEVELS = [
@@ -67,7 +67,6 @@ const COMMANDS = [
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'shells', desc: 'View and manage background shells' },
-  { name: 'agents', desc: 'View and manage background agents' },
   { name: 'deep-research', desc: 'Research with parallel agents: /deep-research [--agents N] <question>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
@@ -147,6 +146,7 @@ function agentElapsed(agent, now = Date.now()) {
 }
 
 function agentStatus(agent) {
+  if (agent.status === 'running') return { icon: '', label: '', color: accent() }
   if (agent.status === 'queued') return { icon: '◌', label: 'queued', color: MUTED }
   if (agent.status === 'completed') return { icon: '●', label: '', color: GREEN }
   if (agent.status === 'failed') return { icon: '×', label: 'failed', color: RED }
@@ -237,7 +237,6 @@ export function App({ boot }) {
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
   const [pendingResearch, setPendingResearch] = createSignal(null)
-  const [showAgentsPanel, setShowAgentsPanel] = createSignal(false)
   const [agentsVersion, setAgentsVersion] = createSignal(0)
   const [viewedAgentId, setViewedAgentId] = createSignal(null)
   const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
@@ -932,7 +931,6 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'connect') return openConnectPanel()
-    if (c.name === 'agents') return setShowAgentsPanel(true)
     if (c.name === 'deep-research') {
       const match = args.match(/^(?:--agents(?:=|\s+)(\d+)\s+)?([\s\S]+)$/)
       const question = match?.[2]?.trim()
@@ -1386,13 +1384,23 @@ export function App({ boot }) {
 
   const anyPanel = () =>
     showModelPanel() || showResearchModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
-    showProjectPanel() || showShellsPanel() || showAgentsPanel() || showWakeupsPanel() || showConnectPanel() ||
+    showProjectPanel() || showShellsPanel() || showWakeupsPanel() || showConnectPanel() ||
     infoPanel() !== null || rewindStep() !== null
 
   // every focus-taking panel dims the conversation behind it; the theme
   // picker is the one exemption, since its job is previewing palettes on
   // the undimmed ui
   const dimmingPanel = () => anyPanel() && !showThemePanel()
+
+  function cancelAgent(agent) {
+    agents.cancel(agent.id)
+  }
+
+  function dismissAgent(agent) {
+    if (!agents.dismiss(agent.id)) return
+    persist(makeEvent('agent_dismiss', { agentId: agent.id }))
+    if (viewedAgentId() === agent.id) setViewedAgentId(null)
+  }
 
   function killShell(shell) {
     if (shell.status !== 'running') return flash(`shell ${shell.id} already exited`)
@@ -1443,6 +1451,16 @@ export function App({ boot }) {
       setViewedAgentId(target === 'agent-main' ? null : target.slice('agent-'.length))
       setFollow(true)
       setHistWindow(HISTORY_WINDOW)
+      event.stopPropagation()
+      return
+    }
+    if (fm.is('agent-strip') && event.ctrl && event.key === 'x') {
+      const target = fm.current()
+      const agent = target === 'agent-main' ? null : agents.get(target.slice('agent-'.length))
+      if (agent) {
+        if (['queued', 'running'].includes(agent.status)) cancelAgent(agent)
+        else dismissAgent(agent)
+      }
       event.stopPropagation()
       return
     }
@@ -1598,6 +1616,21 @@ export function App({ boot }) {
   agentsVersion()
   const visibleAgents = agentRows
   const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
+  const agentStripFocus = fm.is('agent-strip') ? fm.current() : null
+  const focusedAgentId = agentStripFocus && agentStripFocus !== 'agent-main' ? agentStripFocus.slice('agent-'.length) : null
+  const focusedAgent = focusedAgentId ? agents.get(focusedAgentId) : null
+  const hintedAgent = focusedAgent || viewedAgent
+  const agentActionHint = hintedAgent
+    ? `ctrl+x ${['queued', 'running'].includes(hintedAgent.status) ? 'cancel' : 'dismiss'}`
+    : ''
+  const agentWindowTarget = agentStripFocus === 'agent-main'
+    ? 0
+    : visibleAgents.findIndex((a) => a.id === (focusedAgentId || viewedAgentId()))
+  const agentWindowStart = Math.max(0, Math.min(
+    agentWindowTarget > 1 ? agentWindowTarget - 1 : 0,
+    visibleAgents.length - AGENT_STRIP_MAX,
+  ))
+  const agentWindow = visibleAgents.slice(agentWindowStart, agentWindowStart + AGENT_STRIP_MAX)
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
   const gitInfo = gitFooter() ? boot.git.status() : null
@@ -1620,11 +1653,12 @@ export function App({ boot }) {
         <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
           <EmptyState version={version} clouds={clouds()} />
         </box>
-      ) : <ScrollBox
-        style={{ flexGrow: 1, dim: dimmingPanel() }}
-        focused={fm.is('feed')}
-        scrollOffset={follow() ? 1e9 : offset()}
-        onScroll={(next, meta) => {
+      ) : <box style={{ flexGrow: 1, flexDirection: 'column' }}>
+        <ScrollBox
+          style={{ flexGrow: 1, dim: dimmingPanel() }}
+          focused={fm.is('feed')}
+          scrollOffset={follow() ? 1e9 : offset()}
+          onScroll={(next, meta) => {
           setFollow(!!meta?.atBottom)
           // back at the bottom: loaded history is off-screen, so re-hiding
           // it is invisible and restores the small render window
@@ -1648,10 +1682,18 @@ export function App({ boot }) {
           </box>
         )}
         {items.map((item, i) => <Message key={hiddenCount + i} item={item} verbose={verbose()} />)}
-        {!viewedAgent && streaming() !== null && streaming() !== '' && (
-          <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
+          {!viewedAgent && streaming() !== null && streaming() !== '' && (
+            <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
+          )}
+        </ScrollBox>
+        {fm.is('feed') && !anyPanel() && (
+          <box style={{ position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', bg: accent(), paddingX: 2 }}>
+            <text style={{ color: 'black', bold: true }}>{'conversation'}</text>
+            <box style={{ flexGrow: 1 }} />
+            <text style={{ color: 'black' }}>{'j/k · ↑/↓ scroll   g/G ends   ctrl-u/d page'}</text>
+          </box>
         )}
-      </ScrollBox>}
+      </box>}
 
       {queued().length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
@@ -2084,19 +2126,6 @@ export function App({ boot }) {
         />
       )}
 
-      {showAgentsPanel() && (
-        <AgentsPanel
-          version={agentsVersion()}
-          agents={agents.list()}
-          focused={showAgentsPanel()}
-          onCancel={(a) => agents.cancel(a.id)}
-          onDismiss={(a) => {
-            if (agents.dismiss(a.id)) persist(makeEvent('agent_dismiss', { agentId: a.id }))
-          }}
-          onClose={() => setShowAgentsPanel(false)}
-        />
-      )}
-
       {showConnectPanel() && (
         <ConnectPanel
           providers={authProviders()}
@@ -2198,20 +2227,23 @@ export function App({ boot }) {
         </box>
       )}
 
-      {visibleAgents.length > 0 && !showAgentsPanel() && (
+      {visibleAgents.length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <text style={{ color: MUTED }}>{`enter view${agentActionHint ? ` · ${agentActionHint}` : ''} · j/k move`}</text>
+          </box>
           <AgentStripRow selected={!viewedAgent} focused={fm.current() === 'agent-main'} onPress={() => { fm.focus('agent-main'); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
             <text style={{ color: fm.current() === 'agent-main' ? 'black' : accent() }}>{'● '}</text>
             <text style={{ color: fm.current() === 'agent-main' ? 'black' : !viewedAgent ? FG : MUTED }}>{'main'}</text>
           </AgentStripRow>
-          {visibleAgents.slice(0, AGENT_STRIP_MAX).map((a) => {
+          {agentWindow.map((a) => {
             const status = agentStatus(a)
             const focused = fm.current() === `agent-${a.id}`
             return (
               <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
                 {a.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : status.color }}>{status.icon}</text>}
                 <text>{' '}</text>
-                <text style={{ color: focused ? 'black' : viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'}  `}</text>
+                <text style={{ color: focused ? 'black' : viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'} [${a.id}]  `}</text>
                 <box style={{ flexGrow: 1, height: 1 }}>
                   <text style={{ overflow: 'truncate', color: focused ? 'black' : MUTED }}>{a.description}</text>
                 </box>
@@ -2221,7 +2253,9 @@ export function App({ boot }) {
               </AgentStripRow>
             )
           })}
-          {visibleAgents.length > AGENT_STRIP_MAX && <text style={{ color: MUTED }}>{`  +${visibleAgents.length - AGENT_STRIP_MAX} more · /agents`}</text>}
+          {visibleAgents.length > AGENT_STRIP_MAX && (
+            <text style={{ color: MUTED }}>{`  ${agentWindowStart > 0 ? `↑ ${agentWindowStart}` : ''}${agentWindowStart > 0 && agentWindowStart + agentWindow.length < visibleAgents.length ? ' · ' : ''}${agentWindowStart + agentWindow.length < visibleAgents.length ? `↓ ${visibleAgents.length - agentWindowStart - agentWindow.length}` : ''} more`}</text>
+          )}
         </box>
       )}
 
