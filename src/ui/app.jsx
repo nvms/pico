@@ -321,6 +321,7 @@ export function App({ boot }) {
         env: { PICO_SCRATCHPAD: scratchpad },
         tracker,
         shells: boot.shells,
+        sessionId,
         dredge: boot.dredge,
         signal,
         maxToolCalls: 30,
@@ -575,6 +576,7 @@ export function App({ boot }) {
       tracker,
       skills: freshSkills,
       shells: boot.shells,
+      sessionId: refs.session?.id,
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
@@ -1068,6 +1070,8 @@ export function App({ boot }) {
       refs.rewindUndo = null
       agents.clear()
       setViewedAgentId(null)
+      setViewedShellId(null)
+      fm.focus('input')
       setQueued([])
       setSent([])
       setModel(defaultModel())
@@ -1265,6 +1269,8 @@ export function App({ boot }) {
       refs.rewindUndo = null
       agents.restore(events)
       setViewedAgentId(null)
+      setViewedShellId(null)
+      fm.focus('input')
       reDerive()
       const catalogMatch = models.find((m) => m.name === derived().model && m.available !== false)
       const restored = derived().model
@@ -1453,7 +1459,9 @@ export function App({ boot }) {
   agentsVersion()
   const agentRows = agents.list()
   shellsVersion()
-  const shellRows = boot.shells.list().sort((a, b) => Number(b.id) - Number(a.id))
+  const shellRows = boot.shells.list()
+    .filter((shell) => shell.sessionId === refs.session?.id)
+    .sort((a, b) => Number(b.id) - Number(a.id))
   if (questionRequest()) {
     fm.item('question')
     if (!fm.is('question')) fm.focus('question')
@@ -1696,8 +1704,8 @@ export function App({ boot }) {
     try { shellOutput = boot.shells.output(viewedShell.id, { tail: 2000 }) } catch {}
   }
   const shellTranscript = viewedShell ? [
-    { kind: 'user', text: viewedShell.command },
-    { kind: 'assistant', text: shellOutput?.output || 'no output yet' },
+    { kind: 'shell-command', text: viewedShell.command },
+    { kind: 'shell-output', text: shellOutput?.output || 'no output yet' },
   ] : null
   const transcript = shellTranscript || (viewedAgent ? agentTranscript(viewedAgent) : mainTranscript)
   const hiddenCount = Math.max(0, transcript.length - histWindow())

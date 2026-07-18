@@ -116,7 +116,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
     : interrupted ? 'interrupted'
     : reverted ? 'reverted'
     : failed ? `failed${took ? ` · ${took}` : ''}`
-    : background ? 'background · /shells'
+    : background ? 'background · shell listed below'
     : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
     : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}${showExpandHint ? ' · ctrl+o' : ''}`
     : `done${took ? ` · ${took}` : ''}`
@@ -250,6 +250,31 @@ export function Message({ item, verbose }) {
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
         <text style={{ color: MUTED, italic: true }}>{`✦ skill: ${item.name}`}</text>
+      </box>
+    )
+  }
+
+  if (item.kind === 'shell-command') {
+    const shown = highlight(item.text, 'bash')
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <text style={{ color: MUTED, bold: true }}>{'command'}</text>
+        <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
+          {shown.split('\n').map((line, i) => <text key={i}>{`${i === 0 ? '$ ' : '  '}${line || ' '}`}</text>)}
+        </box>
+      </box>
+    )
+  }
+
+  if (item.kind === 'shell-output') {
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <text style={{ color: MUTED, bold: true }}>{'output'}</text>
+        <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
+          {item.text.split('\n').map((line, i) => <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>)}
+        </box>
       </box>
     )
   }

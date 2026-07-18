@@ -7,11 +7,11 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
-  const deps = { cwd, env, recorder, tracker, signal, shells }
+  const deps = { cwd, env, recorder, tracker, signal, shells, sessionId }
 
   const local = [
     createRead(deps),

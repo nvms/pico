@@ -15,10 +15,12 @@ const exited = (mgr, id) =>
 test('captures output and exit code, notifies on exit', async () => {
   let exitedShell = null
   const mgr = createShellManager({ onExit: (s) => { exitedShell = s } })
-  const { id } = mgr.start('printf "one\\ntwo\\n"; exit 3')
+  const { id } = mgr.start('printf "one\\ntwo\\n"; exit 3', { sessionId: 'session-1' })
   const shell = await exited(mgr, id)
   assert.equal(shell.exitCode, 3)
+  assert.equal(shell.sessionId, 'session-1')
   assert.equal(exitedShell.id, id)
+  assert.equal(exitedShell.sessionId, 'session-1')
   const out = mgr.output(id, { tail: 10 })
   assert.equal(out.output, 'one\ntwo')
   assert.equal(out.status, 'exited')
