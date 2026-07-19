@@ -690,7 +690,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
               <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
               <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
               <text> </text>
-              <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{`last: ${preview().latest.title.replace(/\n/g, ' ')}`}</text>
+              <text style={{ color: FG_SOFT }}>{`last: ${preview().latest.title.replace(/\n/g, ' ')}`}</text>
             </box>
           ) : (
             <text style={{ color: FAINT }}>no projects</text>
