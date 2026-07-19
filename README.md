@@ -9,10 +9,6 @@ A coding agent that runs in your terminal. Rendering is [@trendr/core](https://g
   <img src=".github/assets/quick-task.gif" alt="pico demo">
 </p>
 
-<p align="center">
-  <img src=".github/assets/panels.gif" alt="pico demo">
-</p>
-
 ## Install
 
 ```
