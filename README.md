@@ -16,7 +16,7 @@ A coding agent that runs in your terminal. Rendering is [@trendr/core](https://g
 npm i -g picocode
 ```
 
-Requires node 24 or newer and ripgrep. Set at least one provider key in your environment: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `XAI_API_KEY`. Models are offered based on which keys are present.
+Requires node 24 or newer and ripgrep. Set at least one provider key in your environment: `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `XAI_API_KEY`. Alternatively, use `/connect` in pico to sign in with your ChatGPT subscription and access Codex models. Models are offered based on the credentials available.
 
 ## Use
 
