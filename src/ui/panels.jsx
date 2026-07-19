@@ -588,22 +588,42 @@ function ContextOverview({ overview }) {
     )
   }
 
+  const formatTokens = (tokens) => tokens < 1000 ? `${Math.round(tokens)} tok` : `${(tokens / 1000).toFixed(1)}k`
+  const legendRows = () => {
+    const rows = [[]]
+    let used = 0
+    for (const segment of overview.segments) {
+      const itemWidth = segment.label.length + formatTokens(segment.tokens).length + 5
+      if (used > 0 && used + itemWidth > Math.max(1, layout.width || 1)) {
+        rows.push([])
+        used = 0
+      }
+      rows.at(-1).push(segment)
+      used += itemWidth
+    }
+    return rows
+  }
+
   return (
     <box style={{ flexDirection: 'column', marginTop: 1 }}>
       <box style={{ flexDirection: 'row' }}>{cells}</box>
-      <box style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-        {overview.segments.map((segment) => (
-          <box key={segment.label} style={{ flexDirection: 'row', marginRight: 2 }}>
-            <text style={{ color: segment.color }}>■</text>
-            <text style={{ color: MUTED }}>{` ${segment.label} `}</text>
-            <AnimatedValue
-              value={segment.tokens}
-              initial={0}
-              duration={2000}
-              color={FAINT}
-              highlight={accent()}
-              format={(tokens) => tokens < 1000 ? `${Math.round(tokens)} tok` : `${(tokens / 1000).toFixed(1)}k`}
-            />
+      <box style={{ flexDirection: 'column' }}>
+        {legendRows().map((row, rowIndex) => (
+          <box key={rowIndex} style={{ flexDirection: 'row' }}>
+            {row.map((segment) => (
+              <box key={segment.label} style={{ flexDirection: 'row', marginRight: 2 }}>
+                <text style={{ color: segment.color }}>■</text>
+                <text style={{ color: MUTED }}>{` ${segment.label} `}</text>
+                <AnimatedValue
+                  value={segment.tokens}
+                  initial={0}
+                  duration={2000}
+                  color={FAINT}
+                  highlight={accent()}
+                  format={formatTokens}
+                />
+              </box>
+            ))}
           </box>
         ))}
       </box>
