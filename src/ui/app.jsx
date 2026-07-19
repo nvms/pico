@@ -1808,7 +1808,6 @@ export function App({ boot }) {
         </ScrollBox>
         {fm.is('feed') && !anyPanel() && (
           <box style={{ position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', bg: accent(), paddingX: 2 }}>
-            <text style={{ color: 'black', bold: true }}>{'conversation'}</text>
             <box style={{ flexGrow: 1 }} />
             <text style={{ color: 'black' }}>{'j/k · ↑/↓ scroll   g/G ends   ctrl-u/d page'}</text>
           </box>
