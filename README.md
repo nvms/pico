@@ -1,6 +1,9 @@
 # pico
 
+
 A coding agent that runs in your terminal. Rendering is [@trendr/core](https://github.com/nvms/trendr), model access is [@prsm/ai](https://github.com/prsmjs/ai).
+
+![pico terminal interface](.github/assets/pico.png)
 
 <p align="center">
   <img src=".github/assets/quick-task.gif" alt="pico demo">

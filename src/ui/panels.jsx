@@ -7,8 +7,9 @@ import { fuzzyScore, rankFuzzy } from './fuzzy.js'
 import { formatHttpServerSpec, parseServerSpec, redactServerSpec, REDACTED_HEADER } from '../core/mcp.js'
 
 function shortenHome(path) {
+  const value = String(path)
   const home = homedir()
-  return String(path).startsWith(home) ? String(path).replace(home, '~') : String(path)
+  return value === home || value.startsWith(`${home}/`) ? `~${value.slice(home.length)}` : value
 }
 
 export function timeAgo(at) {
@@ -410,7 +411,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
           {selectedSession() ? (
             <box style={{ flexDirection: 'column' }}>
               <text style={{ color: FAINT }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(selectedSession().at)}`}</text>
-              <text style={{ color: FAINT, overflow: 'truncate' }}>{selectedSession().header.root}</text>
+              <text style={{ color: FAINT, overflow: 'truncate' }}>{shortenHome(selectedSession().header.root)}</text>
               <text> </text>
               <text style={{ color: FG }}>{selectedSession().title.slice(0, 500)}</text>
             </box>
