@@ -1487,8 +1487,12 @@ export function App({ boot }) {
     if (!fm.is('question')) fm.focus('question')
   } else {
     if (!viewedAgentId() && !viewedShellId()) fm.item('input')
-    if (shellRows.length > 0) fm.group('shell-strip', { items: ['shell-main', ...shellRows.map((s) => `shell-${s.id}`)], navigate: 'both', wrap: true })
-    if (agentRows.length > 0) fm.group('agent-strip', { items: ['agent-main', ...agentRows.map((a) => `agent-${a.id}`)], navigate: 'both', wrap: true })
+    if (shellRows.length > 0 && agentRows.length > 0) {
+      fm.group('activity-strip', { items: ['activity-main', ...shellRows.map((s) => `shell-${s.id}`), ...agentRows.map((a) => `agent-${a.id}`)], navigate: 'both', wrap: true })
+    } else {
+      if (shellRows.length > 0) fm.group('shell-strip', { items: ['shell-main', ...shellRows.map((s) => `shell-${s.id}`)], navigate: 'both', wrap: true })
+      if (agentRows.length > 0) fm.group('agent-strip', { items: ['agent-main', ...agentRows.map((a) => `agent-${a.id}`)], navigate: 'both', wrap: true })
+    }
     if (refs.focusComposerAfterQuestion && !viewedAgentId() && !viewedShellId()) {
       refs.focusComposerAfterQuestion = false
       fm.focus('input')
@@ -1498,6 +1502,27 @@ export function App({ boot }) {
   useSelection({
     onCopy: (text) => flash(`copied ${text.length} ${text.length === 1 ? 'character' : 'characters'}`),
   })
+
+  function navigateActivityStrip(event) {
+    const items = ['activity-main', ...shellRows.map((shell) => `shell-${shell.id}`), ...agentRows.map((agent) => `agent-${agent.id}`)]
+    const current = items.indexOf(fm.current())
+    let next = current
+    if (!event.ctrl && event.key === 'g') next = 0
+    else if (!event.ctrl && event.key === 'G') next = items.length - 1
+    else if (event.ctrl && event.key === 'd') next = Math.min(items.length - 1, current + Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
+    else if (event.ctrl && event.key === 'u') next = Math.max(0, current - Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
+    else if (event.key === 'j' || event.key === 'down') next = (current + 1 + items.length) % items.length
+    else if (event.key === 'k' || event.key === 'up') next = (current - 1 + items.length) % items.length
+    else return false
+    const target = items[next]
+    fm.focus(target)
+    setViewedShellId(target.startsWith('shell-') ? target.slice('shell-'.length) : null)
+    setViewedAgentId(target.startsWith('agent-') ? target.slice('agent-'.length) : null)
+    setFollow(true)
+    setHistWindow(HISTORY_WINDOW)
+    event.stopPropagation()
+    return true
+  }
 
   function navigateStrip(event, prefix, rows, { main = false, previewAgent = false, previewShell = false } = {}) {
     const items = [...(main ? [`${prefix}-main`] : []), ...rows.map((row) => `${prefix}-${row.id}`)]
@@ -1526,6 +1551,25 @@ export function App({ boot }) {
   }
 
   useInput((event) => {
+    if (fm.is('activity-strip') && navigateActivityStrip(event)) return
+    if (fm.is('activity-strip') && event.key === 'return') {
+      const target = fm.current()
+      setViewedShellId(target.startsWith('shell-') ? target.slice('shell-'.length) : null)
+      setViewedAgentId(target.startsWith('agent-') ? target.slice('agent-'.length) : null)
+      setFollow(true)
+      setHistWindow(HISTORY_WINDOW)
+      event.stopPropagation()
+      return
+    }
+    if (fm.is('activity-strip') && event.ctrl && event.key === 'x') {
+      const target = fm.current()
+      const shell = target.startsWith('shell-') ? shellRows.find((s) => `shell-${s.id}` === target) : null
+      const agent = target.startsWith('agent-') ? agents.get(target.slice('agent-'.length)) : null
+      if (shell) shell.status === 'running' ? killShell(shell) : dismissShell(shell)
+      if (agent) ['queued', 'running'].includes(agent.status) ? cancelAgent(agent) : dismissAgent(agent)
+      event.stopPropagation()
+      return
+    }
     if (fm.is('shell-strip') && navigateStrip(event, 'shell', shellRows, { main: true, previewShell: true })) return
     if (fm.is('agent-strip') && navigateStrip(event, 'agent', agentRows, { main: true, previewAgent: true })) return
     if (fm.is('shell-strip') && event.key === 'return') {
@@ -1714,7 +1758,8 @@ export function App({ boot }) {
     : 0
   const visibleShells = shellRows
   const viewedShell = viewedShellId() ? visibleShells.find((s) => s.id === viewedShellId()) : null
-  const shellStripFocus = fm.is('shell-strip') ? fm.current() : null
+  const combinedActivity = visibleShells.length > 0 && agentRows.length > 0
+  const shellStripFocus = fm.is('shell-strip') || (fm.is('activity-strip') && fm.current().startsWith('shell-')) ? fm.current() : null
   const focusedShellId = shellStripFocus && shellStripFocus !== 'shell-main' ? shellStripFocus.slice('shell-'.length) : null
   const focusedShell = focusedShellId ? visibleShells.find((s) => s.id === focusedShellId) : null
   const hintedShell = focusedShell || viewedShell
@@ -1726,7 +1771,7 @@ export function App({ boot }) {
   agentsVersion()
   const visibleAgents = agentRows
   const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
-  const agentStripFocus = fm.is('agent-strip') ? fm.current() : null
+  const agentStripFocus = fm.is('agent-strip') || (fm.is('activity-strip') && fm.current().startsWith('agent-')) ? fm.current() : null
   const focusedAgentId = agentStripFocus && agentStripFocus !== 'agent-main' ? agentStripFocus.slice('agent-'.length) : null
   const focusedAgent = focusedAgentId ? agents.get(focusedAgentId) : null
   const hintedAgent = focusedAgent || viewedAgent
@@ -1750,19 +1795,21 @@ export function App({ boot }) {
   highlightVersion()
 
   const mainTranscript = derived().transcript
+  const activeShell = shellStripFocus ? focusedShell : agentStripFocus ? null : viewedShell
+  const activeAgent = agentStripFocus ? focusedAgent : shellStripFocus ? null : viewedAgent
   let shellOutput = null
-  if (viewedShell) {
-    try { shellOutput = boot.shells.output(viewedShell.id, { tail: 2000 }) } catch {}
+  if (activeShell) {
+    try { shellOutput = boot.shells.output(activeShell.id, { tail: 2000 }) } catch {}
   }
-  const shellTranscript = viewedShell ? [
-    { kind: 'shell-command', text: viewedShell.command },
+  const shellTranscript = activeShell ? [
+    { kind: 'shell-command', text: activeShell.command },
     { kind: 'shell-output', text: shellOutput?.output || 'no output yet' },
   ] : null
-  const transcript = shellTranscript || (viewedAgent ? agentTranscript(viewedAgent) : mainTranscript)
+  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : mainTranscript)
   const hiddenCount = Math.max(0, transcript.length - histWindow())
-  const isolatedTranscript = viewedAgent || viewedShell
+  const isolatedTranscript = activeAgent || activeShell
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
-  const items = compactToolHistory() ? compactTranscriptRuns(visibleItems, viewedAgent ? viewedAgent.status === 'running' : viewedShell ? false : turnPhase() === 'tools') : visibleItems
+  const items = compactToolHistory() ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools') : visibleItems
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
 
@@ -2314,21 +2361,32 @@ export function App({ boot }) {
         />
       )}
 
-      {visibleShells.length > 0 && (
+      {combinedActivity && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+          <AgentStripRow selected={!viewedShell && !viewedAgent} focused={fm.current() === 'activity-main'} onPress={() => { fm.focus('activity-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+            <text style={{ color: fm.current() === 'activity-main' ? 'black' : accent() }}>{'● '}</text>
+            <text style={{ color: fm.current() === 'activity-main' ? 'black' : !viewedShell && !viewedAgent ? FG : MUTED }}>{'main'}</text>
+          </AgentStripRow>
+        </box>
+      )}
+
+      {visibleShells.length > 0 && (
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
             <text style={{ color: MUTED }}>{`${shellActionHint ? `${shellActionHint} · ` : ''}j/k move`}</text>
           </box>
-          <AgentStripRow selected={!viewedShell} focused={fm.current() === 'shell-main'} onPress={() => { fm.focus('shell-main'); setViewedShellId(null); setFollow(true) }}>
-            <text style={{ color: fm.current() === 'shell-main' ? 'black' : accent() }}>{'● '}</text>
-            <text style={{ color: fm.current() === 'shell-main' ? 'black' : !viewedShell ? FG : MUTED }}>{'main'}</text>
-          </AgentStripRow>
+          {!combinedActivity && (
+            <AgentStripRow selected={!viewedShell} focused={fm.current() === 'shell-main'} onPress={() => { fm.focus('shell-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true) }}>
+              <text style={{ color: fm.current() === 'shell-main' ? 'black' : accent() }}>{'● '}</text>
+              <text style={{ color: fm.current() === 'shell-main' ? 'black' : !viewedShell ? FG : MUTED }}>{'main'}</text>
+            </AgentStripRow>
+          )}
           {shellWindow.map((s) => {
             const focused = fm.current() === `shell-${s.id}`
             const selected = viewedShellId() === s.id
             const elapsed = agentElapsed({ startedAt: s.startedAt, endedAt: s.endedAt })
             return (
-              <AgentStripRow key={s.id} selected={selected} focused={focused} onPress={() => { fm.focus(`shell-${s.id}`); setViewedShellId(s.id); setFollow(true) }}>
+              <AgentStripRow key={s.id} selected={selected} focused={focused} onPress={() => { fm.focus(`shell-${s.id}`); setViewedShellId(s.id); setViewedAgentId(null); setFollow(true) }}>
                 {s.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : s.exitCode === 0 ? GREEN : RED }}>{s.exitCode === 0 ? '●' : '×'}</text>}
                 <text>{' '}</text>
                 <text style={{ color: focused ? 'black' : selected ? FG : MUTED }}>{`shell [${s.id}]  `}</text>
@@ -2346,19 +2404,21 @@ export function App({ boot }) {
       )}
 
       {visibleAgents.length > 0 && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
             <text style={{ color: MUTED }}>{`${agentActionHint ? `${agentActionHint} · ` : ''}j/k move`}</text>
           </box>
-          <AgentStripRow selected={!viewedAgent} focused={fm.current() === 'agent-main'} onPress={() => { fm.focus('agent-main'); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
-            <text style={{ color: fm.current() === 'agent-main' ? 'black' : accent() }}>{'● '}</text>
-            <text style={{ color: fm.current() === 'agent-main' ? 'black' : !viewedAgent ? FG : MUTED }}>{'main'}</text>
-          </AgentStripRow>
+          {!combinedActivity && (
+            <AgentStripRow selected={!viewedAgent} focused={fm.current() === 'agent-main'} onPress={() => { fm.focus('agent-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+              <text style={{ color: fm.current() === 'agent-main' ? 'black' : accent() }}>{'● '}</text>
+              <text style={{ color: fm.current() === 'agent-main' ? 'black' : !viewedAgent ? FG : MUTED }}>{'main'}</text>
+            </AgentStripRow>
+          )}
           {agentWindow.map((a) => {
             const status = agentStatus(a)
             const focused = fm.current() === `agent-${a.id}`
             return (
-              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedShellId(null); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
                 {a.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : status.color }}>{status.icon}</text>}
                 <text>{' '}</text>
                 <text style={{ color: focused ? 'black' : viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'} [${a.id}]  `}</text>
