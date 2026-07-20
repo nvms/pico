@@ -66,7 +66,7 @@ const COMMANDS = [
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
-  { name: 'deep-research', desc: 'Research with parallel agents: /deep-research [--agents N] <question>' },
+  { name: 'parallel', desc: 'Run a task with parallel agents: /parallel [--agents N] <task>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
@@ -969,18 +969,18 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'connect') return openConnectPanel()
-    if (c.name === 'deep-research') {
+    if (c.name === 'parallel') {
       const match = args.match(/^(?:--agents(?:=|\s+)(\d+)\s+)?([\s\S]+)$/)
-      const question = match?.[2]?.trim()
+      const task = match?.[2]?.trim()
       const agentLimit = match?.[1] ? Number(match[1]) : researchAgentLimit()
-      if (!question || !Number.isInteger(agentLimit) || agentLimit < 1 || agentLimit > 100) return flash('usage: /deep-research [--agents 1-100] <question>')
+      if (!task || !Number.isInteger(agentLimit) || agentLimit < 1 || agentLimit > 100) return flash('usage: /parallel [--agents 1-100] <task>')
       if (!boot.researchModel || !models.some((m) => m.name === boot.researchModel && m.available !== false)) {
-        setPendingResearch({ question, agentLimit })
+        setPendingResearch({ task, agentLimit })
         setShowResearchModelPanel(true)
         return
       }
       refs.nextResearchAgentLimit = agentLimit
-      send(`Conduct deep research on the following question: ${question}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's question semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to investigate distinct angles with the configured research worker model. Collect workers with agent_collect, critically evaluate their evidence, and synthesize a concise cited report. When the budget permits, use independent workers to check important disputed or weak claims. Do not delegate final synthesis. Do not emit progress updates while researching; Pico displays agent activity automatically.`)
+      send(`Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`)
       return
     }
     if (c.name === 'model') {
@@ -2067,19 +2067,19 @@ export function App({ boot }) {
           models={models.filter((m) => m.available !== false)}
           current={boot.researchModel}
           defaultName={null}
-          title="Choose research worker model"
+          title="Choose parallel worker model"
           hint="enter: save worker model · esc: cancel"
           focused={showResearchModelPanel()}
           onPick={(m) => {
             boot.researchModel = m.name
             writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
             setShowResearchModelPanel(false)
-            flash(`research workers: ${m.name}`)
+            flash(`parallel workers: ${m.name}`)
             const pending = pendingResearch()
             const returnTo = researchModelReturn()
             setPendingResearch(null)
             setResearchModelReturn(null)
-            if (pending) runCommand({ name: 'deep-research' }, `--agents ${pending.agentLimit} ${pending.question}`)
+            if (pending) runCommand({ name: 'parallel' }, `--agents ${pending.agentLimit} ${pending.task}`)
             else if (returnTo === 'config') setShowConfigPanel(true)
           }}
           onPickDefault={() => {}}

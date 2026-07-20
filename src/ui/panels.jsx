@@ -81,11 +81,11 @@ function ConfigNumberField({ value, focused, onChange }) {
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
         <NumberInput focused={focused} value={value} onChange={onChange} min={1} max={100} width={5} />
-        <text style={{ color: FG }}> Research agent limit</text>
+        <text style={{ color: FG }}> Parallel agent limit</text>
         <box style={{ flexGrow: 1 }} />
         <text style={{ color: FAINT }}>research.agentLimit</text>
       </box>
-      <text style={{ color: FAINT }}>    Maximum agents per deep research run (1-100)</text>
+      <text style={{ color: FAINT }}>    Maximum agents per parallel run (1-100)</text>
     </box>
   )
 }
@@ -94,11 +94,11 @@ function ConfigModelField({ model, focused, onPick }) {
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
-        <Button label="Research worker model" focused={focused} onPress={onPick} />
+        <Button label="Parallel worker model" focused={focused} onPress={onPick} />
         <box style={{ flexGrow: 1 }} />
         <text style={{ color: FAINT }}>models.researchWorker</text>
       </box>
-      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'} · model used by background research agents`}</text>
+      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'} · model used by parallel agents`}</text>
     </box>
   )
 }
