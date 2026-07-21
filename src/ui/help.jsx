@@ -19,7 +19,7 @@ In the MCP panel: enter enables/disables a server (disabled is sticky across res
 
 ## Composer
 
-- \`enter\` sends, \`shift+enter\` inserts a newline
+- \`enter\` sends; \`shift+enter\` or \`\\<enter>\` inserts a newline
 - \`@\` opens a fuzzy file picker; enter inserts the selected path
 - drag an image file into the terminal to attach it: it appears inline as \`[Image #N]\`, exactly where your cursor is, so images can sit between sentences; backspace after one removes the whole attachment
 - \`tab\` completes: \`/summ<tab>\` finishes the command name and cycles through matches on repeat; after an argument space it completes values (\`/model fla<tab>\`, \`/color <tab>\`, \`/effort <tab>\`) and file paths for skills and commands. Keep typing to narrow, tab or enter inserts

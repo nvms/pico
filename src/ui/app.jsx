@@ -2033,6 +2033,7 @@ export function App({ boot }) {
             return false
           }}
           submitOnEnter
+          newlineOnBackslashEnter
           clearOnSubmit
           maxHeight={8}
           cursor={{ blink: true, bg: accent(), color: 'black' }}
