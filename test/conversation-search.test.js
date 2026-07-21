@@ -25,9 +25,23 @@ test('collapsed thoughts are excluded until verbose output is shown', () => {
   assert.match(highlightConversation(items, 'foo', 0, true)[0].text, /\x1b\[7;33mfoo/)
 })
 
-test('matches record their line within the searchable field', () => {
+test('matches record their rendered line within the message', () => {
   const matches = conversationMatches([{ kind: 'assistant', text: 'first\nfoo\nfoo' }], 'foo')
-  assert.deepEqual(matches.map((match) => match.line), [1, 2])
+  assert.deepEqual(matches.map((match) => match.line), [2, 3])
+})
+
+test('search excludes truncated thought and tool output lines', () => {
+  const thought = { kind: 'thoughts', text: `${'line\n'.repeat(300)}hidden foo` }
+  const tool = { kind: 'tool', title: 'read', fullOutput: `${'line\n'.repeat(200)}hidden foo` }
+  assert.equal(conversationMatches([thought, tool], 'foo', true).length, 0)
+})
+
+test('expanded content matches use rendered line offsets', () => {
+  const items = [
+    { kind: 'thoughts', text: 'foo' },
+    { kind: 'tool', title: 'foo', fullOutput: 'foo' },
+  ]
+  assert.deepEqual(conversationMatches(items, 'foo', true).map((match) => match.line), [3, 1, 4])
 })
 
 test('tool groups and expanded agent notices join the visible search corpus', () => {

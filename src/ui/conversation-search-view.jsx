@@ -21,6 +21,7 @@ export function createConversationSearch({ fm, verbose, setFollow, setOffset }) 
   const [committed, setCommitted] = createSignal(false)
   const [index, setIndex] = createSignal(0)
   const [enterFocus, setEnterFocus] = createSignal(false)
+  const [scrollRequest, setScrollRequest] = createSignal(0)
   const [scroll] = createSignal({ anchorY: 0, key: null })
 
   function registerFocus() {
@@ -57,9 +58,15 @@ export function createConversationSearch({ fm, verbose, setFollow, setOffset }) 
     const count = matches.length
     if (event.key === 'escape') close()
     else if (event.key === 'n' && !event.shift) {
-      if (count) setIndex((index() + 1) % count)
+      if (count) {
+        setIndex((index() + 1) % count)
+        setScrollRequest((request) => request + 1)
+      }
     } else if (event.key === 'N' || (event.shift && event.key === 'n')) {
-      if (count) setIndex((index() - 1 + count) % count)
+      if (count) {
+        setIndex((index() - 1 + count) % count)
+        setScrollRequest((request) => request + 1)
+      }
     } else if (event.ctrl && event.key === 'o') return false
     else return true
     event.stopPropagation()
@@ -78,7 +85,7 @@ export function createConversationSearch({ fm, verbose, setFollow, setOffset }) 
 
   function scrollToMatch(layout, match) {
     const target = scroll()
-    const key = `${query()}\0${index()}\0${verbose()}`
+    const key = `${query()}\0${index()}\0${verbose()}\0${scrollRequest()}`
     if (target.key === key) return
     target.key = key
     setFollow(false)
@@ -88,6 +95,7 @@ export function createConversationSearch({ fm, verbose, setFollow, setOffset }) 
   function updateQuery(value) {
     setQuery(value)
     setIndex(0)
+    setScrollRequest((request) => request + 1)
   }
 
   return {

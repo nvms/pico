@@ -2,6 +2,10 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function visibleLines(text, limit) {
+  return String(text).split('\n').slice(0, limit).join('\n')
+}
+
 export function matchOffsets(text, query) {
   if (!query) return []
   const matches = []
@@ -29,22 +33,30 @@ export function highlightMatches(text, query, currentIndex = -1, startIndex = 0)
 
 function searchableFields(item, verbose) {
   if (item.kind === 'tool-group') return item.tools.flatMap((tool) => searchableFields(tool, verbose))
-  if (item.kind === 'agent-notice-group') return verbose ? item.notices.map((notice) => ['text', notice.text]) : []
-  if (item.kind === 'thoughts') return verbose && item.text ? [['text', item.text]] : []
+  if (item.kind === 'agent-notice-group') {
+    return verbose ? item.notices.map((notice, index) => ({ field: 'text', text: notice.text, lineOffset: 3 + index })) : []
+  }
+  if (item.kind === 'thoughts') {
+    return verbose && item.text ? [{ field: 'text', text: visibleLines(item.text, 300), lineOffset: 3 }] : []
+  }
+  if (item.kind === 'summary') {
+    const fields = [{ field: 'text', text: visibleLines(item.text, verbose ? 500 : 0), lineOffset: 3 }]
+    return verbose ? fields : []
+  }
   if (item.kind === 'tool') {
-    const fields = [['title', item.title || item.name || '']]
-    if (verbose && item.fullOutput) fields.push(['fullOutput', item.fullOutput])
+    const fields = [{ field: 'title', text: item.title || item.name || '', lineOffset: 1 }]
+    if (verbose && item.fullOutput) fields.push({ field: 'fullOutput', text: visibleLines(item.fullOutput, 200), lineOffset: 4 })
     return fields
   }
-  return item.text ? [['text', item.text]] : []
+  return item.text ? [{ field: 'text', text: item.text, lineOffset: 1 }] : []
 }
 
 export function conversationMatches(items, query, verbose = false) {
   const matches = []
   items.forEach((item, itemIndex) => {
-    searchableFields(item, verbose).forEach(([field, text], fieldIndex) => {
+    searchableFields(item, verbose).forEach(({ field, text, lineOffset }, fieldIndex) => {
       matchOffsets(text, query).forEach((offset, occurrenceIndex) => {
-        const line = String(text).slice(0, offset).split('\n').length - 1
+        const line = lineOffset + String(text).slice(0, offset).split('\n').length - 1
         matches.push({ itemIndex, field, fieldIndex, offset, line, occurrenceIndex })
       })
     })
@@ -61,6 +73,7 @@ export function highlightConversation(items, query, currentIndex, verbose = fals
       return { ...item, notices: item.notices.map(decorate) }
     }
     if (item.kind === 'thoughts' && !verbose) return item
+    if (item.kind === 'summary' && !verbose) return item
     if (item.kind === 'tool') {
       const decorated = { ...item }
       const title = item.title || item.name || ''
@@ -68,14 +81,18 @@ export function highlightConversation(items, query, currentIndex, verbose = fals
       decorated.title = highlightMatches(title, query, currentIndex, startIndex)
       startIndex += titleCount
       if (verbose && item.fullOutput) {
-        const outputCount = matchOffsets(item.fullOutput, query).length
+        const visibleOutput = visibleLines(item.fullOutput, 200)
+        const outputCount = matchOffsets(visibleOutput, query).length
         decorated.fullOutput = highlightMatches(item.fullOutput, query, currentIndex, startIndex)
         startIndex += outputCount
       }
       return decorated
     }
     if (!item.text) return item
-    const count = matchOffsets(item.text, query).length
+    const visibleText = item.kind === 'thoughts' ? visibleLines(item.text, 300)
+      : item.kind === 'summary' ? visibleLines(item.text, 500)
+        : item.text
+    const count = matchOffsets(visibleText, query).length
     const decorated = { ...item, text: highlightMatches(item.text, query, currentIndex, startIndex) }
     startIndex += count
     return decorated
