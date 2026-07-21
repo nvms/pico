@@ -14,6 +14,7 @@ import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
 import { createSkillIndex } from '../core/skills.js'
 import { createCommandIndex } from '../core/commands.js'
+import { initPrompt } from '../core/init.js'
 import { implicitRewindTarget, revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
 import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpdate } from '../core/update.js'
@@ -59,6 +60,7 @@ const COMMANDS = [
   { name: 'cwd', desc: 'Show the current working directory and project root' },
   { name: 'skills', desc: 'List every skill: builtin, global, and project' },
   { name: 'commands', desc: 'List every command: builtin, global, and project' },
+  { name: 'init', desc: 'Create or improve repository AGENTS.md guidance' },
   { name: 'tools', desc: 'List builtin and user-defined tools; MCP tools live in /mcp' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
   { name: 'history', desc: 'Search prompts you previously sent' },
@@ -970,6 +972,10 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'connect') return openConnectPanel()
+    if (c.name === 'init') {
+      send(initPrompt(args))
+      return
+    }
     if (c.name === 'parallel') {
       const match = args.match(/^(?:--agents(?:=|\s+)(\d+)\s+)?([\s\S]+)$/)
       const task = match?.[2]?.trim()
