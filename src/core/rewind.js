@@ -1,5 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
+export function implicitRewindTarget(state, input) {
+  if (input !== '') return null
+  const last = state.transcript.at(-1)
+  if (last?.kind !== 'user') return null
+  return { text: last.text, content: last.content, index: state.transcript.length - 1, eventId: last.eventId }
+}
+
 async function readCurrent(path) {
   try {
     return await readFile(path, 'utf-8')

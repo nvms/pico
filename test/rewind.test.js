@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { revertEdits, reapplyEdits } from '../src/core/rewind.js'
+import { implicitRewindTarget, revertEdits, reapplyEdits } from '../src/core/rewind.js'
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'pico-rewind-'))
@@ -11,6 +11,19 @@ async function fixture() {
   await writeFile(file, 'v2')
   return { dir, file }
 }
+
+test('implicitly rewinds only an empty composer after the latest user message', () => {
+  const user = { kind: 'user', text: 'fix this', content: 'fix this', eventId: 'e1' }
+  assert.deepEqual(implicitRewindTarget({ transcript: [user] }, ''), {
+    text: 'fix this',
+    content: 'fix this',
+    eventId: 'e1',
+    index: 0,
+  })
+  assert.equal(implicitRewindTarget({ transcript: [user] }, 'more context'), null)
+  assert.equal(implicitRewindTarget({ transcript: [user, { kind: 'assistant', text: 'done' }] }, ''), null)
+  assert.equal(implicitRewindTarget({ transcript: [] }, ''), null)
+})
 
 test('reverts an edit when the file matches', async () => {
   const { file } = await fixture()

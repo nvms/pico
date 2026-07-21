@@ -14,7 +14,7 @@ import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
 import { createSkillIndex } from '../core/skills.js'
 import { createCommandIndex } from '../core/commands.js'
-import { revertEdits, reapplyEdits } from '../core/rewind.js'
+import { implicitRewindTarget, revertEdits, reapplyEdits } from '../core/rewind.js'
 import { buildSystemPrompt } from '../core/system-prompt.js'
 import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpdate } from '../core/update.js'
 import { memoryIndex } from '../core/memory.js'
@@ -1339,8 +1339,7 @@ export function App({ boot }) {
     setHistPrompts(dedupePrompts([...sent(), ...project, ...global]))
   }
 
-  async function performRewind(opt) {
-    const target = rewindTarget()
+  async function performRewindTo(target, opt) {
     const state = derived()
     const { edits } = rewindStats(state, target.index)
     const editsLabel = `${edits.length} ${edits.length === 1 ? 'edit' : 'edits'}`
@@ -1379,6 +1378,10 @@ export function App({ boot }) {
     else flash(`rewound, file changes kept · ctrl+z to undo`)
     setRewindStep(null)
     setRewindTarget(null)
+  }
+
+  function performRewind(opt) {
+    return performRewindTo(rewindTarget(), opt)
   }
 
   async function undoRewind() {
@@ -1943,9 +1946,13 @@ export function App({ boot }) {
           onCancel={() => {
             if (busy()) interrupt()
             else {
-              setCmdCycle(null)
-              setCompleting(false)
-              setFilesDismissed(true)
+              const target = implicitRewindTarget(derived(), input())
+              if (target) performRewindTo(target, { key: 'chat' })
+              else {
+                setCmdCycle(null)
+                setCompleting(false)
+                setFilesDismissed(true)
+              }
             }
           }}
           onSubmit={send}
