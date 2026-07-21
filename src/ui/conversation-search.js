@@ -30,6 +30,7 @@ export function highlightMatches(text, query, currentIndex = -1, startIndex = 0)
 function searchableFields(item, verbose) {
   if (item.kind === 'tool-group') return item.tools.flatMap((tool) => searchableFields(tool, verbose))
   if (item.kind === 'agent-notice-group') return verbose ? item.notices.map((notice) => ['text', notice.text]) : []
+  if (item.kind === 'thoughts') return verbose && item.text ? [['text', item.text]] : []
   if (item.kind === 'tool') {
     const fields = [['title', item.title || item.name || '']]
     if (verbose && item.fullOutput) fields.push(['fullOutput', item.fullOutput])
@@ -59,6 +60,7 @@ export function highlightConversation(items, query, currentIndex, verbose = fals
       if (!verbose) return item
       return { ...item, notices: item.notices.map(decorate) }
     }
+    if (item.kind === 'thoughts' && !verbose) return item
     if (item.kind === 'tool') {
       const decorated = { ...item }
       const title = item.title || item.name || ''

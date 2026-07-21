@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, TextInput, useFocus, useFocusTrap, useFrameStats, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -33,7 +33,7 @@ import { highlightVersion } from './highlight.js'
 import { compactNumber } from './format.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { Message, uiTitle } from './transcript.jsx'
-import { conversationMatches, highlightConversation } from './conversation-search.js'
+import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
@@ -218,18 +218,6 @@ function compactTranscriptRuns(items, active = false) {
   return result
 }
 
-function ConversationScrollAnchor({ scrollTarget }) {
-  const layout = useLayout()
-  scrollTarget.anchorY = layout.y
-  return null
-}
-
-function ConversationMessage({ item, verbose, currentMatch, scrollTarget, onScrollToMatch }) {
-  const layout = useLayout()
-  if (currentMatch) onScrollToMatch(layout, currentMatch, scrollTarget)
-  return <Message item={item} verbose={verbose} />
-}
-
 export function App({ boot }) {
   const { cwd, root, version, models, skills, mcp, tracker, startupContext } = boot
 
@@ -272,10 +260,6 @@ export function App({ boot }) {
   const [filesDismissed, setFilesDismissed] = createSignal(false)
   const [view, setView] = createSignal('chat')
   const [verbose, setVerbose] = createSignal(false)
-  const [conversationSearch, setConversationSearch] = createSignal(false)
-  const [conversationQuery, setConversationQuery] = createSignal('')
-  const [conversationSearchCommitted, setConversationSearchCommitted] = createSignal(false)
-  const [conversationMatchIndex, setConversationMatchIndex] = createSignal(0)
   const [showModelPanel, setShowModelPanel] = createSignal(false)
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
@@ -320,10 +304,6 @@ export function App({ boot }) {
   refs.quitAt ??= 0
   refs.attachments ??= new Map()
   refs.imageCount ??= 0
-  refs.conversationSearchScroll ??= {
-    anchorY: 0,
-    key: null,
-  }
 
   refs.agents ??= createAgentManager({
     concurrency: 8,
@@ -1497,13 +1477,8 @@ export function App({ boot }) {
 
   const fm = useFocus({ initial: 'input' })
   fm.item('feed')
-  if (conversationSearch()) {
-    fm.item('conversation-search')
-    if (refs.enterConversationSearch) {
-      refs.enterConversationSearch = false
-      fm.focus('conversation-search')
-    }
-  }
+  const conversationSearch = createConversationSearch({ fm, verbose, setFollow, setOffset })
+  conversationSearch.registerFocus()
   agentsVersion()
   const agentRows = agents.list()
   shellsVersion()
@@ -1578,47 +1553,8 @@ export function App({ boot }) {
     return true
   }
 
-  function scrollToConversationMatch(layout, match, scrollTarget) {
-    const key = `${conversationQuery()}\0${conversationMatchIndex()}\0${verbose()}`
-    if (scrollTarget.key === key) return
-    scrollTarget.key = key
-    const matchY = layout.y - scrollTarget.anchorY + match.line
-    setFollow(false)
-    setOffset(Math.max(0, matchY - 3))
-  }
-
-  function closeConversationSearch({ restoreFocus = true } = {}) {
-    setConversationSearch(false)
-    setConversationQuery('')
-    setConversationSearchCommitted(false)
-    setConversationMatchIndex(0)
-    if (restoreFocus && fm.is('conversation-search')) fm.focus('feed')
-  }
-
   useInput((event) => {
-    if (conversationSearch() && !fm.is('conversation-search')) {
-      closeConversationSearch({ restoreFocus: false })
-      return
-    }
-    if (conversationSearch() && conversationSearchCommitted()) {
-      const count = conversationSearchMatches.length
-      if (event.key === 'escape') {
-        closeConversationSearch()
-        event.stopPropagation()
-        return
-      }
-      if (event.key === 'n' && !event.shift) {
-        if (count) setConversationMatchIndex((conversationMatchIndex() + 1) % count)
-        event.stopPropagation()
-        return
-      }
-      if (event.key === 'N' || (event.shift && event.key === 'n')) {
-        if (count) setConversationMatchIndex((conversationMatchIndex() - 1 + count) % count)
-        event.stopPropagation()
-        return
-      }
-      if (!(event.ctrl && event.key === 'o')) return
-    }
+    if (conversationSearch.handleInput(event, conversationSearchMatches)) return
     if (fm.is('activity-strip') && navigateActivityStrip(event)) return
     if (fm.is('activity-strip') && event.key === 'return') {
       const target = fm.current()
@@ -1699,11 +1635,7 @@ export function App({ boot }) {
       return
     }
     if (fm.is('feed') && event.key === '/') {
-      setConversationSearch(true)
-      setConversationQuery('')
-      setConversationSearchCommitted(false)
-      setConversationMatchIndex(0)
-      refs.enterConversationSearch = true
+      conversationSearch.open()
       event.stopPropagation()
       return
     }
@@ -1887,13 +1819,7 @@ export function App({ boot }) {
   const isolatedTranscript = activeAgent || activeShell
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
   const groupedItems = compactToolHistory() ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools') : visibleItems
-  const conversationSearchMatches = conversationMatches(groupedItems, conversationQuery(), verbose())
-  if (conversationMatchIndex() >= conversationSearchMatches.length && conversationMatchIndex() !== Math.max(0, conversationSearchMatches.length - 1)) {
-    setConversationMatchIndex(Math.max(0, conversationSearchMatches.length - 1))
-  }
-  const items = conversationSearch()
-    ? highlightConversation(groupedItems, conversationQuery(), conversationMatchIndex(), verbose())
-    : groupedItems
+  const { matches: conversationSearchMatches, items } = conversationSearch.prepare(groupedItems)
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
 
@@ -1927,40 +1853,27 @@ export function App({ boot }) {
         }}
         scrollbar
       >
-        <ConversationScrollAnchor scrollTarget={refs.conversationSearchScroll} />
+        <ConversationScrollAnchor target={conversationSearch.scroll} />
         {hiddenCount > 0 && (
           <box style={{ paddingX: 2 }}>
             <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
           </box>
         )}
         {items.map((item, i) => (
-          <ConversationMessage
+          <ConversationSearchMessage
             key={hiddenCount + i}
             item={item}
             verbose={verbose()}
-            currentMatch={conversationSearchMatches[conversationMatchIndex()]?.itemIndex === i ? conversationSearchMatches[conversationMatchIndex()] : null}
-            scrollTarget={refs.conversationSearchScroll}
-            onScrollToMatch={scrollToConversationMatch}
+            currentMatch={conversationSearchMatches[conversationSearch.index()]?.itemIndex === i ? conversationSearchMatches[conversationSearch.index()] : null}
+            search={conversationSearch}
           />
         ))}
           {!viewedAgent && streaming() !== null && streaming() !== '' && (
             <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
           )}
         </ScrollBox>
-        {conversationSearch() ? (
-          <box style={{ flexDirection: 'row', flexShrink: 0, height: 1, bg: PANEL_BG, paddingX: 2 }}>
-            <text style={{ color: accent() }}>{'/ '}</text>
-            {conversationSearchCommitted()
-              ? <text style={{ color: FG, flexGrow: 1 }}>{conversationQuery()}</text>
-              : <TextInput
-                  focused={fm.is('conversation-search')}
-                  value={conversationQuery()}
-                  onChange={(value) => { setConversationQuery(value); setConversationMatchIndex(0) }}
-                  onSubmit={() => setConversationSearchCommitted(true)}
-                  onCancel={() => closeConversationSearch()}
-                />}
-            <text style={{ color: MUTED }}>{conversationSearchMatches.length ? `${conversationMatchIndex() + 1}/${conversationSearchMatches.length}` : '0/0'}</text>
-          </box>
+        {conversationSearch.active() ? (
+          <ConversationSearchBar search={conversationSearch} matches={conversationSearchMatches} />
         ) : fm.is('feed') && !anyPanel() && (
           <box style={{ position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', bg: accent(), paddingX: 2 }}>
             <box style={{ flexGrow: 1 }} />

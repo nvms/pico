@@ -17,6 +17,14 @@ test('tool titles remain searchable while collapsed output is excluded', () => {
   assert.deepEqual(expanded.map((match) => match.field), ['title', 'fullOutput'])
 })
 
+test('collapsed thoughts are excluded until verbose output is shown', () => {
+  const items = [{ kind: 'thoughts', text: 'hidden foo reasoning' }]
+  assert.equal(conversationMatches(items, 'foo', false).length, 0)
+  assert.equal(conversationMatches(items, 'foo', true).length, 1)
+  assert.equal(highlightConversation(items, 'foo', 0, false)[0].text, 'hidden foo reasoning')
+  assert.match(highlightConversation(items, 'foo', 0, true)[0].text, /\x1b\[7;33mfoo/)
+})
+
 test('matches record their line within the searchable field', () => {
   const matches = conversationMatches([{ kind: 'assistant', text: 'first\nfoo\nfoo' }], 'foo')
   assert.deepEqual(matches.map((match) => match.line), [1, 2])
