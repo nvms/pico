@@ -1877,7 +1877,7 @@ export function App({ boot }) {
             search={conversationSearch}
           />
         ))}
-          {!viewedAgent && streaming() !== null && streaming() !== '' && (
+          {!isolatedTranscript && streaming() !== null && streaming() !== '' && (
             <Message key="streaming" item={{ kind: 'assistant', text: `${streaming()}▋` }} />
           )}
         </ScrollBox>
