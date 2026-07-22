@@ -1,6 +1,6 @@
 {
   "name": "picocode",
-  "version": "0.9.57",
+  "version": "0.9.58",
   "description": "a TUI coding agent built on trend and @prsm/ai",
   "type": "module",
   "license": "MIT",
