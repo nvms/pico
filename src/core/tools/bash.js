@@ -9,6 +9,17 @@ function capped(text) {
   return text.slice(0, MAX_OUTPUT_CHARS) + `\n[output truncated at ${MAX_OUTPUT_CHARS} characters]`
 }
 
+function killTree(child, signal = 'SIGTERM') {
+  if (!child.pid) return false
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-child.pid, signal)
+      return true
+    } catch {}
+  }
+  return child.kill(signal)
+}
+
 export function createBash({ cwd, env, recorder, signal, shells, sessionId, sessionFile, autoBackgroundMs = AUTO_BACKGROUND_MS }) {
   return {
     name: 'bash',
@@ -36,6 +47,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
           cwd: cwd || process.cwd(),
           env: { ...process.env, ...env, FORCE_COLOR: '0', NO_COLOR: '1' },
           stdio: ['ignore', 'pipe', 'pipe'],
+          detached: process.platform !== 'win32',
         })
         const { id } = shells
           ? shells.track(child, command, { cwd, description, sessionId, sessionFile, hidden: true })
@@ -44,6 +56,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
         let stderr = ''
         let settled = false
         let timedOut = false
+        let killTimer = null
 
         const collectStdout = (chunk) => { stdout = (stdout + chunk).slice(-MAX_BUFFER_BYTES) }
         const collectStderr = (chunk) => { stderr = (stderr + chunk).slice(-MAX_BUFFER_BYTES) }
@@ -53,7 +66,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
         const timeoutTimer = timeout
           ? setTimeout(() => {
               timedOut = true
-              child.kill()
+              terminate()
             }, timeout)
           : null
         const backgroundTimer = shells
@@ -78,12 +91,19 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
           if (signal) signal.removeEventListener('abort', abort)
           child.stdout.off('data', collectStdout)
           child.stderr.off('data', collectStderr)
+          clearTimeout(killTimer)
+        }
+        function terminate() {
+          if (!killTree(child, 'SIGTERM')) return
+          clearTimeout(killTimer)
+          killTimer = setTimeout(() => killTree(child, 'SIGKILL'), 3000)
+          killTimer.unref?.()
         }
         function abort() {
-          child.kill()
+          terminate()
         }
         if (signal) {
-          if (signal.aborted) child.kill()
+          if (signal.aborted) terminate()
           else signal.addEventListener('abort', abort, { once: true })
         }
         child.on('close', (code) => {

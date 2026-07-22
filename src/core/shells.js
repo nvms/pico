@@ -2,6 +2,17 @@ import { spawn } from 'node:child_process'
 
 const MAX_LINES = 2000
 
+function killTree(child, signal) {
+  if (!child.pid) return false
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(-child.pid, signal)
+      return true
+    } catch {}
+  }
+  return child.kill(signal)
+}
+
 export function createShellManager({ onChange = () => {}, onExit = () => {} } = {}) {
   const shells = new Map()
   let nextId = 1
@@ -80,6 +91,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       cwd: options.cwd || process.cwd(),
       env: { ...process.env, ...options.env, FORCE_COLOR: '0', NO_COLOR: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
     })
     return track(child, command, options)
   }
@@ -121,9 +133,9 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       const shell = get(id)
       if (shell.status !== 'running') return { id: shell.id, status: shell.status, exitCode: shell.exitCode }
       shell.killedBy = by
-      shell.child.kill('SIGTERM')
+      killTree(shell.child, 'SIGTERM')
       setTimeout(() => {
-        if (shell.status === 'running') shell.child.kill('SIGKILL')
+        if (shell.status === 'running') killTree(shell.child, 'SIGKILL')
       }, 3000).unref()
       return { id: shell.id, status: 'killing' }
     },
@@ -145,7 +157,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
         if (shell.status === 'running') {
           shell.killedBy = 'user'
           try {
-            shell.child.kill('SIGKILL')
+            killTree(shell.child, 'SIGKILL')
           } catch {}
         }
       }

@@ -93,6 +93,20 @@ test('bash runs commands and captures exit codes', async () => {
   assert.equal(recorder.entries[0].titleLang, 'bash')
 })
 
+test('aborting bash terminates a foreground command and its children', async () => {
+  const controller = new AbortController()
+  const recorder = createRecorder()
+  const bash = createBash({ cwd: process.cwd(), recorder, signal: controller.signal })
+  const startedAt = Date.now()
+  const running = bash.execute({ command: `node -e "setTimeout(() => {}, 10000)"` })
+
+  setTimeout(() => controller.abort(), 20)
+  const result = await running
+
+  assert.ok(Date.now() - startedAt < 2000)
+  assert.notEqual(result.exitCode, 0)
+})
+
 test('background bash descriptions are not marked as shell code', async () => {
   const shells = createShellManager()
   const recorder = createRecorder()
