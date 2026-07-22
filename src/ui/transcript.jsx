@@ -102,8 +102,8 @@ function ToolGroup({ item, verbose }) {
   )
 }
 
-function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
-  const shownTitle = name === 'bash' && title ? highlight(title, 'bash') : title
+function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
+  const shownTitle = titleLang && title ? highlight(title, titleLang) : title
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'

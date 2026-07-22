@@ -90,6 +90,21 @@ test('bash runs commands and captures exit codes', async () => {
   const bad = await byName.bash.execute({ command: 'exit 3' })
   assert.equal(bad.exitCode, 3)
   assert.equal(recorder.entries[0].title, 'echo hello && exit 0')
+  assert.equal(recorder.entries[0].titleLang, 'bash')
+})
+
+test('background bash descriptions are not marked as shell code', async () => {
+  const shells = createShellManager()
+  const recorder = createRecorder()
+  recorder.begin('bash', {})
+  const bash = createBash({ cwd: process.cwd(), recorder, shells })
+
+  const result = await bash.execute({ command: 'sleep 1', background: true, description: 'slow number counter' })
+  recorder.done()
+
+  assert.equal(recorder.entries[0].title, 'slow number counter')
+  assert.equal(recorder.entries[0].titleLang, null)
+  shells.kill(result.shellId)
 })
 
 test('bash automatically backgrounds a long-running foreground command', async () => {

@@ -21,12 +21,12 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
     },
     execute: ({ command, timeout, background, description }) => {
       if (background && shells) {
-        recorder.extra({ title: description || command, background: true })
+        recorder.extra({ title: description || command, titleLang: description ? null : 'bash', background: true })
         const { id } = shells.start(command, { cwd, env, description, sessionId, sessionFile })
         return { shellId: id, status: 'running' }
       }
       return new Promise((resolve) => {
-        recorder.extra({ title: command })
+        recorder.extra({ title: command, titleLang: 'bash' })
         const child = spawn(command, {
           shell: true,
           cwd: cwd || process.cwd(),
@@ -59,7 +59,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
               clearTimeout(timeoutTimer)
               cleanup()
               shells.reveal(id)
-              recorder.extra({ title: description || command, background: true })
+              recorder.extra({ title: description || command, titleLang: description ? null : 'bash', background: true })
               resolve({
                 shellId: id,
                 status: 'running',
