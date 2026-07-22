@@ -261,6 +261,7 @@ export function App({ boot }) {
   const [memoryList, setMemoryList] = createSignal([])
   const [themePref, setThemePref] = createSignal(boot.themePref || 'auto')
   const [queued, setQueued] = createSignal([])
+  const [expedited, setExpedited] = createSignal([])
   const [sent, setSent] = createSignal([])
   const [histIdx, setHistIdx] = createSignal(-1)
   const [cmdIndex, setCmdIndex] = createSignal(0)
@@ -546,11 +547,12 @@ export function App({ boot }) {
       refs.abort = null
     }
 
-    const q = queued()
-    if (q.length > 0) {
+    const next = [...expedited(), ...queued()]
+    if (next.length > 0) {
+      setExpedited([])
       setQueued([])
-      if (controller.signal.aborted) setInput(q.join('\n'))
-      else executeTurn(q.join('\n'))
+      if (controller.signal.aborted) setInput(next.join('\n'))
+      else executeTurn(next.join('\n'))
     }
   }
 
@@ -621,6 +623,7 @@ export function App({ boot }) {
     })
 
     refs.turnThoughts = ''
+    refs.sendAfterToolTriggered = false
     const onStream = (event) => {
       if (event.type === 'thinking') {
         refs.turnThoughts += event.content
@@ -663,6 +666,10 @@ export function App({ boot }) {
               : item,
           ),
         )
+        if (expedited().length > 0) {
+          refs.sendAfterToolTriggered = true
+          controller.abort()
+        }
       }
     }
 
@@ -724,12 +731,17 @@ export function App({ boot }) {
       )
     }
 
-    const q = queued()
-    if (q.length > 0) {
+    const expeditedMessages = expedited()
+    const pendingMessages = queued()
+    if (expeditedMessages.length > 0 || pendingMessages.length > 0) {
+      setExpedited([])
       setQueued([])
-      if (result.interrupted) setInput(q.join('\n'))
-      else {
-        executeTurn(q.join('\n'))
+      if (result.interrupted && !refs.sendAfterToolTriggered) {
+        setInput([...expeditedMessages, ...pendingMessages].join('\n'))
+      } else {
+        const next = refs.sendAfterToolTriggered ? expeditedMessages : [...expeditedMessages, ...pendingMessages]
+        if (refs.sendAfterToolTriggered && pendingMessages.length > 0) setQueued(pendingMessages)
+        executeTurn(next.join('\n'))
         return
       }
     }
@@ -783,6 +795,7 @@ export function App({ boot }) {
 
   function interrupt() {
     if (!busy()) return
+    refs.sendAfterToolTriggered = false
     const request = questionRequest()
     if (request) {
       setQuestionRequest(null)
@@ -1105,6 +1118,7 @@ export function App({ boot }) {
       setViewedShellId(null)
       fm.focus('input')
       setQueued([])
+      setExpedited([])
       setSent([])
       setModel(defaultModel())
       setEffort(defaultEffort())
@@ -1260,6 +1274,7 @@ export function App({ boot }) {
       next.mcp.connectAll()
       setMcpServers(next.mcp.list())
       setQueued([])
+      setExpedited([])
       setFileList([])
       await resumeSession(meta)
       flash(`switched to ${next.displayCwd}`)
@@ -1433,6 +1448,7 @@ export function App({ boot }) {
     refs.persisted = 0
     refs.rewindUndo = null
     setQueued([])
+    setExpedited([])
     setSent([])
     setModel(defaultModel())
     setEffort(defaultEffort())
@@ -1898,15 +1914,24 @@ export function App({ boot }) {
         )}
       </MouseFocusRegion>}
 
-      {queued().length > 0 && (
+      {(expedited().length > 0 || queued().length > 0) && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
-          {queued().map((q, i) => (
-            <box key={i} style={{ flexDirection: 'row' }}>
+          {expedited().map((message, i) => (
+            <box key={`expedited-${i}`} style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent(), bold: true }}>{'↠ '}</text>
+              <box style={{ flexGrow: 1, height: 1 }}>
+                <text style={{ overflow: 'truncate', color: accent() }}>{message.replace(/\n/g, ' ')}</text>
+              </box>
+              {i === 0 && <text style={{ color: accent() }}>{'  after next tool · ↑ to edit'}</text>}
+            </box>
+          ))}
+          {queued().map((message, i) => (
+            <box key={`pending-${i}`} style={{ flexDirection: 'row' }}>
               <text style={{ color: FAINT }}>{'› '}</text>
               <box style={{ flexGrow: 1, height: 1 }}>
-                <text style={{ overflow: 'truncate', color: MUTED }}>{q.replace(/\n/g, ' ')}</text>
+                <text style={{ overflow: 'truncate', color: MUTED }}>{message.replace(/\n/g, ' ')}</text>
               </box>
-              {i === 0 && <text style={{ color: MUTED }}>{'  pending · ↑ to edit'}</text>}
+              {i === 0 && expedited().length === 0 && <text style={{ color: MUTED }}>{'  pending · ↑ edit · → send after next tool'}</text>}
             </box>
           ))}
         </box>
@@ -2025,8 +2050,14 @@ export function App({ boot }) {
               return true
             }
             if (e.ctrl || e.meta || showCommands || showFiles) return false
-            if (e.key === 'up' && e.value === '' && queued().length > 0) {
-              setInput(queued().join('\n'))
+            if (e.key === 'up' && e.value === '' && (expedited().length > 0 || queued().length > 0)) {
+              setInput([...expedited(), ...queued()].join('\n'))
+              setExpedited([])
+              setQueued([])
+              return true
+            }
+            if (e.key === 'right' && e.value === '' && queued().length > 0 && busy() && !compacting()) {
+              setExpedited((messages) => [...messages, ...queued()])
               setQueued([])
               return true
             }
