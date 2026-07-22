@@ -103,6 +103,7 @@ function ToolGroup({ item, verbose }) {
 }
 
 function ToolCard({ name, title, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
+  const shownTitle = name === 'bash' && title ? highlight(title, 'bash') : title
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'
@@ -131,7 +132,7 @@ function ToolCard({ name, title, status, diff, revert, fullOutput, error, backgr
         <text> </text>
         <text style={{ color: MUTED }}>{`${name.padEnd(5)} `}</text>
         <box style={{ flexGrow: 1, height: 1 }}>
-          <text style={{ overflow: 'truncate', color: FG }}>{title || name}</text>
+          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || name}</text>
         </box>
         <text style={{ color: FAINT }}>{`  ${info}`}</text>
       </box>
