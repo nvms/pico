@@ -23,7 +23,11 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
       if (background && shells) {
         recorder.extra({ title: description || command, titleLang: description ? null : 'bash', background: true })
         const { id } = shells.start(command, { cwd, env, description, sessionId, sessionFile })
-        return { shellId: id, status: 'running' }
+        return {
+          shellId: id,
+          status: 'running',
+          note: 'the shell will notify you when it exits; do not schedule a wake-up to poll it',
+        }
       }
       return new Promise((resolve) => {
         recorder.extra({ title: command, titleLang: 'bash' })
