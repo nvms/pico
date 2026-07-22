@@ -1,19 +1,21 @@
-import { exec } from 'node:child_process'
+import { spawn } from 'node:child_process'
 
 const MAX_OUTPUT_CHARS = 30000
+const MAX_BUFFER_BYTES = 10 * 1024 * 1024
+export const AUTO_BACKGROUND_MS = 150000
 
 function capped(text) {
   if (text.length <= MAX_OUTPUT_CHARS) return text
   return text.slice(0, MAX_OUTPUT_CHARS) + `\n[output truncated at ${MAX_OUTPUT_CHARS} characters]`
 }
 
-export function createBash({ cwd, env, recorder, signal, shells, sessionId, sessionFile }) {
+export function createBash({ cwd, env, recorder, signal, shells, sessionId, sessionFile, autoBackgroundMs = AUTO_BACKGROUND_MS }) {
   return {
     name: 'bash',
-    description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands are killed at the timeout (default 120s), so never wait on long externals like CI runs, deploys, or watch loops in the foreground: run those with background true, finish your turn, and the shell\'s exit will notify you so you can report the outcome. Background also fits long-lived processes like dev servers; check on a background shell with shell_output and stop it with shell_kill.',
+    description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands still running after 150 seconds are automatically backgrounded. Run known long-lived commands with background true. Background shells notify you when they exit; inspect them with shell_output and stop them with shell_kill.',
     schema: {
       command: { type: 'string', description: 'the command to run' },
-      timeout: { type: 'number', description: 'foreground timeout in milliseconds, default 120000; prefer background true over a large timeout', optional: true },
+      timeout: { type: 'number', description: 'optional foreground timeout in milliseconds; commands still running after 150 seconds are backgrounded instead', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
       description: { type: 'string', description: 'for background shells: a few words naming what this is for, shown to the human watching (e.g. "vite dev server", "watching ci")', optional: true },
     },
@@ -25,37 +27,80 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
       }
       return new Promise((resolve) => {
         recorder.extra({ title: command })
-        const child = exec(
-          command,
-          {
-            cwd,
-            timeout: timeout || 120000,
-            maxBuffer: 10 * 1024 * 1024,
-            env: { ...process.env, ...env, FORCE_COLOR: '0', NO_COLOR: '1' },
-          },
-          (err, stdout, stderr) => {
-            const exitCode = err ? (typeof err.code === 'number' ? err.code : 1) : 0
-            const ms = timeout || 120000
-            const timedOut = !!err?.killed && err.code == null && !signal?.aborted
-            recorder.extra({ fullOutput: [stdout, stderr].filter(Boolean).join('\n') })
-            resolve({
-              stdout: capped(stdout || ''),
-              stderr: capped(stderr || ''),
-              exitCode,
-              ...(timedOut && {
-                timedOut: true,
-                note: `killed at the ${ms}ms timeout. do not simply rerun it: use background true for long-running work and wait for its exit notification, or pass a larger timeout if the command genuinely needs the foreground`,
-              }),
-            })
-          },
-        )
-        if (signal) {
-          if (signal.aborted) {
-            child.kill()
-            return
-          }
-          signal.addEventListener('abort', () => child.kill(), { once: true })
+        const child = spawn(command, {
+          shell: true,
+          cwd: cwd || process.cwd(),
+          env: { ...process.env, ...env, FORCE_COLOR: '0', NO_COLOR: '1' },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+        const { id } = shells
+          ? shells.track(child, command, { cwd, description, sessionId, sessionFile, hidden: true })
+          : { id: null }
+        let stdout = ''
+        let stderr = ''
+        let settled = false
+        let timedOut = false
+
+        const collectStdout = (chunk) => { stdout = (stdout + chunk).slice(-MAX_BUFFER_BYTES) }
+        const collectStderr = (chunk) => { stderr = (stderr + chunk).slice(-MAX_BUFFER_BYTES) }
+        child.stdout.on('data', collectStdout)
+        child.stderr.on('data', collectStderr)
+
+        const timeoutTimer = timeout
+          ? setTimeout(() => {
+              timedOut = true
+              child.kill()
+            }, timeout)
+          : null
+        const backgroundTimer = shells
+          ? setTimeout(() => {
+              if (settled) return
+              settled = true
+              clearTimeout(timeoutTimer)
+              cleanup()
+              shells.reveal(id)
+              recorder.extra({ title: description || command, background: true })
+              resolve({
+                shellId: id,
+                status: 'running',
+                note: `automatically backgrounded after ${autoBackgroundMs}ms; the shell will notify you when it exits`,
+              })
+            }, autoBackgroundMs)
+          : null
+        backgroundTimer?.unref?.()
+        timeoutTimer?.unref?.()
+
+        function cleanup() {
+          if (signal) signal.removeEventListener('abort', abort)
+          child.stdout.off('data', collectStdout)
+          child.stderr.off('data', collectStderr)
         }
+        function abort() {
+          child.kill()
+        }
+        if (signal) {
+          if (signal.aborted) child.kill()
+          else signal.addEventListener('abort', abort, { once: true })
+        }
+        child.on('close', (code) => {
+          if (settled) return
+          settled = true
+          clearTimeout(backgroundTimer)
+          clearTimeout(timeoutTimer)
+          cleanup()
+          if (id) shells.discardHidden(id)
+          const exitCode = code ?? 1
+          recorder.extra({ fullOutput: [stdout, stderr].filter(Boolean).join('\n') })
+          resolve({
+            stdout: capped(stdout),
+            stderr: capped(stderr),
+            exitCode,
+            ...(timedOut && {
+              timedOut: true,
+              note: `killed at the ${timeout}ms timeout`,
+            }),
+          })
+        })
       })
     },
   }

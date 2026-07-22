@@ -24,14 +24,8 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
     }
   }
 
-  function start(command, { cwd, env, description, sessionId, sessionFile } = {}) {
+  function track(child, command, { cwd, description, sessionId, sessionFile, hidden = false } = {}) {
     const id = String(nextId++)
-    const child = spawn(command, {
-      shell: true,
-      cwd: cwd || process.cwd(),
-      env: { ...process.env, ...env, FORCE_COLOR: '0', NO_COLOR: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
     const shell = {
       id,
       command,
@@ -47,6 +41,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       killedBy: null,
       lines: [],
       partial: '',
+      hidden,
     }
 
     const push = (chunk) => {
@@ -55,7 +50,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       shell.partial = lines.pop() || ''
       shell.lines.push(...lines)
       if (shell.lines.length > MAX_LINES) shell.lines.splice(0, shell.lines.length - MAX_LINES)
-      onChange()
+      if (!shell.hidden) onChange()
     }
     child.stdout.on('data', push)
     child.stderr.on('data', push)
@@ -70,13 +65,23 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       shell.status = 'exited'
       shell.exitCode = code ?? (signal ? 1 : 0)
       shell.endedAt = Date.now()
-      onChange()
-      onExit(publicView(shell))
+      if (!shell.hidden) onChange()
+      if (!shell.hidden) onExit(publicView(shell))
     })
 
     shells.set(id, shell)
-    onChange()
+    if (!shell.hidden) onChange()
     return { id }
+  }
+
+  function start(command, options = {}) {
+    const child = spawn(command, {
+      shell: true,
+      cwd: options.cwd || process.cwd(),
+      env: { ...process.env, ...options.env, FORCE_COLOR: '0', NO_COLOR: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    return track(child, command, options)
   }
 
   function get(id) {
@@ -87,6 +92,20 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
 
   return {
     start,
+    track,
+    reveal(id) {
+      const shell = get(id)
+      if (shell.hidden) {
+        shell.hidden = false
+        onChange()
+        if (shell.status === 'exited') onExit(publicView(shell))
+      }
+      return publicView(shell)
+    },
+    discardHidden(id) {
+      const shell = shells.get(String(id))
+      if (shell?.hidden) shells.delete(String(id))
+    },
     output(id, { tail = 100 } = {}) {
       const shell = get(id)
       return {
@@ -112,11 +131,11 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       const shell = shells.get(String(id))
       if (shell && shell.status === 'exited') {
         shells.delete(String(id))
-        onChange()
+        if (!shell.hidden) onChange()
       }
     },
     list() {
-      return [...shells.values()].map(publicView)
+      return [...shells.values()].filter((shell) => !shell.hidden).map(publicView)
     },
     running() {
       return [...shells.values()].filter((s) => s.status === 'running').length

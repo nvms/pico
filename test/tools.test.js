@@ -5,6 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createToolset } from '../src/core/tools/index.js'
 import { createContextTracker } from '../src/core/context.js'
+import { createShellManager } from '../src/core/shells.js'
+import { createBash } from '../src/core/tools/bash.js'
+import { createRecorder } from '../src/core/tools/recorder.js'
 
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), 'pico-tools-'))
@@ -87,6 +90,21 @@ test('bash runs commands and captures exit codes', async () => {
   const bad = await byName.bash.execute({ command: 'exit 3' })
   assert.equal(bad.exitCode, 3)
   assert.equal(recorder.entries[0].title, 'echo hello && exit 0')
+})
+
+test('bash automatically backgrounds a long-running foreground command', async () => {
+  const shells = createShellManager()
+  const recorder = createRecorder()
+  recorder.begin('bash', {})
+  const bash = createBash({ cwd: process.cwd(), recorder, shells, autoBackgroundMs: 20 })
+
+  const result = await bash.execute({ command: 'sleep 1; printf done' })
+
+  assert.equal(result.status, 'running')
+  assert.match(result.note, /automatically backgrounded/)
+  assert.equal(shells.list().length, 1)
+  assert.equal(shells.list()[0].id, result.shellId)
+  shells.kill(result.shellId)
 })
 
 test('bash receives additional environment variables', async () => {
