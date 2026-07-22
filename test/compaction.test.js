@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { compactionPrompt, formatCompactSummary, continuationMessage, summarySections } from '../src/core/compaction.js'
+import { compactionPrompt, formatCompactSummary, compactionKeepFrom, continuationMessage, summarySections } from '../src/core/compaction.js'
 import { compactProgress } from '../src/core/agent.js'
 import { deriveState } from '../src/core/derive.js'
 import { makeEvent } from '../src/core/events.js'
@@ -73,6 +73,30 @@ test('chained compacts each keep their own recent window', () => {
   assert.equal(state.providerHistory.at(-1).content, 'a3')
   assert.equal(state.transcript.filter((i) => i.kind === 'summary').length, 2)
   assert.equal(state.transcript.filter((i) => i.kind === 'user').length, 3)
+})
+
+test('compaction retention keeps the oldest recent user turn that fits its budget', () => {
+  const u1 = user('one')
+  const u2 = user('two')
+  const u3 = user('three')
+  const state = deriveState([
+    u1,
+    assistant('x'.repeat(400)),
+    u2,
+    assistant('y'.repeat(80)),
+    u3,
+    assistant('z'.repeat(40)),
+  ])
+
+  assert.equal(compactionKeepFrom(state, 1200), u2.id)
+})
+
+test('compaction retention summarizes everything when the newest turn exceeds its budget', () => {
+  const u1 = user('one')
+  const u2 = user('two')
+  const state = deriveState([u1, assistant('short'), u2, assistant('x'.repeat(400))])
+
+  assert.equal(compactionKeepFrom(state, 800), null)
 })
 
 test('stale keepFrom degrades to a summary-only compact', () => {

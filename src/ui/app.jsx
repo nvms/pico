@@ -9,7 +9,7 @@ import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
 import { createAgentManager } from '../core/agents.js'
-import { compactionPrompt, formatCompactSummary, summarySections } from '../core/compaction.js'
+import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
 import { createSkillIndex } from '../core/skills.js'
@@ -508,8 +508,7 @@ export function App({ boot }) {
       if (!auth) return flash('codex models need a ChatGPT sign-in: run /connect')
     }
 
-    const entries = userEntries(state)
-    const keepFrom = entries.at(-2)?.eventId ?? entries.at(-1)?.eventId
+    const keepFrom = compactionKeepFrom(state, model().context)
 
     const controller = new AbortController()
     refs.abort = controller

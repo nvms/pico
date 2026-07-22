@@ -42,6 +42,33 @@ export function summarySections(text) {
   return (text.match(/^\d+\.\s/gm) || []).length
 }
 
+export function compactionKeepFrom(state, contextLimit, targetRatio = 0.25) {
+  if (!contextLimit || state.providerHistory.length === 0) return null
+
+  const budget = Math.floor(contextLimit * targetRatio)
+  const historyBytes = state.providerHistory.reduce(
+    (total, message) => total + Buffer.byteLength(JSON.stringify(message), 'utf8'),
+    0,
+  )
+  const tokensPerByte = state.lastPromptTokens > 0 && historyBytes > 0
+    ? state.lastPromptTokens / historyBytes
+    : 1
+  const userIds = new Set(
+    state.transcript.filter((item) => item.kind === 'user' && item.eventId).map((item) => item.eventId),
+  )
+  let bytes = 0
+  let keepFrom = null
+
+  for (let i = state.providerHistory.length - 1; i >= 0; i -= 1) {
+    bytes += Buffer.byteLength(JSON.stringify(state.providerHistory[i]), 'utf8')
+    if (bytes * tokensPerByte > budget) break
+    const eventId = state.historyEventIds[i]
+    if (userIds.has(eventId)) keepFrom = eventId
+  }
+
+  return keepFrom
+}
+
 export function continuationMessage(summary, { sessionFile, recentKept } = {}) {
   let text = `[system notification] The earlier portion of this conversation was compacted to free context. Summary of what came before:\n\n${summary}`
   if (sessionFile) {
