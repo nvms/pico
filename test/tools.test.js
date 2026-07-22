@@ -154,6 +154,11 @@ test('grep content and files modes', async () => {
   assert.deepEqual(files.results, ['sub/nested.js'])
 })
 
+test('grep reports a missing pattern clearly', async () => {
+  const { byName } = await fixture()
+  await assert.rejects(byName.grep.execute({ path: 'src' }), /grep pattern is required/)
+})
+
 test('reading under a fresh AGENTS.md surfaces it once', async () => {
   const { cwd, byName } = await fixture()
   await writeFile(join(cwd, 'sub', 'AGENTS.md'), 'always use tabs in here')

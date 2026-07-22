@@ -26,6 +26,7 @@ export function createGrep({ cwd, recorder }) {
       limit: { type: 'number', description: 'max results, default 200', optional: true },
     },
     execute: async ({ pattern, path, mode = 'content', glob, ignoreCase, context, multiline, limit = MAX_RESULTS }) => {
+      if (typeof pattern !== 'string') throw new Error('grep pattern is required')
       recorder.extra({ title: pattern })
       const args = ['--no-heading', '--color=never', '--max-columns', '500', '--hidden', '--glob', '!**/.git/**']
 

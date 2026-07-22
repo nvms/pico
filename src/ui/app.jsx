@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -171,11 +171,19 @@ function agentStatus(agent) {
   return { icon: '■', label: 'cancelled', color: MUTED }
 }
 
+function MouseFocusRegion({ children, onPress, ...props }) {
+  const hitTest = useHitTest()
+  useMouse((event) => {
+    if (event.action === 'press' && event.button === 'left' && hitTest(event.x, event.y)) onPress()
+  })
+  return <box {...props}>{children}</box>
+}
+
 function AgentStripRow({ selected, focused, children, onPress }) {
-  const layout = useLayout()
+  const hitTest = useHitTest()
   const [hovered, setHovered] = createSignal(false)
   useMouse((event) => {
-    const inside = event.x >= layout.x && event.x < layout.x + layout.width && event.y >= layout.y && event.y < layout.y + layout.height
+    const inside = hitTest(event.x, event.y)
     if (event.action === 'move') setHovered(inside)
     if (inside && event.action === 'press' && event.button === 'left') {
       onPress()
@@ -1836,10 +1844,10 @@ export function App({ boot }) {
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
       {transcript.length === 0 ? (
-        <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
+        <MouseFocusRegion onPress={() => fm.focus('feed')} style={{ flexGrow: 1, dim: dimmingPanel() }}>
           <EmptyState version={version} clouds={clouds()} />
-        </box>
-      ) : <box style={{ flexGrow: 1, flexDirection: 'column' }}>
+        </MouseFocusRegion>
+      ) : <MouseFocusRegion onPress={() => fm.focus('feed')} style={{ flexGrow: 1, flexDirection: 'column' }}>
         <ScrollBox
           style={{ flexGrow: 1, dim: dimmingPanel() }}
           focused={fm.is('feed') || fm.is('conversation-search')}
@@ -1889,7 +1897,7 @@ export function App({ boot }) {
             <text style={{ color: 'black' }}>{'j/k · ↑/↓ scroll   g/G ends   / search   ctrl-u/d page'}</text>
           </box>
         )}
-      </box>}
+      </MouseFocusRegion>}
 
       {queued().length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
@@ -1924,7 +1932,7 @@ export function App({ boot }) {
         />
       )}
 
-      {!viewedAgent && !viewedShell && <box style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+      {!viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
@@ -2044,7 +2052,7 @@ export function App({ boot }) {
           maxHeight={8}
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
-      </box>}
+      </MouseFocusRegion>}
 
       {showCommands && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
@@ -2421,7 +2429,7 @@ export function App({ boot }) {
             const selected = viewedShellId() === s.id
             const elapsed = agentElapsed({ startedAt: s.startedAt, endedAt: s.endedAt })
             return (
-              <AgentStripRow key={s.id} selected={selected} focused={focused} onPress={() => { fm.focus(`shell-${s.id}`); setViewedShellId(s.id); setViewedAgentId(null); setFollow(true) }}>
+              <AgentStripRow key={`shell-${s.id}`} selected={selected} focused={focused} onPress={() => { fm.focus(`shell-${s.id}`); setViewedShellId(s.id); setViewedAgentId(null); setFollow(true) }}>
                 {s.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : s.exitCode === 0 ? GREEN : RED }}>{s.exitCode === 0 ? '●' : '×'}</text>}
                 <text>{' '}</text>
                 <text style={{ color: focused ? 'black' : selected ? FG : MUTED }}>{`shell [${s.id}]  `}</text>
@@ -2453,7 +2461,7 @@ export function App({ boot }) {
             const status = agentStatus(a)
             const focused = fm.current() === `agent-${a.id}`
             return (
-              <AgentStripRow key={a.id} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedShellId(null); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
+              <AgentStripRow key={`agent-${a.id}`} selected={viewedAgentId() === a.id} focused={focused} onPress={() => { fm.focus(`agent-${a.id}`); setViewedShellId(null); setViewedAgentId(a.id); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
                 {a.status === 'running' ? <Spinner color={focused ? 'black' : accent()} variant="dots" /> : <text style={{ color: focused ? 'black' : status.color }}>{status.icon}</text>}
                 <text>{' '}</text>
                 <text style={{ color: focused ? 'black' : viewedAgentId() === a.id ? FG : MUTED }}>{`${a.role || 'agent'} [${a.id}]  `}</text>
