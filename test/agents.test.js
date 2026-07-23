@@ -82,6 +82,21 @@ test('agent tools enforce a model-declared per-turn spawn limit', async () => {
   assert.equal(started[0].sessionFile, '/tmp/session-1.jsonl')
 })
 
+test('collecting through the toolset reports collected agent ids', async () => {
+  const { createToolset } = await import('../src/core/tools/index.js')
+  const collectedIds = []
+  const agents = {
+    collect: async () => [{ id: '4', status: 'completed', result: 'done' }],
+    list: () => [],
+    start: () => {},
+    cancel: () => false,
+  }
+  const { tools } = createToolset({ cwd: process.cwd(), agents, onAgentsCollected: (ids) => collectedIds.push(...ids) })
+  const collect = tools.find((tool) => tool.name === 'agent_collect')
+  assert.deepEqual(await collect.execute({ ids: ['4'] }), { agents: [{ id: '4', status: 'completed', result: 'done', error: undefined }] })
+  assert.deepEqual(collectedIds, ['4'])
+})
+
 test('agent events restore completed and interrupted agents', () => {
   const restored = reduceAgentEvents([
     { type: 'agent_start', at: 10, data: { agentId: '3', prompt: 'research', description: 'worker', model: 'provider/small', sessionId: 'session-1', sessionFile: '/tmp/session-1.jsonl' } },

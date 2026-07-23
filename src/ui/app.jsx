@@ -402,8 +402,14 @@ export function App({ boot }) {
     flushSystemNotes()
   }
 
+  function discardCollectedAgentNotes(agentIds) {
+    const collected = new Set(agentIds.map(String))
+    refs.pendingSystemNotes = refs.pendingSystemNotes?.filter((note) => !collected.has(String(note.agentId))) || []
+  }
+
   function flushSystemNotes() {
     if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
+    refs.pendingSystemNotes = refs.pendingSystemNotes.filter((note) => !note.agentId || !agents.get(note.agentId)?.collectedAt)
     const currentSessionId = refs.session.id
     const current = refs.pendingSystemNotes.filter((note) => !note.sessionId || note.sessionId === currentSessionId)
     const elsewhere = refs.pendingSystemNotes.filter((note) => note.sessionId && note.sessionId !== currentSessionId)
@@ -609,6 +615,7 @@ export function App({ boot }) {
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
+      onAgentsCollected: discardCollectedAgentNotes,
       askUser: (questions) => new Promise((resolve) => {
         setQuestionRequest({ questions, resolve })
         fm.focus('question')

@@ -7,7 +7,7 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
   const recorder = createRecorder()
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -176,7 +176,11 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'agent_collect',
         description: 'Collect background agent results. Waits for any selected agents that are still running.',
         schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids whose results to collect' } },
-        execute: async ({ ids }) => ({ agents: (await agents.collect(ids)).map(({ id, status, result, error }) => ({ id, status, result, error })) }),
+        execute: async ({ ids }) => {
+          const collected = await agents.collect(ids)
+          onAgentsCollected?.(collected.map((agent) => agent.id))
+          return { agents: collected.map(({ id, status, result, error }) => ({ id, status, result, error })) }
+        },
       },
       {
         name: 'agent_cancel',
