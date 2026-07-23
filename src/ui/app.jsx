@@ -1859,10 +1859,10 @@ export function App({ boot }) {
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
       {transcript.length === 0 ? (
-        <MouseFocusRegion onPress={() => fm.focus('feed')} style={{ flexGrow: 1, dim: dimmingPanel() }}>
+        <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
           <EmptyState version={version} clouds={clouds()} />
-        </MouseFocusRegion>
-      ) : <MouseFocusRegion onPress={() => fm.focus('feed')} style={{ flexGrow: 1, flexDirection: 'column' }}>
+        </box>
+      ) : <box style={{ flexGrow: 1, flexDirection: 'column' }}>
         <ScrollBox
           style={{ flexGrow: 1, dim: dimmingPanel() }}
           focused={fm.is('feed') || fm.is('conversation-search')}
@@ -1912,7 +1912,7 @@ export function App({ boot }) {
             <text style={{ color: 'black' }}>{'j/k · ↑/↓ scroll   g/G ends   / search   ctrl-u/d page'}</text>
           </box>
         )}
-      </MouseFocusRegion>}
+      </box>}
 
       {(expedited().length > 0 || queued().length > 0) && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
