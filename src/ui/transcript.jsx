@@ -255,6 +255,14 @@ export function Message({ item, verbose }) {
     )
   }
 
+  if (item.kind === 'steer-tools') {
+    return (
+      <box style={{ paddingX: 2, paddingY: 1 }}>
+        <text style={{ color: MUTED, italic: true }}>{`── ${item.count} tool ${item.count === 1 ? 'interaction' : 'interactions'} hidden ──`}</text>
+      </box>
+    )
+  }
+
   if (item.kind === 'shell-command') {
     const shown = highlight(item.text, 'bash')
     return (
@@ -281,10 +289,12 @@ export function Message({ item, verbose }) {
   }
 
   if (item.kind === 'user') {
+    const label = item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · USER' : item.steered ? 'USER · STEERED' : null
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
-        <box style={{ bg: PANEL_BG, flexDirection: 'column', paddingX: 2, paddingY: 1 }}>
+        <box style={{ bg: item.steerSelected ? accent() : PANEL_BG, flexDirection: 'column', paddingX: 2, paddingY: 1 }}>
+          {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
           <text style={{ color: FG }}>{item.text}</text>
         </box>
       </box>
@@ -292,9 +302,11 @@ export function Message({ item, verbose }) {
   }
 
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
+  const label = item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · ASSISTANT' : item.steered ? 'ASSISTANT · STEERED' : null
   return (
-    <box style={{ flexDirection: 'column', paddingX: 2 }}>
+    <box style={{ flexDirection: 'column', paddingX: 2, bg: item.steerSelected ? accent() : undefined }}>
       <text> </text>
+      {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
       <Markdown text={text} highlight={highlight} codeBg={null} codeBlock={TranscriptCodeBlock} />
     </box>
   )

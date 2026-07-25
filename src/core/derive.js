@@ -1,4 +1,5 @@
 import { continuationMessage } from './compaction.js'
+import { applySteering } from './steer.js'
 
 const DROPPING_MODES = ['both', 'chat', 'summary']
 
@@ -76,21 +77,32 @@ function pushHistory(state, message, eventId) {
 
 function foldMessage(state, event) {
   const message = event.data.message
-  if (!message || message.role === 'system') return
+  if (!message) return
   pushHistory(state, message, event.id)
+  const base = {
+    messageId: event.id,
+    eventId: event.id,
+    role: message.role,
+    locked: event._sourceIndex < state.latestCompactIndex,
+    steered: !!event._steered,
+  }
 
+  if (message.role === 'system' || message.role === 'developer') {
+    state.transcript.push({ ...base, kind: message.role, text: String(message.content ?? '') })
+    return
+  }
   if (message.role === 'user') {
     const text = Array.isArray(message.content)
       ? message.content
           .map((p) => (p.type === 'text' ? p.text : `[image: ${String(p.source?.path || '').split('/').pop() || 'attached'}]`))
           .join('')
       : String(message.content)
-    state.transcript.push({ kind: 'user', text, content: message.content, eventId: event.id })
+    state.transcript.push({ ...base, kind: 'user', text, content: message.content })
     return
   }
   if (message.role === 'assistant') {
     if (message.content) {
-      state.transcript.push({ kind: 'assistant', text: message.content, model: state.model })
+      state.transcript.push({ ...base, kind: 'assistant', text: message.content, model: state.model })
     }
     for (const call of message.tool_calls || []) {
       const item = {
@@ -129,10 +141,20 @@ function foldRewind(state, event) {
 }
 
 export function deriveState(events) {
-  const dropped = droppedIds(events)
+  const effectiveEvents = applySteering(events)
+  const dropped = droppedIds(effectiveEvents)
+  const latestCompactIndex = effectiveEvents.reduce((latest, event) => event.type === 'clear' ? -1 : event.type === 'compact' ? events.indexOf(event) : latest, -1)
   const canceledUndoTargets = new Set(
     events.filter((e) => e.type === 'rewind_undo').map((e) => e.data.rewindId),
   )
+
+  const spentUsage = emptyUsage()
+  const spentUsageByModel = {}
+  for (const event of events) {
+    if (event.type !== 'usage') continue
+    addUsageInto(spentUsage, event.data.usage)
+    addUsageInto((spentUsageByModel[event.data.model] ||= emptyUsage()), event.data.usage)
+  }
 
   const state = {
     transcript: [],
@@ -140,21 +162,19 @@ export function deriveState(events) {
     historyEventIds: [],
     model: null,
     effort: undefined,
-    usage: emptyUsage(),
-    usageByModel: {},
+    usage: spentUsage,
+    usageByModel: spentUsageByModel,
     usageActive: emptyUsage(),
     usageActiveByModel: {},
     lastPromptTokens: 0,
     lastPromptModel: null,
     loadedContext: new Set(),
     toolItems: new Map(),
+    latestCompactIndex,
   }
 
-  for (const event of events) {
+  for (const event of effectiveEvents) {
     if (event.type === 'usage') {
-      addUsageInto(state.usage, event.data.usage)
-      const byModel = (state.usageByModel[event.data.model] ||= emptyUsage())
-      addUsageInto(byModel, event.data.usage)
       if (!dropped.has(event.id)) {
         addUsageInto(state.usageActive, event.data.usage)
         const activeByModel = (state.usageActiveByModel[event.data.model] ||= emptyUsage())

@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useMouse, useResize, useSelection, useToast } from '@trendr/core'
+import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
 import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
@@ -22,6 +22,7 @@ import { memoryIndex } from '../core/memory.js'
 import { transcriptToMarkdown } from '../core/export.js'
 import { findModel, estimateCost } from '../core/models.js'
 import { adhocModel } from '../core/catalog.js'
+import { STEER_ROLES, steerableTranscript } from '../core/steer.js'
 import { writeConfig } from '../core/config.js'
 import { connectOpenAI, openaiCredentials, openaiStatus, disconnectOpenAI } from '../core/openai-auth.js'
 import { agentScratchDir, ensureDir } from '../core/paths.js'
@@ -63,6 +64,7 @@ const COMMANDS = [
   { name: 'init', desc: 'Create or improve repository AGENTS.md guidance' },
   { name: 'tools', desc: 'List builtin and user-defined tools; MCP tools live in /mcp' },
   { name: 'rewind', desc: 'Restore the conversation to a previous message' },
+  { name: 'steer', desc: 'Edit or add conversation messages without sending' },
   { name: 'history', desc: 'Search prompts you previously sent' },
   { name: 'rename', desc: 'Name this session; omit the name to restore its automatic title' },
   { name: 'color', desc: 'Color this session: /color <name or #hex>' },
@@ -171,6 +173,12 @@ function agentStatus(agent) {
   return { icon: '■', label: 'cancelled', color: MUTED }
 }
 
+function SteerMessage({ item, verbose, selected, focus }) {
+  const layout = useLayout()
+  focus.item(item.messageId, layout)
+  return <Message item={item} verbose={verbose} />
+}
+
 function MouseFocusRegion({ children, onPress, ...props }) {
   const hitTest = useHitTest()
   useMouse((event) => {
@@ -203,6 +211,26 @@ function AgentStripRow({ selected, focused, children, onPress }) {
 // keeps day-long sessions as fast as fresh ones
 const HISTORY_WINDOW = 50
 const RESUME_SCOPES = ['project', 'everywhere']
+
+function collapseSteerTools(items) {
+  const collapsed = []
+  let hidden = 0
+  const flush = () => {
+    if (!hidden) return
+    collapsed.push({ kind: 'steer-tools', count: hidden })
+    hidden = 0
+  }
+  for (const item of items) {
+    if (item.kind === 'tool' || item.kind === 'tool-group' || item.kind === 'thoughts') {
+      hidden += item.kind === 'tool-group' ? item.items.length : 1
+    } else {
+      flush()
+      collapsed.push(item)
+    }
+  }
+  flush()
+  return collapsed
+}
 
 function compactTranscriptRuns(items, active = false) {
   const result = []
@@ -305,6 +333,8 @@ export function App({ boot }) {
   const [offset, setOffset] = createSignal(0)
   const [follow, setFollow] = createSignal(true)
   const [histWindow, setHistWindow] = createSignal(HISTORY_WINDOW)
+  const [steer, setSteer] = createSignal(null)
+  const [steerText, setSteerText] = createSignal('')
 
   const refs = boot.refs
   refs.session ??= null
@@ -951,6 +981,75 @@ export function App({ boot }) {
     flash(pref === 'auto' ? `theme: auto · following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
   }
 
+  function steerPreview() {
+    const draft = steer()
+    if (!draft?.changes.length) return derived()
+    return deriveState([...refs.allEvents, { id: '__steer_preview__', at: Date.now(), type: 'steer', data: { changes: draft.changes } }])
+  }
+
+  function steerRows() {
+    return steerableTranscript(steerPreview().transcript)
+  }
+
+  function beginSteer() {
+    if (busy() || compacting()) return flash('finish or interrupt the current turn first')
+    const rows = steerRows()
+    const selected = Math.max(0, rows.length - 1)
+    setSteer({ selected, editing: false, adding: false, role: 'user', changes: [] })
+    if (rows[selected]) steerListFocus.focus(rows[selected].messageId)
+    setHistWindow(Infinity)
+    setFollow(true)
+    fm.focus('steer')
+  }
+
+  function closeSteer(applied = false) {
+    setSteer(null)
+    setSteerText('')
+    setHistWindow(HISTORY_WINDOW)
+    fm.focus('input')
+    if (applied) flash('conversation steering applied · nothing sent')
+  }
+
+  function applySteer() {
+    const draft = steer()
+    if (!draft?.changes.length) return closeSteer()
+    persist(makeEvent('steer', { changes: draft.changes }))
+    reDerive()
+    closeSteer(true)
+  }
+
+  function startSteerEdit() {
+    const draft = steer()
+    const row = steerRows()[draft.selected]
+    if (!row) return startSteerAdd()
+    if (row.locked) return flash('locked · this message is before the latest compaction')
+    setSteerText(row.text)
+    setSteer({ ...draft, editing: true, adding: false, role: row.role })
+  }
+
+  function startSteerAdd() {
+    const draft = steer()
+    const rows = steerRows()
+    const selected = rows[draft.selected]
+    const previousRole = selected?.role
+    const role = previousRole === 'user' ? 'assistant' : STEER_ROLES[0]
+    setSteerText('')
+    setSteer({ ...draft, editing: true, adding: true, role })
+  }
+
+  function stageSteerText(text) {
+    const value = text.trim()
+    const draft = steer()
+    if (!value) return flash('message cannot be empty')
+    const rows = steerRows()
+    const target = rows[draft.selected]
+    const change = draft.adding
+      ? { op: 'insert', id: makeEvent('message').id, after: target?.messageId ?? null, message: { role: draft.role, content: value } }
+      : { op: 'replace', target: target.messageId, message: { role: target.role, content: value } }
+    setSteer({ ...draft, editing: false, adding: false, changes: [...draft.changes, change] })
+    setSteerText('')
+  }
+
   async function runCommand(c, args = '') {
     if (typeof args !== 'string') args = ''
     setInput('')
@@ -1062,6 +1161,7 @@ export function App({ boot }) {
       if (result.ok) return flash(`updated${latest ? ` to v${latest}` : ''} · restart pico to use it`)
       return flash(`update failed: ${result.output.slice(0, 100)}`)
     }
+    if (c.name === 'steer') return beginSteer()
     if (c.name === 'context') return openContextPanel()
     if (c.name === 'history') return openHistorySearch()
     if (c.name === 'help') return setView('help')
@@ -1525,7 +1625,12 @@ export function App({ boot }) {
   }
 
   const fm = useFocus({ initial: 'input' })
+  const steerListFocus = useFocus({ initial: null, cycle: 'none', active: false })
   fm.item('feed')
+  if (steer()) {
+    fm.item('steer')
+    if (!fm.is('steer')) fm.focus('steer')
+  }
   const conversationSearch = createConversationSearch({ fm, verbose, setFollow, setOffset })
   conversationSearch.registerFocus()
   agentsVersion()
@@ -1603,6 +1708,33 @@ export function App({ boot }) {
   }
 
   useInput((event) => {
+    if (steer() && fm.is('steer') && !steer().editing) {
+      const draft = steer()
+      const rows = steerRows()
+      if (event.ctrl && event.key === 's') applySteer()
+      else if (event.key === 'escape') closeSteer()
+      else if (event.key === 'return') startSteerEdit()
+      else if (event.key === 'a') startSteerAdd()
+      else if (event.key === 'up' || event.key === 'k') {
+        const selected = Math.max(0, draft.selected - 1)
+        steerListFocus.focus(rows[selected]?.messageId)
+        setSteer({ ...draft, selected })
+      } else if (event.key === 'down' || event.key === 'j') {
+        const selected = Math.min(Math.max(0, rows.length - 1), draft.selected + 1)
+        steerListFocus.focus(rows[selected]?.messageId)
+        setSteer({ ...draft, selected })
+      } else if (event.key === 'home' || event.key === 'g') {
+        steerListFocus.focus(rows[0]?.messageId)
+        setSteer({ ...draft, selected: 0 })
+      } else if (event.key === 'end' || event.key === 'G') {
+        const selected = Math.max(0, rows.length - 1)
+        steerListFocus.focus(rows[selected]?.messageId)
+        setSteer({ ...draft, selected })
+      }
+      else return
+      event.stopPropagation()
+      return
+    }
     if (conversationSearch.handleInput(event, conversationSearchMatches)) return
     if (fm.is('activity-strip') && navigateActivityStrip(event)) return
     if (fm.is('activity-strip') && event.key === 'return') {
@@ -1852,7 +1984,12 @@ export function App({ boot }) {
 
   highlightVersion()
 
-  const mainTranscript = derived().transcript
+  const mainTranscript = steer() ? steerPreview().transcript : derived().transcript
+  const selectedSteerMessageId = steerRows()[steer()?.selected]?.messageId
+  const decoratedTranscript = steer() ? mainTranscript.map((item) => ({
+    ...item,
+    steerSelected: item.messageId === selectedSteerMessageId,
+  })) : mainTranscript
   const activeShell = shellStripFocus ? focusedShell : agentStripFocus ? null : viewedShell
   const activeAgent = agentStripFocus ? focusedAgent : shellStripFocus ? null : viewedAgent
   let shellOutput = null
@@ -1863,11 +2000,15 @@ export function App({ boot }) {
     { kind: 'shell-command', text: activeShell.command },
     { kind: 'shell-output', text: shellOutput?.output || 'no output yet' },
   ] : null
-  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : mainTranscript)
+  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript)
   const hiddenCount = Math.max(0, transcript.length - histWindow())
   const isolatedTranscript = activeAgent || activeShell
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
-  const groupedItems = compactToolHistory() ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools') : visibleItems
+  const groupedItems = steer()
+    ? collapseSteerTools(visibleItems)
+    : compactToolHistory()
+      ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools')
+      : visibleItems
   const { matches: conversationSearchMatches, items } = conversationSearch.prepare(groupedItems)
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
@@ -1883,6 +2024,8 @@ export function App({ boot }) {
         <ScrollBox
           style={{ flexGrow: 1, dim: dimmingPanel() }}
           focused={fm.is('feed') || fm.is('conversation-search')}
+          followFocus={steer() ? steerListFocus : null}
+          focusPadding={1}
           scrollOffset={follow() ? 1e9 : offset()}
           onScroll={(next, meta) => {
           setFollow(!!meta?.atBottom)
@@ -1908,7 +2051,15 @@ export function App({ boot }) {
             <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
           </box>
         )}
-        {items.map((item, i) => (
+        {items.map((item, i) => steer() && item.messageId ? (
+          <SteerMessage
+            key={hiddenCount + i}
+            item={item}
+            verbose={verbose()}
+            selected={item.messageId === selectedSteerMessageId}
+            focus={steerListFocus}
+          />
+        ) : (
           <ConversationSearchMessage
             key={hiddenCount + i}
             item={item}
@@ -1973,7 +2124,40 @@ export function App({ boot }) {
         />
       )}
 
-      {!viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+      {steer() && (
+        <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 2, paddingY: 1, marginTop: 1 }}>
+          <text style={{ color: accent(), bold: true }}>{steer().editing ? `${steer().adding ? 'ADD' : 'EDIT'} ${steer().role.toUpperCase()}` : `STEER · ${steer().changes.length} staged`}</text>
+          {steer().editing ? (
+            <TextArea
+              focused={fm.is('steer')}
+              value={steerText()}
+              onChange={setSteerText}
+              onSubmit={stageSteerText}
+              onCancel={() => {
+                setSteerText('')
+                setSteer({ ...steer(), editing: false, adding: false })
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'tab' && steer().adding) {
+                  const at = STEER_ROLES.indexOf(steer().role)
+                  setSteer({ ...steer(), role: STEER_ROLES[(at + 1) % STEER_ROLES.length] })
+                  return true
+                }
+                return false
+              }}
+              submitOnEnter
+              newlineOnBackslashEnter
+              clearOnSubmit
+              maxHeight={8}
+              cursor={{ blink: true, bg: accent(), color: 'black' }}
+            />
+          ) : (
+            <text style={{ color: MUTED }}>{'↑↓ select · enter edit · a add after · ctrl+s apply · esc discard'}</text>
+          )}
+        </box>
+      )}
+
+      {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {derived().title && (
