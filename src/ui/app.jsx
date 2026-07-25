@@ -818,6 +818,16 @@ export function App({ boot }) {
     setMemoryList(await boot.memory.list().catch(() => []))
   }
 
+  async function toggleMemoryDisabled(m) {
+    try {
+      await boot.memory.setDisabled(m, !m.disabled)
+      await refreshMemories()
+      flash(`${m.disabled ? 'enabled' : 'suppressed'} ${m.name} (${m.scope})`)
+    } catch (err) {
+      flash(`memory update failed: ${String(err.message || err).slice(0, 100)}`)
+    }
+  }
+
   async function forgetMemory(m) {
     const armed = refs.forgetArm
     if (!armed || armed.file !== m.file || Date.now() - armed.at > 3000) {
@@ -826,7 +836,7 @@ export function App({ boot }) {
     }
     refs.forgetArm = null
     try {
-      await boot.memory.forget(m.name)
+      await boot.memory.forget(m)
       await refreshMemories()
       flash(`forgot ${m.name} (${m.scope})`)
     } catch (err) {
@@ -2334,6 +2344,7 @@ export function App({ boot }) {
           scopes={MEMORY_SCOPES}
           scopeIndex={memScope()}
           focused={showMemoryPanel()}
+          onToggleDisabled={toggleMemoryDisabled}
           onForget={forgetMemory}
           onClose={() => setShowMemoryPanel(false)}
         />

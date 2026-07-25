@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, access } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createMemory, memoryIndex, slugify } from '../src/core/memory.js'
@@ -18,13 +18,13 @@ test('remember and recall round trip across scopes', async () => {
   await memory.remember({ name: 'esm-only', description: 'jonathan writes esm only', content: 'no commonjs, ever', scope: 'global' })
 
   const memories = await memory.list()
-  assert.deepEqual(memories.map((m) => [m.name, m.scope]), [['flaky-auth-test', 'project'], ['esm-only', 'global']])
+  assert.deepEqual(memories.map((m) => [m.name, m.scope]), [['esm-only', 'global'], ['flaky-auth-test', 'project']])
 
   const recalled = await memory.recall('flaky-auth-test')
   assert.equal(recalled.content, 'rerun it, or pin node 20')
   assert.equal(recalled.scope, 'project')
 
-  await assert.rejects(memory.recall('nope'), /known memories: flaky-auth-test, esm-only/)
+  await assert.rejects(memory.recall('nope'), /known memories: esm-only, flaky-auth-test/)
   delete process.env.PICO_HOME
 })
 
@@ -50,6 +50,28 @@ test('forget removes the memory file across scopes', async () => {
   assert.deepEqual(gone, { name: 'drop-me', scope: 'global' })
   assert.deepEqual((await memory.list()).map((m) => m.name), ['keep-me'])
   await assert.rejects(memory.forget('drop-me'), /no memory named/)
+  delete process.env.PICO_HOME
+})
+
+test('memories can be suppressed with an underscore filename', async () => {
+  const root = await fixture()
+  const memory = createMemory(root)
+  await memory.remember({ name: 'replace-me', description: 'original', content: 'old value' })
+  const original = (await memory.list())[0]
+
+  const suppressed = await memory.setDisabled(original, true)
+  assert.equal(suppressed.disabled, true)
+  assert.match(suppressed.file, /_replace-me\.md$/)
+  await access(suppressed.file)
+  assert.equal(memoryIndex(await memory.list(), root).includes('replace-me'), false)
+  await assert.rejects(memory.recall('replace-me'), /known memories: none/)
+
+  await memory.remember({ name: 'replace-me', description: 'replacement', content: 'new value' })
+  const variants = await memory.list()
+  assert.equal(variants.length, 2)
+  assert.deepEqual(variants.map((m) => m.disabled), [false, true])
+  assert.equal((await memory.recall('replace-me')).content, 'new value')
+  await assert.rejects(memory.setDisabled(suppressed, false), /replace-me\.md already exists/)
   delete process.env.PICO_HOME
 })
 

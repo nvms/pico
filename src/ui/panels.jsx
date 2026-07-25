@@ -424,7 +424,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
   )
 }
 
-export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, onClose }) {
+export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDisabled, onForget, onClose }) {
   const [cursorItem, setCursorItem] = createSignal(null)
   const [pane, setPane] = createSignal('list')
   const preview = memories.includes(cursorItem()) ? cursorItem() : memories[0] || null
@@ -445,7 +445,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
   return (
     <PanelFrame
       title="Memory"
-      hint="↑↓ to move · tab: focus preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
+      hint="↑↓ to move · enter: enable/disable · tab: preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -460,15 +460,16 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
               placeholder="filter memories..."
               filter={(q, m) => fuzzyScore(q, `${m.name} ${m.description}`) >= 0}
               onCursorChange={setCursorItem}
-              onSubmit={() => {}}
+              onSubmit={onToggleDisabled}
               onCancel={onClose}
               scrollbar
               gap={1}
               renderItem={(m, { selected, focused: f }) => (
                 <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
                   <box style={{ flexGrow: 1, height: 1 }}>
-                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{m.name}</text>
+                    <text style={{ overflow: 'truncate', color: selected ? 'black' : (m.disabled ? FAINT : FG), dim: m.disabled }}>{m.name}</text>
                   </box>
+                  {m.disabled && <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>  suppressed</text>}
                   <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${m.scope}`}</text>
                 </box>
               )}
@@ -478,6 +479,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onForget, o
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
+              {preview.disabled && <text style={{ color: FAINT, bold: true }}>SUPPRESSED</text>}
               <text style={{ color: MUTED, italic: true }}>{preview.description || 'no description'}</text>
               <text> </text>
               <text style={{ color: FG_SOFT }}>{preview.body}</text>
