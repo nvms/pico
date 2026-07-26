@@ -1,7 +1,7 @@
 import { appendFile, readFile, readdir, rm, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
-import { makeHeader, serializeLine, parseLines, parseLine } from './events.js'
+import { makeEvent, makeHeader, serializeLine, parseLines, parseLine } from './events.js'
 
 const appendQueues = new Map()
 
@@ -11,12 +11,22 @@ export function appendSessionEvent(file, event) {
   return queued
 }
 
-export function createSession({ cwd, root }) {
-  const header = makeHeader({ cwd, root })
+export function createSession({ cwd, root, forkedFrom }) {
+  const header = makeHeader({ cwd, root, forkedFrom })
   const file = join(ensureDir(sessionsDir(root)), `${header.id}.jsonl`)
   const session = openSession({ file, header })
   session.append(header)
   return session
+}
+
+export async function forkSession({ source, cwd, root, events, label }) {
+  await source?.flush()
+  const session = createSession({ cwd, root, forkedFrom: source?.id })
+  for (const event of events) session.append(event)
+  const title = makeEvent('title', { text: label })
+  session.append(title)
+  await session.flush()
+  return { session, events: [...events, title] }
 }
 
 export function openSession({ file, header }) {

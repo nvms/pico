@@ -4,7 +4,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
-import { createSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
+import { createSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
@@ -56,6 +56,7 @@ const COMMANDS = [
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
+  { name: 'fork', desc: 'Fork this conversation into a named session: /fork <label>' },
   { name: 'delete', desc: 'Permanently delete the current session and start fresh' },
   { name: 'project', desc: 'Switch projects: jump to another project, same as ctrl+p' },
   { name: 'cwd', desc: 'Show the current working directory and project root' },
@@ -1054,6 +1055,27 @@ export function App({ boot }) {
     if (typeof args !== 'string') args = ''
     setInput('')
     setCmdCycle(null)
+    if (c.name === 'fork') {
+      const label = args.trim()
+      if (!label) return flash('usage: /fork <label>')
+      if (busy()) return flash('finish or interrupt the current turn first')
+      ensureSession()
+      const fork = await forkSession({ source: refs.session, cwd, root, events: refs.allEvents, label })
+      refs.session = fork.session
+      refs.allEvents = fork.events
+      refs.persisted = fork.events.length
+      refs.rewindUndo = null
+      agents.restore(fork.events)
+      setViewedAgentId(null)
+      setViewedShellId(null)
+      setQueued([])
+      setExpedited([])
+      setSent([])
+      reDerive()
+      fm.focus('input')
+      flash(`forked session as "${label}"`)
+      return
+    }
     if (c.name === 'rename') {
       const automaticTitle = userEntries(derived())[0]?.text.trim().slice(0, 200)
       persist(makeEvent('title', { text: args || null }))
@@ -2160,9 +2182,10 @@ export function App({ boot }) {
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
-        {derived().title && (
-          <box style={{ position: 'absolute', top: 0, right: 0 }}>
-            <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>
+        {(refs.session?.header.forkedFrom || derived().title) && (
+          <box style={{ position: 'absolute', top: 0, right: 0, flexDirection: 'row' }}>
+            {refs.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
+            {derived().title && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>}
           </box>
         )}
         <TextArea

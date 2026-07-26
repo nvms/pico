@@ -6,7 +6,7 @@ export function makeEvent(type, data = {}) {
   return { id: randomUUID(), at: Date.now(), type, data }
 }
 
-export function makeHeader({ cwd, root }) {
+export function makeHeader({ cwd, root, forkedFrom }) {
   return {
     type: 'session',
     version: SESSION_VERSION,
@@ -14,6 +14,7 @@ export function makeHeader({ cwd, root }) {
     cwd,
     root,
     createdAt: Date.now(),
+    ...(forkedFrom ? { forkedFrom } : {}),
   }
 }
 

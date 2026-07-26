@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { access, mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../src/core/session.js'
+import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../src/core/session.js'
 import { makeEvent } from '../src/core/events.js'
 import { agentScratchDir } from '../src/core/paths.js'
 
@@ -24,6 +24,29 @@ test('session round trip: create, append, load', async () => {
   assert.equal(header.root, root)
   assert.equal(events.length, 2)
   assert.equal(events[0].data.message.content, 'first prompt about signals')
+  delete process.env.PICO_HOME
+})
+
+test('forkSession copies the current event log into an independently named session', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const source = createSession({ cwd: root, root })
+  const events = [
+    makeEvent('message', { message: { role: 'user', content: 'source prompt' } }),
+    makeEvent('message', { message: { role: 'assistant', content: 'source answer' } }),
+  ]
+  for (const event of events) source.append(event)
+
+  const fork = await forkSession({ source, cwd: root, root, events, label: 'alternate' })
+  const loaded = await loadSession(fork.session.file)
+  assert.notEqual(fork.session.id, source.id)
+  assert.equal(loaded.header.forkedFrom, source.id)
+  assert.deepEqual(loaded.events.slice(0, -1), events)
+  assert.deepEqual(loaded.events.at(-1).data, { text: 'alternate' })
+
+  source.append(makeEvent('message', { message: { role: 'user', content: 'source continues' } }))
+  await source.flush()
+  assert.equal((await loadSession(fork.session.file)).events.length, 3)
   delete process.env.PICO_HOME
 })
 
