@@ -1,8 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../src/core/session.js'
 import { makeEvent } from '../src/core/events.js'
 import { agentScratchDir } from '../src/core/paths.js'
@@ -87,6 +87,22 @@ test('listSessions surfaces title, turns, scopes', async () => {
   await b.flush()
   const reset = await listSessions({ scope: 'project', root: rootB })
   assert.equal(reset[0].title, 'session in project b')
+  delete process.env.PICO_HOME
+})
+
+test('listSessions rebuilds a missing index for existing projects and reuses it', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'indexed prompt' } }))
+  await session.flush()
+  const index = join(dirname(session.file), 'index.json')
+  await rm(index, { force: true })
+
+  assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'indexed prompt')
+  assert.equal(JSON.parse(await readFile(index, 'utf-8')).sessions.length, 1)
+  await writeFile(session.file, 'this would fail if the session were reparsed')
+  assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'indexed prompt')
   delete process.env.PICO_HOME
 })
 
