@@ -17,6 +17,15 @@ function authFile() {
   return join(picoHome(), 'auth.json')
 }
 
+function openInBrowser(url) {
+  const [command, args] = process.platform === 'darwin'
+    ? ['open', [url]]
+    : process.platform === 'win32'
+      ? ['cmd', ['/c', 'start', '', url]]
+      : ['xdg-open', [url]]
+  execFile(command, args, () => {})
+}
+
 function base64url(buffer) {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -130,7 +139,7 @@ export async function connectOpenAI({ openBrowser = true, timeoutMs = 5 * 60 * 1
     })
     server.listen(REDIRECT_PORT, '127.0.0.1', () => {
       onUrl(url)
-      if (openBrowser) execFile('open', [url], () => {})
+      if (openBrowser) openInBrowser(url)
     })
   })
 
