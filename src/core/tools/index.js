@@ -137,9 +137,9 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     local.push(
       {
         name: 'agent_plan',
-        description: 'Declare the one-time budget of background worker agents for this research run before starting any workers. The main agent is excluded. Set count to the total number of agent_start calls you may need across the whole run; collecting a worker does not restore budget, and the plan cannot be changed after a worker starts. Interpret any user-requested count semantically; otherwise use the configured default.',
+        description: 'Declare the background worker budget for the current assistant turn before starting any workers. The main agent is excluded. Set count to the number of workers you intend to start this turn; collecting a worker does not restore budget. Interpret any user-requested count semantically; otherwise use the configured default.',
         schema: {
-          count: { type: 'integer', description: `total background workers permitted across the run, excluding the main agent (1-${maxAgentStarts || 100})` },
+          count: { type: 'integer', description: `background workers permitted this turn, excluding the main agent (1-${maxAgentStarts || 100})` },
           reason: { type: 'string', description: 'brief explanation of how the count follows the user request or research scope' },
         },
         execute: ({ count, reason }) => {
@@ -152,7 +152,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       },
       {
         name: 'agent_start',
-        description: 'Start one background worker, consuming one unit of the run-wide agent_plan budget. Collected or completed workers do not restore budget. Workers can inspect, modify, and test the current project with the configured tools. Continue only independent work until you collect its result with agent_collect.',
+        description: 'Start one background worker, consuming one unit of the current turn\'s agent_plan budget. Collected or completed workers do not restore budget within that turn. Workers can inspect, modify, and test the current project with the configured tools. Continue only independent work until you collect its result with agent_collect.',
         schema: {
           prompt: { type: 'string', description: 'complete, self-contained task and desired output' },
           description: { type: 'string', description: 'short label shown to the user' },
@@ -160,9 +160,9 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         },
         execute: ({ prompt, description, tools }) => {
           if (plannedAgentStarts == null) throw new Error('call agent_plan before starting research agents')
-          if (agentStarts >= plannedAgentStarts) throw new Error(`agent limit reached for this run (${plannedAgentStarts}); completed or collected workers do not restore budget`)
-          agentStarts++
+          if (agentStarts >= plannedAgentStarts) throw new Error(`agent limit reached for this turn (${plannedAgentStarts}); completed or collected workers do not restore budget within the turn`)
           const agent = agents.start({ prompt, description, tools, sessionId, sessionFile })
+          agentStarts++
           return { agentId: agent.id, status: agent.status, model: agent.model }
         },
       },
