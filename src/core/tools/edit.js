@@ -2,30 +2,50 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { makeDiff } from './diff.js'
 
-const normalize = (s) =>
-  s
-    .replace(/\s+$/gm, '')
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/[–—]/g, '-')
+const LOOKALIKES = { '‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-' }
+
+// matching tolerates cosmetic differences the model routinely gets wrong:
+// trailing whitespace, smart quotes, dashes. the normalized text is only ever
+// used to find the span; offsets map back so the file is spliced at its own
+// bytes and nothing outside the replaced span is rewritten
+function normalize(text) {
+  const chars = []
+  const offsets = []
+  let last = 0
+  const keep = (from, to) => {
+    for (let i = from; i < to; i++) {
+      chars.push(LOOKALIKES[text[i]] || text[i])
+      offsets.push(i)
+    }
+  }
+  for (const match of text.matchAll(/\s+$/gm)) {
+    keep(last, match.index)
+    last = match.index + match[0].length
+  }
+  keep(last, text.length)
+  return { text: chars.join(''), offsets }
+}
 
 function locate(content, old, path) {
-  let index = content.indexOf(old)
-  if (index !== -1) {
-    if (content.indexOf(old, index + 1) !== -1) {
-      throw new Error(`string appears multiple times in ${path}, provide more surrounding context to make it unique`)
-    }
-    return { index, length: old.length, content }
+  const multiple = () => new Error(`string appears multiple times in ${path}, provide more surrounding context to make it unique`)
+
+  const exact = content.indexOf(old)
+  if (exact !== -1) {
+    if (content.indexOf(old, exact + 1) !== -1) throw multiple()
+    return { start: exact, end: exact + old.length }
   }
 
-  const normedContent = normalize(content)
-  const normedOld = normalize(old)
-  index = normedContent.indexOf(normedOld)
-  if (index === -1) throw new Error(`string not found in ${path}`)
-  if (normedContent.indexOf(normedOld, index + 1) !== -1) {
-    throw new Error(`string appears multiple times in ${path}, provide more surrounding context to make it unique`)
+  const normalizedContent = normalize(content)
+  const normalizedOld = normalize(old).text
+  if (!normalizedOld) throw new Error(`string not found in ${path}`)
+  const at = normalizedContent.text.indexOf(normalizedOld)
+  if (at === -1) throw new Error(`string not found in ${path}`)
+  if (normalizedContent.text.indexOf(normalizedOld, at + 1) !== -1) throw multiple()
+
+  return {
+    start: normalizedContent.offsets[at],
+    end: normalizedContent.offsets[at + normalizedOld.length - 1] + 1,
   }
-  return { index, length: normedOld.length, content: normedContent }
 }
 
 export function createEdit({ cwd, recorder, tracker }) {
@@ -48,8 +68,8 @@ export function createEdit({ cwd, recorder, tracker }) {
         if (!before.includes(oldText)) throw new Error(`string not found in ${path}`)
         after = before.split(oldText).join(newText)
       } else {
-        const { index, length, content } = locate(before, oldText, path)
-        after = content.slice(0, index) + newText + content.slice(index + length)
+        const { start, end } = locate(before, oldText, path)
+        after = before.slice(0, start) + newText + before.slice(end)
       }
 
       await writeFile(full, after, 'utf-8')

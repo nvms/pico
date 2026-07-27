@@ -7,7 +7,8 @@ import { createToolset } from '../src/core/tools/index.js'
 import { createContextTracker } from '../src/core/context.js'
 import { createShellManager } from '../src/core/shells.js'
 import { createBash } from '../src/core/tools/bash.js'
-import { createRecorder } from '../src/core/tools/recorder.js'
+import { createRecorder, recorded } from '../src/core/tools/recorder.js'
+import { createEdit } from '../src/core/tools/edit.js'
 
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), 'pico-tools-'))
@@ -198,4 +199,43 @@ test('reading under a fresh AGENTS.md surfaces it once', async () => {
   assert.match(first.context_from_agents_md[0].content, /tabs/)
   const second = await byName.read.execute({ path: 'sub/nested.js' })
   assert.equal(second.context_from_agents_md, undefined)
+})
+
+test('a fuzzy edit rewrites only the matched span', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pico-edit-'))
+  const file = join(dir, 'doc.md')
+  const before = 'Title — an em dash\ntrailing spaces here   \n“smart quotes here”\ntail\n'
+  await writeFile(file, before)
+
+  const recorder = createRecorder()
+  const edit = createEdit({ cwd: dir, recorder, tracker: { check: () => [] } })
+  // straight quotes only match after normalization
+  const result = await recorded(recorder, 'edit', edit.execute)({ path: 'doc.md', oldText: '"smart quotes here"', newText: 'PLAIN' })
+
+  assert.equal(await readFile(file, 'utf-8'), 'Title — an em dash\ntrailing spaces here   \nPLAIN\ntail\n')
+  assert.equal(result.additions, 1)
+  assert.equal(result.deletions, 1)
+})
+
+test('a fuzzy edit tolerating trailing whitespace keeps the rest of the line', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pico-edit-'))
+  const file = join(dir, 'a.txt')
+  await writeFile(file, 'keep me   \nreplace me   \nkeep me too   \n')
+
+  const recorder = createRecorder()
+  const edit = createEdit({ cwd: dir, recorder, tracker: { check: () => [] } })
+  await recorded(recorder, 'edit', edit.execute)({ path: 'a.txt', oldText: 'replace me\nkeep me too', newText: 'done\nkeep me too' })
+
+  assert.equal(await readFile(file, 'utf-8'), 'keep me   \ndone\nkeep me too   \n')
+})
+
+test('edit still reports missing and ambiguous strings', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pico-edit-'))
+  await writeFile(join(dir, 'b.txt'), 'alpha\nalpha\n')
+  const recorder = createRecorder()
+  const edit = createEdit({ cwd: dir, recorder, tracker: { check: () => [] } })
+
+  await assert.rejects(edit.execute({ path: 'b.txt', oldText: 'alpha', newText: 'x' }), /appears multiple times/)
+  await assert.rejects(edit.execute({ path: 'b.txt', oldText: 'omega', newText: 'x' }), /not found/)
+  await assert.rejects(edit.execute({ path: 'b.txt', oldText: '   ', newText: 'x' }), /not found/)
 })
