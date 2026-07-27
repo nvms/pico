@@ -1,7 +1,7 @@
 import { access, appendFile, open, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import lockfile from 'proper-lockfile'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
+import { withSessionLock } from './session-lock.js'
 import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
@@ -27,20 +27,6 @@ function reportWriteError(file, err) {
 
 function deletedPath(file) {
   return `${file}.deleted`
-}
-
-async function withSessionLock(file, task) {
-  const lockTarget = dirname(file)
-  const release = await lockfile.lock(lockTarget, {
-    lockfilePath: `${file}.lock`,
-    realpath: false,
-    retries: { retries: 100, minTimeout: 10, maxTimeout: 100 },
-  })
-  try {
-    return await task()
-  } finally {
-    await release()
-  }
 }
 
 async function repairIncompleteLine(file) {

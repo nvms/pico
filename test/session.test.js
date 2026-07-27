@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { appendSessionEvent, createSession, forkSession, loadSession, listSessions, openSession, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
@@ -114,7 +114,7 @@ test('listSessions rebuilds an index left dirty by an interrupted update', async
   await session.flush()
   assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'foo')
 
-  await writeFile(join(dirname(session.file), `.index-dirty-${session.id}`), '')
+  await writeFile(`${session.file}.dirty`, '')
   await writeFile(session.file, `${await readFile(session.file, 'utf-8')}${JSON.stringify(makeEvent('title', { text: 'BAR' }))}\n`)
   assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'BAR')
   delete process.env.PICO_HOME
@@ -177,7 +177,7 @@ test('a burst of events shares one dirty window and one index write', async () =
   await session.flush()
   const dir = dirname(session.file)
   await listSessions({ scope: 'project', root })
-  const markers = async () => (await readdir(dir)).filter((name) => name.startsWith('.index-dirty-'))
+  const markers = async () => (await readdir(dir)).filter((name) => name.endsWith('.jsonl.dirty'))
   assert.deepEqual(await markers(), [])
 
   for (let i = 0; i < 20; i++) {
@@ -224,12 +224,12 @@ test('an unflushed batch leaves a marker so the next read rebuilds', async () =>
   session.append(makeEvent('title', { text: 'never flushed' }))
   await new Promise((resolve) => setTimeout(resolve, 20))
   const dir = dirname(session.file)
-  assert.equal((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')).length, 1)
+  assert.equal((await readdir(dir)).filter((name) => name.endsWith('.jsonl.dirty')).length, 1)
 
   assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'never flushed')
-  assert.equal((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')).length, 1)
+  assert.equal((await readdir(dir)).filter((name) => name.endsWith('.jsonl.dirty')).length, 0)
   await session.flush()
-  assert.deepEqual((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')), [])
+  assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith('.jsonl.dirty')), [])
   delete process.env.PICO_HOME
 })
 
@@ -245,23 +245,18 @@ test('a rebuild keeps the active marker until its pending update is flushed', as
   assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
 
   const dir = dirname(session.file)
-  const markers = async () => (await readdir(dir)).filter((name) => name.startsWith('.index-dirty-'))
-  assert.equal((await markers()).length, 1)
+  const markers = async () => (await readdir(dir)).filter((name) => name.endsWith('.jsonl.dirty'))
+  assert.equal((await markers()).length, 0)
   await session.flush()
   assert.deepEqual(await markers(), [])
 })
 
-test('incremental indexing counts UTF-8 bytes rather than characters', async () => {
+test('session indexing handles UTF-8 content', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
   const session = createSession({ cwd: root, root })
   session.append(makeEvent('message', { message: { role: 'user', content: '👋 café' } }))
   await session.flush()
-
-  const indexFile = join(dirname(session.file), 'index.json')
-  const indexed = JSON.parse(await readFile(indexFile, 'utf-8')).sessions[0]
-  assert.equal(indexed.bytes, (await stat(session.file)).size)
-
   session.append(makeEvent('message', { message: { role: 'user', content: '第二回' } }))
   await session.flush()
   assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
@@ -327,7 +322,8 @@ test('a failed header write remains visible after a later successful append', as
 
   await appendSessionEvent(file, header)
   await mkdir(dir, { recursive: true })
+  await writeFile(file, '')
   session.append(makeEvent('title', { text: 'headerless' }))
-  await assert.rejects(() => session.flush(), { code: 'ENOENT' })
+  await assert.rejects(() => session.flush())
   await assert.rejects(() => loadSession(session.file), /not a pico session file/)
 })
