@@ -61,7 +61,10 @@ test('listSessions surfaces title, turns, scopes', async () => {
 
   const b = createSession({ cwd: rootB, root: rootB })
   b.append(makeEvent('message', { message: { role: 'user', content: 'session in project b' } }))
+  b.append(makeEvent('message', { message: { role: 'assistant', content: 'first response' } }))
   b.append(makeEvent('message', { message: { role: 'user', content: 'second turn' } }))
+  b.append(makeEvent('message', { message: { role: 'assistant', content: 'second response' } }))
+  b.append(makeEvent('message', { message: { role: 'tool', content: 'hidden tool output' } }))
   await b.flush()
 
   const projectScoped = await listSessions({ scope: 'project', root: rootA })
@@ -71,7 +74,15 @@ test('listSessions surfaces title, turns, scopes', async () => {
 
   const everywhere = await listSessions({ scope: 'everywhere', root: rootA })
   assert.equal(everywhere.length, 2)
-  assert.equal(everywhere.find((s) => s.header.root === rootB).turns, 2)
+  const projectB = everywhere.find((s) => s.header.root === rootB)
+  assert.equal(projectB.turns, 2)
+  assert.equal(projectB.previewMessageCount, 4)
+  assert.deepEqual(projectB.preview, [
+    { role: 'user', text: 'session in project b' },
+    { role: 'assistant', text: 'first response' },
+    { role: 'user', text: 'second turn' },
+    { role: 'assistant', text: 'second response' },
+  ])
 
   const empty = createSession({ cwd: rootA, root: rootA })
   await empty.flush()

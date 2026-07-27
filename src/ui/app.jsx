@@ -1382,10 +1382,12 @@ export function App({ boot }) {
               root: m.header.root,
               path: shortenPath(m.header.root),
               latest: m,
+              sessions: [m],
               count: 1,
               current: m.header.root === boot.root,
             })
           } else {
+            entry.sessions.push(m)
             entry.count++
           }
         }
@@ -2061,6 +2063,75 @@ export function App({ boot }) {
     )
   }
 
+  if (showResumePanel()) {
+    return (
+      <ResumePanel
+        sessions={resumeSessions()}
+        scopes={RESUME_SCOPES}
+        scopeIndex={resumeScope()}
+        loading={resumeLoading()}
+        focused
+        currentId={refs.session?.id}
+        onPick={(meta) => {
+          if (meta.header.id === refs.session?.id) return setShowResumePanel(false)
+          resumeSession(meta)
+        }}
+        onDelete={deleteSessionMeta}
+        onClose={() => setShowResumePanel(false)}
+      />
+    )
+  }
+
+  if (showProjectPanel()) {
+    return (
+      <ProjectPanel
+        projects={projects()}
+        loading={projectsLoading()}
+        focused
+        onPick={(p) => resumeSession(p.latest)}
+        onDelete={deleteProject}
+        onClose={() => setShowProjectPanel(false)}
+      />
+    )
+  }
+
+  if (showConfigPanel()) {
+    return (
+      <ConfigPanel
+        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
+        focused
+        onPickResearchModel={() => {
+          setResearchModelReturn('config')
+          setShowConfigPanel(false)
+          setShowResearchModelPanel(true)
+        }}
+        onChange={(name, value) => {
+          if (name === 'clouds') {
+            setClouds(value)
+            writeConfig({ animation: { clouds: value } })
+          } else if (name === 'gitStatus') {
+            setGitFooter(value)
+            boot.gitFooter = value
+            boot.git.setEnabled(value)
+            writeConfig({ display: { gitStatus: value } })
+          } else if (name === 'wideSidebar') {
+            setWideSidebar(value)
+            boot.wideSidebar = value
+            writeConfig({ display: { wideSidebar: value } })
+          } else if (name === 'researchAgentLimit') {
+            setResearchAgentLimit(value)
+            boot.researchAgentLimit = value
+            writeConfig({ research: { agentLimit: value } })
+          } else {
+            setCompactToolHistory(value)
+            writeConfig({ display: { compactToolHistory: value } })
+          }
+        }}
+        onClose={() => setShowConfigPanel(false)}
+      />
+    )
+  }
+
   return (
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
@@ -2497,41 +2568,6 @@ export function App({ boot }) {
         />
       )}
 
-      {showConfigPanel() && (
-        <ConfigPanel
-          values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
-          focused={showConfigPanel()}
-          onPickResearchModel={() => {
-            setResearchModelReturn('config')
-            setShowConfigPanel(false)
-            setShowResearchModelPanel(true)
-          }}
-          onChange={(name, value) => {
-            if (name === 'clouds') {
-              setClouds(value)
-              writeConfig({ animation: { clouds: value } })
-            } else if (name === 'gitStatus') {
-              setGitFooter(value)
-              boot.gitFooter = value
-              boot.git.setEnabled(value)
-              writeConfig({ display: { gitStatus: value } })
-            } else if (name === 'wideSidebar') {
-              setWideSidebar(value)
-              boot.wideSidebar = value
-              writeConfig({ display: { wideSidebar: value } })
-            } else if (name === 'researchAgentLimit') {
-              setResearchAgentLimit(value)
-              boot.researchAgentLimit = value
-              writeConfig({ research: { agentLimit: value } })
-            } else {
-              setCompactToolHistory(value)
-              writeConfig({ display: { compactToolHistory: value } })
-            }
-          }}
-          onClose={() => setShowConfigPanel(false)}
-        />
-      )}
-
       {showDeleteConfirm() && (
         <ConfirmPanel
           title="Delete current session?"
@@ -2554,23 +2590,6 @@ export function App({ boot }) {
         />
       )}
 
-      {showResumePanel() && (
-        <ResumePanel
-          sessions={resumeSessions()}
-          scopes={RESUME_SCOPES}
-          scopeIndex={resumeScope()}
-          loading={resumeLoading()}
-          focused={showResumePanel()}
-          currentId={refs.session?.id}
-          onPick={(meta) => {
-            if (meta.header.id === refs.session?.id) return setShowResumePanel(false)
-            resumeSession(meta)
-          }}
-          onDelete={deleteSessionMeta}
-          onClose={() => setShowResumePanel(false)}
-        />
-      )}
-
       {infoPanel() && (
         <InfoListPanel
           title={infoPanel().title}
@@ -2578,17 +2597,6 @@ export function App({ boot }) {
           overview={infoPanel().overview}
           focused={infoPanel() !== null}
           onClose={() => setInfoPanel(null)}
-        />
-      )}
-
-      {showProjectPanel() && (
-        <ProjectPanel
-          projects={projects()}
-          loading={projectsLoading()}
-          focused={showProjectPanel()}
-          onPick={(p) => resumeSession(p.latest)}
-          onDelete={deleteProject}
-          onClose={() => setShowProjectPanel(false)}
         />
       )}
 

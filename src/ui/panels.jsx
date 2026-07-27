@@ -120,8 +120,8 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
   })
 
   return (
-    <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close">
-      <box style={{ height: 12, marginTop: 1 }}>
+    <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close" fullScreen>
+      <box style={{ flexGrow: 1, marginTop: 1 }}>
         <FieldList focused={focused} initialFocus="clouds" scrollbar focusPadding={1}>
           {fields.map((field) => (
             <Field key={field.name} name={field.name}>
@@ -348,6 +348,7 @@ function useEscape(focused, onClose) {
 
 export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, currentId, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(sessions[0] || null)
+  const [pane, setPane] = createSignal('list')
   const [query, setQuery] = createSignal('')
   const rankedSessions = rankFuzzy(sessions, query(), (q, session) => {
     const customScore = session.customTitle ? fuzzyScore(q, session.customTitle) : -1
@@ -362,6 +363,11 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
+    if (event.key === 'tab' && !event.ctrl && !event.meta) {
+      setPane((current) => current === 'list' ? 'preview' : 'list')
+      event.stopPropagation()
+      return
+    }
     const selected = selectedSession()
     if (event.ctrl && event.key === 'x' && selected) {
       onDelete(selected)
@@ -372,11 +378,12 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
   return (
     <PanelFrame
       title="Resume a session"
-      hint="↑↓ to move · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
+      hint="↑↓ to move · tab: preview · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
+      fullScreen
     >
-      <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
-        <box style={{ flexDirection: 'column', width: '50%' }}>
+      <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
+        <box style={{ flexDirection: 'column', height: '40%' }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading sessions...</text>
           ) : sessions.length === 0 ? (
@@ -385,7 +392,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
             <PickList
               counter
               items={rankedSessions}
-              focused={focused && !loading}
+              focused={focused && pane() === 'list' && !loading}
               placeholder="filter sessions..."
               filter={() => true}
               onChange={setQuery}
@@ -409,12 +416,26 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
         </box>
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {selectedSession() ? (
-            <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FAINT }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(selectedSession().at)}`}</text>
-              <text style={{ color: FAINT, overflow: 'truncate' }}>{shortenHome(selectedSession().header.root)}</text>
-              <text> </text>
-              <text style={{ color: FG }}>{selectedSession().title.slice(0, 500)}</text>
-            </box>
+            <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
+              <box style={{ flexDirection: 'column' }}>
+                <text style={{ color: FAINT }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(selectedSession().at)} · ${shortenHome(selectedSession().header.root)}`}</text>
+                <box style={{ height: 1 }} />
+                {(selectedSession().preview || []).length > 0 ? (
+                  <box style={{ flexDirection: 'column' }}>
+                    {selectedSession().previewMessageCount > selectedSession().preview.length && (
+                      <text style={{ color: FAINT }}>{`${selectedSession().previewMessageCount - selectedSession().preview.length} earlier messages omitted`}</text>
+                    )}
+                    {(selectedSession().preview || []).map((message, i) => (
+                      <box key={`${message.role}-${i}`} style={{ flexDirection: 'column', marginTop: i === 0 ? 0 : 1 }}>
+                        <text style={{ color: message.role === 'user' ? FG : MUTED }}>{message.text}</text>
+                      </box>
+                    ))}
+                  </box>
+                ) : (
+                  <text style={{ color: FAINT }}>no transcript preview</text>
+                )}
+              </box>
+            </ScrollBox>
           ) : (
             <text style={{ color: FAINT }}>no sessions</text>
           )}
@@ -664,11 +685,17 @@ export function InfoListPanel({ title, rows, overview, focused, onClose }) {
 
 export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onClose }) {
   const [preview, setPreview] = createSignal(projects[0] || null)
+  const [pane, setPane] = createSignal('list')
   const [query, setQuery] = createSignal('')
   const rankedProjects = rankFuzzy(projects, query(), (q, project) => fuzzyScore(q, project.path))
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
+    if (event.key === 'tab' && !event.ctrl && !event.meta) {
+      setPane((current) => current === 'list' ? 'preview' : 'list')
+      event.stopPropagation()
+      return
+    }
     if (event.ctrl && event.key === 'x' && preview()) {
       onDelete(preview())
       event.stopPropagation()
@@ -676,9 +703,9 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
   })
 
   return (
-    <PanelFrame title="Switch project" hint="↑↓ to move · enter to jump to its last session · ctrl+x delete · esc to close">
-      <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
-        <box style={{ flexDirection: 'column', width: '50%' }}>
+    <PanelFrame title="Switch project" hint="↑↓ to move · tab: sessions · enter to jump to its last session · ctrl+x delete · esc to close" fullScreen>
+      <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
+        <box style={{ flexDirection: 'column', height: '40%' }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading projects...</text>
           ) : projects.length === 0 ? (
@@ -687,7 +714,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
             <PickList
               counter
               items={rankedProjects}
-              focused={focused && !loading}
+              focused={focused && pane() === 'list' && !loading}
               placeholder="filter projects..."
               filter={() => true}
               onChange={setQuery}
@@ -710,12 +737,24 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
         </box>
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview() ? (
-            <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
-              <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
-              <text> </text>
-              <text style={{ color: FG_SOFT }}>{`last: ${preview().latest.title.replace(/\n/g, ' ')}`}</text>
-            </box>
+            <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
+              <box style={{ flexDirection: 'column' }}>
+                <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
+                <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
+                <box style={{ height: 1 }} />
+                {(preview().sessions || []).map((session, i) => (
+                  <box key={session.header.id} style={{ flexDirection: 'column' }}>
+                    {i > 0 && <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>}
+                    <box style={{ flexDirection: 'row' }}>
+                      <box style={{ flexGrow: 1, height: 1 }}>
+                        <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{session.title.replace(/\n/g, ' ')}</text>
+                      </box>
+                      <text style={{ color: FAINT }}>{`  ${session.turns} ${session.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(session.at)}`}</text>
+                    </box>
+                  </box>
+                ))}
+              </box>
+            </ScrollBox>
           ) : (
             <text style={{ color: FAINT }}>no projects</text>
           )}

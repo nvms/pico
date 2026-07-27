@@ -4,7 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { parseLines } from './events.js'
 import { withIndexLock, withSessionLock } from './session-lock.js'
 
-const INDEX_VERSION = 3
+const INDEX_VERSION = 4
 const INDEX_FILE = 'index.json'
 const DIRTY_SUFFIX = '.dirty'
 const DELETED_SUFFIX = '.jsonl.deleted'
@@ -14,14 +14,27 @@ const dirtyFiles = new Set()
 let flushTimer = null
 let indexWrites = Promise.resolve()
 
+function messageText(content) {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content.filter((part) => part.type === 'text').map((part) => part.text).join('')
+}
+
 function applyEvent(meta, event) {
   const next = { ...meta }
-  if (event.type === 'message' && event.data?.message?.role === 'user') {
+  if (event.type === 'message' && ['user', 'assistant'].includes(event.data?.message?.role)) {
+    const { role, content } = event.data.message
+    const text = messageText(content).trim()
+    if (text) {
+      next.previewMessageCount++
+      next.preview = [...next.preview, { role, text }]
+      const userIndexes = next.preview.flatMap((message, index) => message.role === 'user' ? [index] : [])
+      if (userIndexes.length > 2) next.preview = next.preview.slice(userIndexes.at(-2))
+    }
+    if (role !== 'user') return next
     next.turns++
     if (!next.automaticTitle) {
-      const content = event.data.message.content
-      const text = typeof content === 'string' ? content : content?.find((part) => part.type === 'text')?.text
-      next.automaticTitle = text?.trim().slice(0, 200) || null
+      next.automaticTitle = text.slice(0, 200) || null
       if (!next.customTitle) next.title = next.automaticTitle || next.title
     }
   }
@@ -46,6 +59,8 @@ async function metadataFromFile(file) {
     customTitle: undefined,
     color: null,
     turns: 0,
+    preview: [],
+    previewMessageCount: 0,
     at: mtimeMs,
   })
 }
