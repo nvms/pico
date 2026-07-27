@@ -3,8 +3,8 @@ import assert from 'node:assert/strict'
 import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
-import { makeEvent } from '../src/core/events.js'
+import { appendSessionEvent, createSession, forkSession, loadSession, listSessions, openSession, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
+import { makeEvent, makeHeader } from '../src/core/events.js'
 import { agentScratchDir } from '../src/core/paths.js'
 
 async function isolatedHome() {
@@ -118,6 +118,20 @@ test('listSessions rebuilds an index left dirty by an interrupted update', async
   await writeFile(session.file, `${await readFile(session.file, 'utf-8')}${JSON.stringify(makeEvent('title', { text: 'BAR' }))}\n`)
   assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'BAR')
   delete process.env.PICO_HOME
+})
+
+test('a deletion tombstone removes a stale index entry after a crash', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('title', { text: 'deleted during crash' }))
+  await session.flush()
+  await writeFile(`${session.file}.deleted`, '')
+  await rm(session.file)
+
+  assert.deepEqual(await listSessions({ scope: 'project', root }), [])
+  const indexed = JSON.parse(await readFile(join(dirname(session.file), 'index.json'), 'utf-8'))
+  assert.deepEqual(indexed.sessions, [])
 })
 
 test('deleteSession removes its scratchpads', async () => {
@@ -303,19 +317,17 @@ test('a failed append is reported and does not wedge later appends', async () =>
   delete process.env.PICO_HOME
 })
 
-test('a missing sessions directory reports instead of throwing out of append', async () => {
+test('a failed header write remains visible after a later successful append', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
-  const session = createSession({ cwd: root, root })
-  await session.flush()
+  const dir = join(root, 'missing')
+  const header = makeHeader({ cwd: root, root })
+  const file = join(dir, `${header.id}.jsonl`)
+  const session = openSession({ file, header })
 
-  const errors = []
-  onSessionWriteError((err) => errors.push(err.code))
-  await rm(dirname(session.file), { recursive: true, force: true })
-
-  assert.doesNotThrow(() => session.append(makeEvent('message', { message: { role: 'user', content: 'gone' } })))
+  await appendSessionEvent(file, header)
+  await mkdir(dir, { recursive: true })
+  session.append(makeEvent('title', { text: 'headerless' }))
   await assert.rejects(() => session.flush(), { code: 'ENOENT' })
-  assert.ok(errors.includes('ENOENT'))
-  onSessionWriteError(null)
-  delete process.env.PICO_HOME
+  await assert.rejects(() => loadSession(session.file), /not a pico session file/)
 })

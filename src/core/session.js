@@ -7,6 +7,7 @@ import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
 const writeFailures = new Map()
+const creationFailures = new Map()
 const deletedSessions = new Set()
 
 let onWriteError = () => {}
@@ -83,6 +84,7 @@ export function appendSessionEvent(file, event) {
       })
     } catch (err) {
       writeFailures.set(file, err)
+      if (event.type === 'session') creationFailures.set(file, err)
       reportWriteError(file, err)
       scheduleSessionIndexUpdate(file)
       return
@@ -122,7 +124,7 @@ export function openSession({ file, header }) {
     },
     async flush() {
       await (appendQueues.get(file) || Promise.resolve())
-      const failure = writeFailures.get(file)
+      const failure = creationFailures.get(file) || writeFailures.get(file)
       if (failure) throw failure
       return flushSessionIndex()
     },
@@ -143,6 +145,7 @@ export async function deleteSession(file) {
   await (appendQueues.get(file) || Promise.resolve())
   appendQueues.delete(file)
   writeFailures.delete(file)
+  creationFailures.delete(file)
   await withSessionLock(file, async () => {
     await writeFile(deletedPath(file), '')
     await rm(file, { force: true })

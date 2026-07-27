@@ -6,6 +6,7 @@ import { parseLines } from './events.js'
 
 const INDEX_VERSION = 2
 const INDEX_FILE = 'index.json'
+const DELETED_SUFFIX = '.jsonl.deleted'
 const DIRTY_PREFIX = '.index-dirty-'
 const FLUSH_DELAY_MS = 1000
 
@@ -179,7 +180,12 @@ export function indexedSessions(dir) {
     try {
       const names = await readdir(dir)
       if (names.some((name) => name.startsWith(DIRTY_PREFIX))) return rebuildIndex(dir, names)
-      return await readIndex(dir)
+      const sessions = await readIndex(dir)
+      const deleted = new Set(names.filter((name) => name.endsWith(DELETED_SUFFIX)).map((name) => join(dir, name.slice(0, -'.deleted'.length))))
+      if (deleted.size === 0) return sessions
+      const filtered = sessions.filter((session) => !deleted.has(session.file))
+      if (filtered.length !== sessions.length) await writeIndex(dir, filtered)
+      return filtered
     } catch {
       return rebuildIndex(dir)
     }
