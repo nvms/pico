@@ -18,12 +18,13 @@ function authFile() {
 }
 
 function openInBrowser(url) {
-  const [command, args] = process.platform === 'darwin'
-    ? ['open', [url]]
-    : process.platform === 'win32'
-      ? ['cmd', ['/c', 'start', '', url]]
-      : ['xdg-open', [url]]
-  execFile(command, args, () => {})
+  if (process.platform === 'darwin') return execFile('open', [url], () => {})
+  if (process.platform !== 'win32') return execFile('xdg-open', [url], () => {})
+  // cmd re-parses its own command line, where the & separating the oauth query
+  // parameters would end the command. node only quotes arguments containing
+  // spaces, so the quoting has to be ours and verbatim has to be on. the empty
+  // pair is start's window title, which it otherwise takes from the url
+  execFile('cmd', ['/c', 'start', '""', `"${url}"`], { windowsVerbatimArguments: true }, () => {})
 }
 
 function base64url(buffer) {
