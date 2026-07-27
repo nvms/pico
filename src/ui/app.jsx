@@ -1729,7 +1729,7 @@ export function App({ boot }) {
     return true
   }
 
-  useInput((event) => {
+  useInput(async (event) => {
     if (steer() && fm.is('steer') && !steer().editing) {
       const draft = steer()
       const rows = steerRows()
@@ -1821,6 +1821,7 @@ export function App({ boot }) {
     if (event.ctrl && event.key === 'c') {
       const now = Date.now()
       if (now - refs.quitAt < 1500) {
+        await refs.session?.flush()
         boot.shells.killAll()
         mcp.terminateAll()
         process.exit(0)

@@ -1,15 +1,16 @@
 import { appendFile, readFile, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
-import { indexedSessions, removeFromSessionIndex, updateSessionIndex } from './session-index.js'
+import { indexedSessions, markSessionIndexDirty, removeFromSessionIndex, updateSessionIndex } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
 
 export function appendSessionEvent(file, event, header) {
+  const marker = markSessionIndexDirty(file)
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
     await appendFile(file, serializeLine(event))
-    await updateSessionIndex(file, header, event)
+    await updateSessionIndex(file, header, event, marker)
   })
   appendQueues.set(file, queued)
   return queued

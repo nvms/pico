@@ -1,9 +1,11 @@
+import { writeFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { parseLines } from './events.js'
 
 const INDEX_VERSION = 1
 const INDEX_FILE = 'index.json'
+const DIRTY_PREFIX = '.index-dirty-'
 const indexQueues = new Map()
 
 function metadata(file, header, events, at) {
@@ -55,6 +57,10 @@ async function writeIndex(dir, sessions) {
   }
 }
 
+function dirtyPath(file) {
+  return join(dirname(file), `${DIRTY_PREFIX}${basename(file, '.jsonl')}-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+}
+
 async function rebuildIndex(dir) {
   let names = []
   try {
@@ -66,11 +72,14 @@ async function rebuildIndex(dir) {
   const sessions = (await Promise.all(files.map((file) => metadataFromFile(file).catch(() => null))))
     .filter(Boolean)
   await writeIndex(dir, sessions)
+  await Promise.all(names.filter((name) => name.startsWith(DIRTY_PREFIX)).map((name) => rm(join(dir, name), { force: true })))
   return sessions
 }
 
 export async function indexedSessions(dir) {
   try {
+    const names = await readdir(dir)
+    if (names.some((name) => name.startsWith(DIRTY_PREFIX))) return rebuildIndex(dir)
     return await readIndex(dir)
   } catch {
     return rebuildIndex(dir)
@@ -96,7 +105,13 @@ function applyEvent(meta, event, at) {
   return next
 }
 
-export function updateSessionIndex(file, header, event) {
+export function markSessionIndexDirty(file) {
+  const marker = dirtyPath(file)
+  writeFileSync(marker, '')
+  return marker
+}
+
+export function updateSessionIndex(file, header, event, marker = dirtyPath(file)) {
   const dir = dirname(file)
   const queued = (indexQueues.get(dir) || Promise.resolve()).then(async () => {
     let sessions
@@ -113,6 +128,7 @@ export function updateSessionIndex(file, header, event) {
       sessions.push(metadata(file, header, event.type === 'session' ? [] : [event], at))
     } else sessions[index] = applyEvent(sessions[index], event, at)
     await writeIndex(dir, sessions)
+    await rm(marker, { force: true })
   })
   indexQueues.set(dir, queued.catch(() => {}))
   return queued

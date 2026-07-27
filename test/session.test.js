@@ -106,6 +106,20 @@ test('listSessions rebuilds a missing index for existing projects and reuses it'
   delete process.env.PICO_HOME
 })
 
+test('listSessions rebuilds an index left dirty by an interrupted update', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'foo' } }))
+  await session.flush()
+  assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'foo')
+
+  await writeFile(join(dirname(session.file), `.index-dirty-${session.id}`), '')
+  await writeFile(session.file, `${await readFile(session.file, 'utf-8')}${JSON.stringify(makeEvent('title', { text: 'BAR' }))}\n`)
+  assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'BAR')
+  delete process.env.PICO_HOME
+})
+
 test('deleteSession removes its scratchpads', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
