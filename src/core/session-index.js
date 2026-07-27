@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs'
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { parseLines } from './events.js'
 
@@ -7,41 +7,85 @@ const INDEX_VERSION = 1
 const INDEX_FILE = 'index.json'
 const DIRTY_PREFIX = '.index-dirty-'
 
-// a session appends dozens of events per turn, and almost none of them change
-// anything the index stores. events are collected per session and applied in
-// one read-modify-write per directory; the dirty marker written before the
-// first one covers the whole window, so an interrupted batch still rebuilds
+// a session appends dozens of events per turn and almost none of them change
+// anything the index stores, so dirty sessions are collected and settled in one
+// read-modify-write per directory. each row records how many bytes of its
+// session file it already reflects, which is what makes the update idempotent:
+// a concurrent rebuild moves the row past the same events, and the pending
+// update then finds nothing new rather than counting them twice
 const FLUSH_DELAY_MS = 1000
 
 const dirtySessions = new Map()
 let flushTimer = null
 let indexWrites = Promise.resolve()
 
-function metadata(file, header, events, at) {
-  let title = null
-  let customTitle
-  let color = null
-  let turns = 0
-  for (const event of events) {
-    if (event.type === 'message' && event.data?.message?.role === 'user') {
-      turns++
-      if (!title) {
-        const content = event.data.message.content
-        const text = typeof content === 'string' ? content : content?.find((part) => part.type === 'text')?.text
-        title = text?.trim().slice(0, 200) || null
-      }
-    }
-    if (event.type === 'title') customTitle = event.data.text
-    if (event.type === 'color') color = event.data.value
+function metadata(file, header, events, { at, bytes }) {
+  const base = {
+    file,
+    header,
+    title: 'Untitled session',
+    automaticTitle: null,
+    customTitle: undefined,
+    color: null,
+    turns: 0,
+    at,
+    bytes,
   }
-  return { file, header, title: customTitle || title || 'Untitled session', automaticTitle: title, customTitle, color, turns, at }
+  return events.reduce(applyEvent, base)
+}
+
+function applyEvent(meta, event) {
+  const next = { ...meta }
+  if (event.type === 'message' && event.data?.message?.role === 'user') {
+    next.turns++
+    if (!next.automaticTitle) {
+      const content = event.data.message.content
+      const text = typeof content === 'string' ? content : content?.find((part) => part.type === 'text')?.text
+      next.automaticTitle = text?.trim().slice(0, 200) || null
+      if (!next.customTitle) next.title = next.automaticTitle || next.title
+    }
+  }
+  if (event.type === 'title') {
+    next.customTitle = event.data.text
+    next.title = event.data.text || next.automaticTitle || 'Untitled session'
+  }
+  if (event.type === 'color') next.color = event.data.value
+  return next
 }
 
 async function metadataFromFile(file) {
   const [text, info] = await Promise.all([readFile(file, 'utf-8'), stat(file)])
   const [header, ...events] = parseLines(text)
   if (!header || header.type !== 'session') throw new Error('invalid session')
-  return metadata(file, header, events, info.mtimeMs)
+  return metadata(file, header, events, { at: info.mtimeMs, bytes: info.size })
+}
+
+async function readRange(file, start, end) {
+  const handle = await open(file, 'r')
+  try {
+    const buffer = Buffer.alloc(end - start)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start)
+    return buffer.subarray(0, bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
+// only the bytes appended since this row was last updated are parsed, so a
+// 30mb session costs the same to keep current as a fresh one
+async function advanceRow(row) {
+  if (typeof row.bytes !== 'number') return metadataFromFile(row.file)
+  const { size } = await stat(row.file)
+  if (size < row.bytes) return metadataFromFile(row.file)
+  if (size === row.bytes) return { ...row, at: Date.now() }
+
+  const tail = await readRange(row.file, row.bytes, size)
+  // stop at the last complete line: a partially written one is re-read next time
+  const lastBreak = tail.lastIndexOf(0x0a)
+  if (lastBreak === -1) return { ...row, at: Date.now() }
+  const complete = tail.subarray(0, lastBreak + 1)
+  const events = parseLines(complete.toString('utf-8'))
+  return { ...events.reduce(applyEvent, row), at: Date.now(), bytes: row.bytes + complete.length }
 }
 
 function indexPath(dir) {
@@ -95,25 +139,6 @@ export async function indexedSessions(dir) {
   }
 }
 
-function applyEvent(meta, event, at) {
-  const next = { ...meta, at }
-  if (event.type === 'message' && event.data?.message?.role === 'user') {
-    next.turns++
-    if (!next.automaticTitle) {
-      const content = event.data.message.content
-      const text = typeof content === 'string' ? content : content?.find((part) => part.type === 'text')?.text
-      next.automaticTitle = text?.trim().slice(0, 200) || null
-      if (!next.customTitle) next.title = next.automaticTitle || next.title
-    }
-  }
-  if (event.type === 'title') {
-    next.customTitle = event.data.text
-    next.title = event.data.text || next.automaticTitle || 'Untitled session'
-  }
-  if (event.type === 'color') next.color = event.data.value
-  return next
-}
-
 function dirtySession(file, onError = () => {}) {
   let entry = dirtySessions.get(file)
   if (!entry) {
@@ -126,7 +151,7 @@ function dirtySession(file, onError = () => {}) {
       onError(err)
       marker = null
     }
-    entry = { file, header: null, events: [], marker }
+    entry = { file, marker }
     dirtySessions.set(file, entry)
   }
   return entry
@@ -136,10 +161,8 @@ export function markSessionIndexDirty(file, onError) {
   dirtySession(file, onError)
 }
 
-export function recordSessionEvent(file, header, event) {
-  const entry = dirtySession(file)
-  if (header && !entry.header) entry.header = header
-  entry.events.push(event)
+export function scheduleSessionIndexUpdate(file) {
+  dirtySession(file)
   if (flushTimer) return
   flushTimer = setTimeout(() => {
     flushTimer = null
@@ -157,20 +180,17 @@ async function applyBatch(dir, entries) {
     return
   }
   const applied = []
-  const at = Date.now()
   for (const entry of entries) {
-    const id = entry.header?.id || basename(entry.file, '.jsonl')
-    const index = sessions.findIndex((session) => session.header.id === id)
-    if (index < 0) {
-      // without a header there is nothing to seed a new row from; leaving the
-      // marker in place lets the next read rebuild the session in
-      if (!entry.header) continue
-      sessions.push(metadata(entry.file, entry.header, entry.events.filter((event) => event.type !== 'session'), at))
-    } else {
-      sessions[index] = entry.events.reduce((meta, event) => applyEvent(meta, event, at), sessions[index])
+    try {
+      const at = sessions.findIndex((session) => session.file === entry.file)
+      if (at < 0) sessions.push(await metadataFromFile(entry.file))
+      else sessions[at] = await advanceRow(sessions[at])
+      applied.push(entry)
+    } catch {
+      // leave this one marked so the next read rebuilds it
     }
-    applied.push(entry)
   }
+  if (applied.length === 0) return
   await writeIndex(dir, sessions)
   await Promise.all(applied.filter((entry) => entry.marker).map((entry) => rm(entry.marker, { force: true })))
 }
@@ -192,7 +212,6 @@ export function removeFromSessionIndex(file) {
   const pending = dirtySessions.get(file)
   dirtySessions.delete(file)
   const dir = dirname(file)
-  const id = basename(file, '.jsonl')
   indexWrites = indexWrites.then(async () => {
     if (pending?.marker) await rm(pending.marker, { force: true })
     let sessions
@@ -201,7 +220,7 @@ export function removeFromSessionIndex(file) {
     } catch {
       return
     }
-    await writeIndex(dir, sessions.filter((session) => session.header.id !== id))
+    await writeIndex(dir, sessions.filter((session) => session.file !== file))
   }).catch(() => {})
   return indexWrites
 }

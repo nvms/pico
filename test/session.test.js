@@ -180,6 +180,25 @@ test('a burst of events shares one dirty window and one index write', async () =
   delete process.env.PICO_HOME
 })
 
+test('a rebuild during a pending window is not replayed on flush', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'turn one' } }))
+  await session.flush()
+  await listSessions({ scope: 'project', root })
+
+  // the marker makes this read rebuild from the file, absorbing the event the
+  // pending batch is still holding
+  session.append(makeEvent('message', { message: { role: 'user', content: 'turn two' } }))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
+
+  await session.flush()
+  assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
+  delete process.env.PICO_HOME
+})
+
 test('an unflushed batch leaves a marker so the next read rebuilds', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))

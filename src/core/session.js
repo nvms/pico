@@ -1,7 +1,7 @@
 import { appendFile, readFile, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
-import { flushSessionIndex, indexedSessions, markSessionIndexDirty, recordSessionEvent, removeFromSessionIndex } from './session-index.js'
+import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
@@ -21,7 +21,7 @@ function reportWriteError(file, err) {
   } catch {}
 }
 
-export function appendSessionEvent(file, event, header) {
+export function appendSessionEvent(file, event) {
   markSessionIndexDirty(file, (err) => reportWriteError(file, err))
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
     try {
@@ -30,7 +30,7 @@ export function appendSessionEvent(file, event, header) {
       reportWriteError(file, err)
       return
     }
-    recordSessionEvent(file, header, event)
+    scheduleSessionIndexUpdate(file)
   })
   appendQueues.set(file, queued)
   return queued
@@ -60,7 +60,7 @@ export function openSession({ file, header }) {
     file,
     header,
     append(event) {
-      return appendSessionEvent(file, event, header)
+      return appendSessionEvent(file, event)
     },
     flush() {
       return (appendQueues.get(file) || Promise.resolve()).then(flushSessionIndex)
