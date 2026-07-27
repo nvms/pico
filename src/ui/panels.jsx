@@ -836,12 +836,15 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
   )
 }
 
-const MCP_STATUS = {
-  connected: { icon: '▪', color: accent() },
-  connecting: { icon: '◌', color: '#fbbf24' },
-  error: { icon: '✗', color: RED },
-  disabled: { icon: '▫', color: FAINT },
-  idle: { icon: '▫', color: MUTED },
+function mcpStatus(status) {
+  const palette = {
+    connected: { icon: '▪', color: accent() },
+    connecting: { icon: '◌', color: '#fbbf24' },
+    error: { icon: '✗', color: RED },
+    disabled: { icon: '▫', color: FAINT },
+    idle: { icon: '▫', color: MUTED },
+  }
+  return palette[status] || palette.idle
 }
 
 function FormField({ label, active, children }) {
@@ -1023,7 +1026,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
             onSubmit={(s) => onToggle(s.name)}
             onCancel={onClose}
             renderItem={(s, { active }) => {
-              const st = MCP_STATUS[s.status] || MCP_STATUS.idle
+              const st = mcpStatus(s.status)
               return (
                 <box style={{ flexDirection: 'column' }}>
                   <box style={{ flexDirection: 'row' }}>
