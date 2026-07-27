@@ -1,10 +1,12 @@
-import { appendFile, open, readFile, readdir, rm } from 'node:fs/promises'
+import { access, appendFile, open, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
+import lockfile from 'proper-lockfile'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
+const writeFailures = new Map()
 const deletedSessions = new Set()
 
 let onWriteError = () => {}
@@ -20,6 +22,24 @@ function reportWriteError(file, err) {
   try {
     onWriteError(err, file)
   } catch {}
+}
+
+function deletedPath(file) {
+  return `${file}.deleted`
+}
+
+async function withSessionLock(file, task) {
+  const lockTarget = dirname(file)
+  const release = await lockfile.lock(lockTarget, {
+    lockfilePath: `${file}.lock`,
+    realpath: false,
+    retries: { retries: 100, minTimeout: 10, maxTimeout: 100 },
+  })
+  try {
+    return await task()
+  } finally {
+    await release()
+  }
 }
 
 async function repairIncompleteLine(file) {
@@ -46,13 +66,28 @@ export function appendSessionEvent(file, event) {
   markSessionIndexDirty(file, (err) => reportWriteError(file, err))
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
     try {
-      await repairIncompleteLine(file)
-      await appendFile(file, serializeLine(event))
+      await withSessionLock(file, async () => {
+        if (deletedSessions.has(file)) throw new Error(`session has been deleted: ${file}`)
+        try {
+          await access(deletedPath(file))
+          throw new Error(`session has been deleted: ${file}`)
+        } catch (err) {
+          if (err.code !== 'ENOENT') throw err
+        }
+        if (event.type === 'session') {
+          await writeFile(file, serializeLine(event), { flag: 'wx' })
+        } else {
+          await repairIncompleteLine(file)
+          await appendFile(file, serializeLine(event))
+        }
+      })
     } catch (err) {
+      writeFailures.set(file, err)
       reportWriteError(file, err)
       scheduleSessionIndexUpdate(file)
       return
     }
+    writeFailures.delete(file)
     scheduleSessionIndexUpdate(file)
   })
   appendQueues.set(file, queued)
@@ -85,8 +120,11 @@ export function openSession({ file, header }) {
     append(event) {
       return appendSessionEvent(file, event)
     },
-    flush() {
-      return (appendQueues.get(file) || Promise.resolve()).then(flushSessionIndex)
+    async flush() {
+      await (appendQueues.get(file) || Promise.resolve())
+      const failure = writeFailures.get(file)
+      if (failure) throw failure
+      return flushSessionIndex()
     },
   }
 }
@@ -104,7 +142,11 @@ export async function deleteSession(file) {
   deletedSessions.add(file)
   await (appendQueues.get(file) || Promise.resolve())
   appendQueues.delete(file)
-  await rm(file)
+  writeFailures.delete(file)
+  await withSessionLock(file, async () => {
+    await writeFile(deletedPath(file), '')
+    await rm(file, { force: true })
+  })
   await removeFromSessionIndex(file)
   await rm(join(project, 'scratchpads', sessionId), { recursive: true, force: true })
 }

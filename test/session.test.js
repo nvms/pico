@@ -289,7 +289,7 @@ test('a failed append is reported and does not wedge later appends', async () =>
   await mkdir(session.file) // any append now fails with EISDIR
 
   session.append(makeEvent('message', { message: { role: 'user', content: 'lost' } }))
-  await session.flush()
+  await assert.rejects(() => session.flush(), { code: 'EISDIR' })
   assert.deepEqual(errors, ['EISDIR'])
 
   await rm(session.file, { recursive: true })
@@ -314,7 +314,7 @@ test('a missing sessions directory reports instead of throwing out of append', a
   await rm(dirname(session.file), { recursive: true, force: true })
 
   assert.doesNotThrow(() => session.append(makeEvent('message', { message: { role: 'user', content: 'gone' } })))
-  await session.flush()
+  await assert.rejects(() => session.flush(), { code: 'ENOENT' })
   assert.ok(errors.includes('ENOENT'))
   onSessionWriteError(null)
   delete process.env.PICO_HOME

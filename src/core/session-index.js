@@ -206,14 +206,18 @@ export function markSessionIndexDirty(file, onError) {
   dirtySession(file, onError)
 }
 
-export function scheduleSessionIndexUpdate(file) {
-  dirtySession(file)
+function scheduleFlush() {
   if (flushTimer) return
   flushTimer = setTimeout(() => {
     flushTimer = null
-    flushSessionIndex()
+    flushSessionIndex().catch(() => {})
   }, FLUSH_DELAY_MS)
   flushTimer.unref?.()
+}
+
+export function scheduleSessionIndexUpdate(file) {
+  dirtySession(file)
+  scheduleFlush()
 }
 
 async function applyBatch(dir, entries) {
@@ -235,21 +239,17 @@ async function applyBatch(dir, entries) {
       if (at < 0) sessions.push(await metadataFromFile(entry.file))
       else sessions[at] = await advanceRow(sessions[at])
       applied.push(entry)
-    } catch {
-      if (dirtySessions.has(entry.file)) {
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        if (entry.marker) await rm(entry.marker, { force: true })
+      } else if (dirtySessions.has(entry.file)) {
         if (entry.marker) await rm(entry.marker, { force: true })
       } else {
         dirtySessions.set(entry.file, entry)
       }
     }
   }
-  if (dirtySessions.size > 0 && !flushTimer) {
-    flushTimer = setTimeout(() => {
-      flushTimer = null
-      flushSessionIndex()
-    }, FLUSH_DELAY_MS)
-    flushTimer.unref?.()
-  }
+  if (dirtySessions.size > 0) scheduleFlush()
   if (applied.length === 0) return
   await writeIndex(dir, sessions)
   await Promise.all(applied.filter((entry) => entry.marker).map((entry) => rm(entry.marker, { force: true })))
@@ -262,7 +262,29 @@ export function flushSessionIndex() {
   clearTimeout(flushTimer)
   flushTimer = null
   const byDir = Map.groupBy(batch, (entry) => dirname(entry.file))
-  return enqueueIndexWrite(() => Promise.all([...byDir].map(([dir, entries]) => withIndexLock(dir, () => applyBatch(dir, entries)))))
+  return enqueueIndexWrite(async () => {
+    const failures = []
+    await Promise.all([...byDir].map(async ([dir, entries]) => {
+      try {
+        await withIndexLock(dir, () => applyBatch(dir, entries))
+      } catch (err) {
+        failures.push(err)
+        for (const entry of entries) {
+          if (removedSessions.has(entry.file)) continue
+          const current = dirtySessions.get(entry.file)
+          if (current) {
+            if (entry.marker) await rm(entry.marker, { force: true })
+          } else {
+            dirtySessions.set(entry.file, entry)
+          }
+        }
+      }
+    }))
+    if (failures.length > 0) {
+      scheduleFlush()
+      throw failures[0]
+    }
+  })
 }
 
 export function removeFromSessionIndex(file) {
