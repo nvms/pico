@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { appendSessionEvent, createSession, forkSession, loadSession, listSessions, openSession, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
 import { makeEvent, makeHeader } from '../src/core/events.js'
-import { agentScratchDir } from '../src/core/paths.js'
+import { agentScratchDir, sessionsDir } from '../src/core/paths.js'
 
 async function isolatedHome() {
   process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
@@ -47,6 +47,16 @@ test('forkSession copies the current event log into an independently named sessi
   source.append(makeEvent('message', { message: { role: 'user', content: 'source continues' } }))
   await source.flush()
   assert.equal((await loadSession(fork.session.file)).events.length, 3)
+  delete process.env.PICO_HOME
+})
+
+test('listSessions returns immediately for a project without a sessions directory', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+
+  await assert.rejects(access(sessionsDir(root)))
+  assert.deepEqual(await listSessions({ scope: 'project', root }), [])
+  await access(sessionsDir(root))
   delete process.env.PICO_HOME
 })
 

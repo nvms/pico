@@ -21,6 +21,7 @@ export async function withSessionLock(file, task) {
   return withLock(file, `${file}.lock`, task)
 }
 
-export function withIndexLock(dir, task) {
+export async function withIndexLock(dir, task) {
+  await mkdir(dir, { recursive: true })
   return withLock(dir, join(dir, '.index.lock'), task)
 }
