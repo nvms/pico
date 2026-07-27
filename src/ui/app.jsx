@@ -2047,6 +2047,20 @@ export function App({ boot }) {
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
 
+  if (showMemoryPanel()) {
+    return (
+      <MemoryPanel
+        memories={memoryList().filter((m) => MEMORY_SCOPES[memScope()] === 'all' || m.scope === MEMORY_SCOPES[memScope()])}
+        scopes={MEMORY_SCOPES}
+        scopeIndex={memScope()}
+        focused
+        onToggleDisabled={toggleMemoryDisabled}
+        onForget={forgetMemory}
+        onClose={() => setShowMemoryPanel(false)}
+      />
+    )
+  }
+
   return (
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
@@ -2554,18 +2568,6 @@ export function App({ boot }) {
           }}
           onDelete={deleteSessionMeta}
           onClose={() => setShowResumePanel(false)}
-        />
-      )}
-
-      {showMemoryPanel() && (
-        <MemoryPanel
-          memories={memoryList().filter((m) => MEMORY_SCOPES[memScope()] === 'all' || m.scope === MEMORY_SCOPES[memScope()])}
-          scopes={MEMORY_SCOPES}
-          scopeIndex={memScope()}
-          focused={showMemoryPanel()}
-          onToggleDisabled={toggleMemoryDisabled}
-          onForget={forgetMemory}
-          onClose={() => setShowMemoryPanel(false)}
         />
       )}
 

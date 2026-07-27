@@ -22,9 +22,9 @@ export function timeAgo(at) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-function PanelFrame({ title, hint, right, children }) {
+function PanelFrame({ title, hint, right, fullScreen = false, children }) {
   return (
-    <box style={{ flexDirection: 'column', bg: PANEL_BG }}>
+    <box style={{ flexDirection: 'column', bg: PANEL_BG, height: fullScreen ? '100%' : undefined }}>
       <box style={{ flexDirection: 'column', paddingX: 2, paddingTop: 1 }}>
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: accent(), bold: true }}>{title}</text>
@@ -34,7 +34,7 @@ function PanelFrame({ title, hint, right, children }) {
         <text style={{ color: MUTED }}>{hint}</text>
       </box>
       <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>
-      <box style={{ flexDirection: 'column', paddingX: 2, paddingBottom: 1 }}>
+      <box style={{ flexDirection: 'column', paddingX: 2, paddingBottom: 1, flexGrow: fullScreen ? 1 : undefined }}>
         {children}
       </box>
     </box>
@@ -447,9 +447,10 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
       title="Memory"
       hint="↑↓ to move · enter: enable/disable · tab: preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
+      fullScreen
     >
-      <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
-        <box style={{ flexDirection: 'column', width: '50%' }}>
+      <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
+        <box style={{ flexDirection: 'column', height: '40%' }}>
           {memories.length === 0 ? (
             <text style={{ color: FAINT }}>no memories here yet</text>
           ) : (
