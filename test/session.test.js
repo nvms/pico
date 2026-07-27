@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
@@ -213,8 +213,68 @@ test('an unflushed batch leaves a marker so the next read rebuilds', async () =>
   assert.equal((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')).length, 1)
 
   assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'never flushed')
+  assert.equal((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')).length, 1)
+  await session.flush()
   assert.deepEqual((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')), [])
   delete process.env.PICO_HOME
+})
+
+test('a rebuild keeps the active marker until its pending update is flushed', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'turn one' } }))
+  await session.flush()
+
+  session.append(makeEvent('message', { message: { role: 'user', content: 'turn two' } }))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
+
+  const dir = dirname(session.file)
+  const markers = async () => (await readdir(dir)).filter((name) => name.startsWith('.index-dirty-'))
+  assert.equal((await markers()).length, 1)
+  await session.flush()
+  assert.deepEqual(await markers(), [])
+})
+
+test('incremental indexing counts UTF-8 bytes rather than characters', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: '👋 café' } }))
+  await session.flush()
+
+  const indexFile = join(dirname(session.file), 'index.json')
+  const indexed = JSON.parse(await readFile(indexFile, 'utf-8')).sessions[0]
+  assert.equal(indexed.bytes, (await stat(session.file)).size)
+
+  session.append(makeEvent('message', { message: { role: 'user', content: '第二回' } }))
+  await session.flush()
+  assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
+})
+
+test('deleteSession waits for queued appends before removing the file', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'queued' } }))
+  await deleteSession(session.file)
+  await assert.rejects(() => session.append(makeEvent('message', { message: { role: 'user', content: 'too late' } })), /deleted/)
+  await assert.rejects(access(session.file))
+  assert.deepEqual(await listSessions({ scope: 'project', root }), [])
+})
+
+test('an append after a truncated line remains independently indexable', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'first' } }))
+  await session.flush()
+  await writeFile(session.file, `${await readFile(session.file, 'utf-8')}{"truncated":`)
+
+  session.append(makeEvent('message', { message: { role: 'user', content: 'second' } }))
+  await session.flush()
+  assert.equal((await listSessions({ scope: 'project', root }))[0].turns, 2)
 })
 
 test('a failed append is reported and does not wedge later appends', async () => {

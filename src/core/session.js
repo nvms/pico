@@ -1,10 +1,11 @@
-import { appendFile, readFile, readdir, rm } from 'node:fs/promises'
+import { appendFile, open, readFile, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
+const deletedSessions = new Set()
 
 let onWriteError = () => {}
 
@@ -21,13 +22,35 @@ function reportWriteError(file, err) {
   } catch {}
 }
 
+async function repairIncompleteLine(file) {
+  let handle
+  try {
+    handle = await open(file, 'r+')
+  } catch (err) {
+    if (err.code === 'ENOENT') return
+    throw err
+  }
+  try {
+    const { size } = await handle.stat()
+    if (size === 0) return
+    const last = Buffer.alloc(1)
+    await handle.read(last, 0, 1, size - 1)
+    if (last[0] !== 0x0a) await handle.write('\n', size)
+  } finally {
+    await handle.close()
+  }
+}
+
 export function appendSessionEvent(file, event) {
+  if (deletedSessions.has(file)) return Promise.reject(new Error(`session has been deleted: ${file}`))
   markSessionIndexDirty(file, (err) => reportWriteError(file, err))
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
     try {
+      await repairIncompleteLine(file)
       await appendFile(file, serializeLine(event))
     } catch (err) {
       reportWriteError(file, err)
+      scheduleSessionIndexUpdate(file)
       return
     }
     scheduleSessionIndexUpdate(file)
@@ -78,6 +101,9 @@ export async function loadSession(file) {
 export async function deleteSession(file) {
   const sessionId = basename(file, '.jsonl')
   const project = dirname(dirname(file))
+  deletedSessions.add(file)
+  await (appendQueues.get(file) || Promise.resolve())
+  appendQueues.delete(file)
   await rm(file)
   await removeFromSessionIndex(file)
   await rm(join(project, 'scratchpads', sessionId), { recursive: true, force: true })

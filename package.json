@@ -30,7 +30,8 @@
     "@shikijs/cli": "^3.0.0",
     "@trendr/core": "^0.4.21",
     "diff": "^7.0.0",
-    "fast-glob": "^3.3.0"
+    "fast-glob": "^3.3.0",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
