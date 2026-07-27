@@ -7,7 +7,7 @@ import { findModel, defaultModel, estimateCost } from './core/models.js'
 import { readConfig } from './core/config.js'
 import { buildProjectBoot } from './core/boot.js'
 import { createShellManager } from './core/shells.js'
-import { createSession, openSession, loadSession } from './core/session.js'
+import { createSession, openSession, loadSession, onSessionWriteError } from './core/session.js'
 import { sessionsDir } from './core/paths.js'
 import { makeEvent } from './core/events.js'
 import { deriveState } from './core/derive.js'
@@ -45,6 +45,8 @@ async function readStdin() {
 export async function runHeadless(opts) {
   const startedAt = Date.now()
   const log = opts.quiet ? () => {} : (line) => process.stderr.write(line + '\n')
+
+  onSessionWriteError((err, file) => process.stderr.write(`pico: could not write ${file}: ${err.message}\n`))
 
   const chatgpt = await openaiConnected()
   const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : [])]
@@ -117,6 +119,7 @@ export async function runHeadless(opts) {
     auth = await openaiCredentials().catch(() => null)
     if (!auth) {
       process.stderr.write('pico: codex models need a ChatGPT sign-in (run pico --connect)\n')
+      await session.flush()
       return 1
     }
   }
@@ -159,6 +162,9 @@ export async function runHeadless(opts) {
   if (running > 0) log(`  killing ${running} background shell${running === 1 ? '' : 's'}`)
   shells.killAll()
   await boot.mcp.closeAll().catch(() => {})
+  // the caller exits the process the moment this returns, which would discard
+  // every append still in flight
+  await session.flush()
 
   const text = result.messages.filter((m) => m.role === 'assistant' && typeof m.content === 'string' && m.content).at(-1)?.content ?? ''
   const summary = {
