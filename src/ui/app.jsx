@@ -4,7 +4,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from '../core/events.js'
-import { createSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent } from '../core/session.js'
+import { createSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent, onSessionWriteError } from '../core/session.js'
+import { createContextTracker } from '../core/context.js'
 import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
@@ -359,19 +360,28 @@ export function App({ boot }) {
       persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
       noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id, sessionId: agent.sessionId, sessionFile: agent.sessionFile })
     },
+    // this closure outlives any single render, so it reads the live boot
+    // rather than the bindings destructured when the manager was created:
+    // /connect and project switches both replace them
     run: async (agent, signal, onStream) => {
-      const worker = models.find((m) => m.name === agent.model)
+      const worker = boot.models.find((m) => m.name === agent.model)
       if (!worker || worker.available === false) throw new Error(`research model unavailable: ${agent.model}`)
       const auth = worker.provider === 'codex' ? await openaiCredentials() : null
       const sessionId = refs.session?.id
       if (!sessionId) throw new Error('worker requires an active session')
-      const scratchpad = ensureDir(agentScratchDir(root, sessionId, agent.id))
+      const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
       const workerTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
       const requestedTools = agent.tools?.length ? agent.tools.filter((name) => workerTools.includes(name)) : workerTools
       const { tools, recorder } = createToolset({
-        cwd,
+        cwd: boot.cwd,
         env: { PICO_SCRATCHPAD: scratchpad },
-        tracker,
+        // a private tracker seeded from the main one: a worker may read an
+        // AGENTS.md the main agent has not seen, and consuming it from the
+        // shared set would mean the main agent never receives it
+        tracker: createContextTracker({
+          stopDir: boot.startupContext.stopDir,
+          loaded: new Set(boot.tracker.loaded),
+        }),
         shells: boot.shells,
         sessionId,
         sessionFile: refs.session?.file,
@@ -395,6 +405,7 @@ export function App({ boot }) {
   })
   const agents = refs.agents
 
+  onSessionWriteError((err) => flash(`session not saved: ${String(err.message || err).slice(0, 80)}`))
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
   boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
   boot.setWakeupsNotify(() => setShellsVersion((v) => v + 1))

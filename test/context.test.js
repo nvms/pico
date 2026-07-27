@@ -46,3 +46,18 @@ test('tracker lazily loads CLAUDE.md fallbacks and never double-loads a dir', as
   assert.deepEqual(tracker.check(join(root, 'sub', 'other.js')), [])
   delete process.env.PICO_HOME
 })
+
+test('a tracker seeded from a copy does not consume the original discovery', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pico-ctx-'))
+  await mkdir(join(root, 'packages', 'api'), { recursive: true })
+  await writeFile(join(root, 'packages', 'api', 'AGENTS.md'), 'api rules')
+
+  const main = createContextTracker({ stopDir: root, loaded: new Set() })
+  // background workers get their own tracker seeded from the main one, so a
+  // file a worker reaches first still reaches the main agent
+  const worker = createContextTracker({ stopDir: root, loaded: new Set(main.loaded) })
+
+  assert.deepEqual(worker.check(join(root, 'packages', 'api', 'app.js')).map((f) => f.content), ['api rules'])
+  assert.deepEqual(main.check(join(root, 'packages', 'api', 'app.js')).map((f) => f.content), ['api rules'])
+  assert.deepEqual(main.check(join(root, 'packages', 'api', 'app.js')), [])
+})
