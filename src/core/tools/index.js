@@ -177,9 +177,20 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         description: 'Collect background agent results. Waits for any selected agents that are still running.',
         schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids whose results to collect' } },
         execute: async ({ ids }) => {
-          const collected = await agents.collect(ids)
+          const requested = (ids || []).map(String)
+          const collected = await agents.collect(requested)
           onAgentsCollected?.(collected.map((agent) => agent.id))
-          return { agents: collected.map(({ id, status, result, error }) => ({ id, status, result, error })) }
+          const found = new Set(collected.map((agent) => String(agent.id)))
+          return {
+            agents: [
+              ...collected.map(({ id, status, result, error }) => ({ id, status, result, error })),
+              ...requested.filter((id) => !found.has(id)).map((id) => ({
+                id,
+                status: 'unknown',
+                error: `no agent with id ${id}; it was never started, or was dismissed. Check agent_list rather than retrying.`,
+              })),
+            ],
+          }
         },
       },
       {
