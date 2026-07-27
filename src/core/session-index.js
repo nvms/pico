@@ -6,7 +6,16 @@ import { parseLines } from './events.js'
 const INDEX_VERSION = 1
 const INDEX_FILE = 'index.json'
 const DIRTY_PREFIX = '.index-dirty-'
-const indexQueues = new Map()
+
+// a session appends dozens of events per turn, and almost none of them change
+// anything the index stores. events are collected per session and applied in
+// one read-modify-write per directory; the dirty marker written before the
+// first one covers the whole window, so an interrupted batch still rebuilds
+const FLUSH_DELAY_MS = 1000
+
+const dirtySessions = new Map()
+let flushTimer = null
+let indexWrites = Promise.resolve()
 
 function metadata(file, header, events, at) {
   let title = null
@@ -105,39 +114,87 @@ function applyEvent(meta, event, at) {
   return next
 }
 
-export function markSessionIndexDirty(file) {
-  const marker = dirtyPath(file)
-  writeFileSync(marker, '')
-  return marker
+function dirtySession(file, onError = () => {}) {
+  let entry = dirtySessions.get(file)
+  if (!entry) {
+    // a marker we cannot write only costs crash recovery for this window;
+    // throwing here would take the whole session down with it
+    let marker = dirtyPath(file)
+    try {
+      writeFileSync(marker, '')
+    } catch (err) {
+      onError(err)
+      marker = null
+    }
+    entry = { file, header: null, events: [], marker }
+    dirtySessions.set(file, entry)
+  }
+  return entry
 }
 
-export function updateSessionIndex(file, header, event, marker = dirtyPath(file)) {
-  const dir = dirname(file)
-  const queued = (indexQueues.get(dir) || Promise.resolve()).then(async () => {
-    let sessions
-    try {
-      sessions = await readIndex(dir)
-    } catch {
-      return
-    }
-    const id = header?.id || basename(file, '.jsonl')
+export function markSessionIndexDirty(file, onError) {
+  dirtySession(file, onError)
+}
+
+export function recordSessionEvent(file, header, event) {
+  const entry = dirtySession(file)
+  if (header && !entry.header) entry.header = header
+  entry.events.push(event)
+  if (flushTimer) return
+  flushTimer = setTimeout(() => {
+    flushTimer = null
+    flushSessionIndex()
+  }, FLUSH_DELAY_MS)
+  flushTimer.unref?.()
+}
+
+async function applyBatch(dir, entries) {
+  let sessions
+  try {
+    sessions = await readIndex(dir)
+  } catch {
+    // no usable index: the markers stay behind so the next read rebuilds
+    return
+  }
+  const applied = []
+  const at = Date.now()
+  for (const entry of entries) {
+    const id = entry.header?.id || basename(entry.file, '.jsonl')
     const index = sessions.findIndex((session) => session.header.id === id)
-    const at = Date.now()
     if (index < 0) {
-      if (!header) return
-      sessions.push(metadata(file, header, event.type === 'session' ? [] : [event], at))
-    } else sessions[index] = applyEvent(sessions[index], event, at)
-    await writeIndex(dir, sessions)
-    await rm(marker, { force: true })
-  })
-  indexQueues.set(dir, queued.catch(() => {}))
-  return queued
+      // without a header there is nothing to seed a new row from; leaving the
+      // marker in place lets the next read rebuild the session in
+      if (!entry.header) continue
+      sessions.push(metadata(entry.file, entry.header, entry.events.filter((event) => event.type !== 'session'), at))
+    } else {
+      sessions[index] = entry.events.reduce((meta, event) => applyEvent(meta, event, at), sessions[index])
+    }
+    applied.push(entry)
+  }
+  await writeIndex(dir, sessions)
+  await Promise.all(applied.filter((entry) => entry.marker).map((entry) => rm(entry.marker, { force: true })))
+}
+
+export function flushSessionIndex() {
+  if (dirtySessions.size === 0) return indexWrites
+  const batch = [...dirtySessions.values()]
+  dirtySessions.clear()
+  clearTimeout(flushTimer)
+  flushTimer = null
+  const byDir = Map.groupBy(batch, (entry) => dirname(entry.file))
+  indexWrites = indexWrites
+    .then(() => Promise.all([...byDir].map(([dir, entries]) => applyBatch(dir, entries))))
+    .catch(() => {})
+  return indexWrites
 }
 
 export function removeFromSessionIndex(file) {
+  const pending = dirtySessions.get(file)
+  dirtySessions.delete(file)
   const dir = dirname(file)
   const id = basename(file, '.jsonl')
-  const queued = (indexQueues.get(dir) || Promise.resolve()).then(async () => {
+  indexWrites = indexWrites.then(async () => {
+    if (pending?.marker) await rm(pending.marker, { force: true })
     let sessions
     try {
       sessions = await readIndex(dir)
@@ -145,7 +202,6 @@ export function removeFromSessionIndex(file) {
       return
     }
     await writeIndex(dir, sessions.filter((session) => session.header.id !== id))
-  })
-  indexQueues.set(dir, queued.catch(() => {}))
-  return queued
+  }).catch(() => {})
+  return indexWrites
 }

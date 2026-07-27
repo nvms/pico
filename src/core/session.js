@@ -1,16 +1,36 @@
 import { appendFile, readFile, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
-import { indexedSessions, markSessionIndexDirty, removeFromSessionIndex, updateSessionIndex } from './session-index.js'
+import { flushSessionIndex, indexedSessions, markSessionIndexDirty, recordSessionEvent, removeFromSessionIndex } from './session-index.js'
 import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
 
 const appendQueues = new Map()
 
+let onWriteError = () => {}
+
+// appends are chained so they cannot interleave. a rejected link would poison
+// every later append on that file, so failures are reported and absorbed here
+// instead of propagating: one bad write must not silently end the log
+export function onSessionWriteError(handler) {
+  onWriteError = handler || (() => {})
+}
+
+function reportWriteError(file, err) {
+  try {
+    onWriteError(err, file)
+  } catch {}
+}
+
 export function appendSessionEvent(file, event, header) {
-  const marker = markSessionIndexDirty(file)
+  markSessionIndexDirty(file, (err) => reportWriteError(file, err))
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
-    await appendFile(file, serializeLine(event))
-    await updateSessionIndex(file, header, event, marker)
+    try {
+      await appendFile(file, serializeLine(event))
+    } catch (err) {
+      reportWriteError(file, err)
+      return
+    }
+    recordSessionEvent(file, header, event)
   })
   appendQueues.set(file, queued)
   return queued
@@ -43,7 +63,7 @@ export function openSession({ file, header }) {
       return appendSessionEvent(file, event, header)
     },
     flush() {
-      return appendQueues.get(file) || Promise.resolve()
+      return (appendQueues.get(file) || Promise.resolve()).then(flushSessionIndex)
     },
   }
 }

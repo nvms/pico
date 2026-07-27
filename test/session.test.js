@@ -1,9 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData } from '../src/core/session.js'
+import { createSession, forkSession, loadSession, listSessions, deleteSession, deleteProjectData, onSessionWriteError } from '../src/core/session.js'
 import { makeEvent } from '../src/core/events.js'
 import { agentScratchDir } from '../src/core/paths.js'
 
@@ -152,5 +152,91 @@ test('deleteProjectData removes every session for that root and nothing else', a
   assert.equal(everywhere[0].header.root, rootA)
 
   await deleteProjectData(rootB)
+  delete process.env.PICO_HOME
+})
+
+test('a burst of events shares one dirty window and one index write', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'first turn' } }))
+  await session.flush()
+  const dir = dirname(session.file)
+  await listSessions({ scope: 'project', root })
+  const markers = async () => (await readdir(dir)).filter((name) => name.startsWith('.index-dirty-'))
+  assert.deepEqual(await markers(), [])
+
+  for (let i = 0; i < 20; i++) {
+    session.append(makeEvent('tool_meta', { callId: String(i), name: 'read', title: `file-${i}` }))
+  }
+  session.append(makeEvent('message', { message: { role: 'user', content: 'second turn' } }))
+  assert.equal((await markers()).length, 1, '21 appends should open a single dirty window')
+
+  await session.flush()
+  assert.deepEqual(await markers(), [])
+  const listed = await listSessions({ scope: 'project', root })
+  assert.equal(listed[0].title, 'first turn')
+  assert.equal(listed[0].turns, 2)
+  delete process.env.PICO_HOME
+})
+
+test('an unflushed batch leaves a marker so the next read rebuilds', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  session.append(makeEvent('message', { message: { role: 'user', content: 'flushed' } }))
+  await session.flush()
+  await listSessions({ scope: 'project', root })
+
+  session.append(makeEvent('title', { text: 'never flushed' }))
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  const dir = dirname(session.file)
+  assert.equal((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')).length, 1)
+
+  assert.equal((await listSessions({ scope: 'project', root }))[0].title, 'never flushed')
+  assert.deepEqual((await readdir(dir)).filter((name) => name.startsWith('.index-dirty-')), [])
+  delete process.env.PICO_HOME
+})
+
+test('a failed append is reported and does not wedge later appends', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  await session.flush()
+
+  const errors = []
+  onSessionWriteError((err) => errors.push(err.code))
+  await rm(session.file)
+  await mkdir(session.file) // any append now fails with EISDIR
+
+  session.append(makeEvent('message', { message: { role: 'user', content: 'lost' } }))
+  await session.flush()
+  assert.deepEqual(errors, ['EISDIR'])
+
+  await rm(session.file, { recursive: true })
+  await writeFile(session.file, `${JSON.stringify({ ...session.header })}\n`)
+  session.append(makeEvent('message', { message: { role: 'user', content: 'written after recovery' } }))
+  await session.flush()
+
+  const { events } = await loadSession(session.file)
+  assert.equal(events.at(-1).data.message.content, 'written after recovery')
+  onSessionWriteError(null)
+  delete process.env.PICO_HOME
+})
+
+test('a missing sessions directory reports instead of throwing out of append', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  await session.flush()
+
+  const errors = []
+  onSessionWriteError((err) => errors.push(err.code))
+  await rm(dirname(session.file), { recursive: true, force: true })
+
+  assert.doesNotThrow(() => session.append(makeEvent('message', { message: { role: 'user', content: 'gone' } })))
+  await session.flush()
+  assert.ok(errors.includes('ENOENT'))
+  onSessionWriteError(null)
   delete process.env.PICO_HOME
 })
