@@ -42,7 +42,7 @@ function insertedEvent(transaction, change, index) {
   }
 }
 
-export function applySteering(events, dropped = new Set()) {
+export function applySteering(events) {
   const timeline = []
   const messages = new Map()
   const active = new Set()
@@ -58,7 +58,6 @@ export function applySteering(events, dropped = new Set()) {
   }
 
   events.forEach((event, sourceIndex) => {
-    if (dropped.has(event.id)) return
     if (event.type !== 'steer') {
       const normalized = event.type === 'message' ? { ...event, _sourceIndex: sourceIndex } : event
       timeline.push(normalized)
