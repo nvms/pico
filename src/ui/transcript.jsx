@@ -140,7 +140,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
         <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${error}`}</text>
       )}
       {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
-        <box style={{ flexDirection: 'column', height: Math.min(diffPreviewLines(diff, revert) + 1, 12), marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert) + 1, marginTop: 1 }}>
           <Diff
             before={revert.before}
             after={revert.after}
