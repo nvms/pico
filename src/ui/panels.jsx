@@ -22,6 +22,10 @@ export function timeAgo(at) {
   return `${Math.floor(h / 24)}d ago`
 }
 
+function PanelDivider() {
+  return <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>
+}
+
 function PanelFrame({ title, hint, right, fullScreen = false, children }) {
   return (
     <box style={{ flexDirection: 'column', bg: PANEL_BG, height: fullScreen ? '100%' : undefined }}>
@@ -33,8 +37,8 @@ function PanelFrame({ title, hint, right, fullScreen = false, children }) {
         </box>
         <text style={{ color: MUTED }}>{hint}</text>
       </box>
-      <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>
-      <box style={{ flexDirection: 'column', paddingX: 2, paddingBottom: 1, flexGrow: fullScreen ? 1 : undefined }}>
+      <PanelDivider />
+      <box style={{ flexDirection: 'column', paddingX: fullScreen ? 0 : 2, paddingBottom: 1, flexGrow: fullScreen ? 1 : undefined }}>
         {children}
       </box>
     </box>
@@ -121,7 +125,7 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
 
   return (
     <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close" fullScreen>
-      <box style={{ flexGrow: 1, marginTop: 1 }}>
+      <box style={{ flexGrow: 1, marginTop: 1, paddingX: 2 }}>
         <FieldList focused={focused} initialFocus="clouds" scrollbar focusPadding={1}>
           {fields.map((field) => (
             <Field key={field.name} name={field.name}>
@@ -383,7 +387,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
       fullScreen
     >
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
-        <box style={{ flexDirection: 'column', height: '40%' }}>
+        <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading sessions...</text>
           ) : sessions.length === 0 ? (
@@ -414,7 +418,8 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
             />
           )}
         </box>
-        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
+        <PanelDivider />
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 3 }}>
           {selectedSession() ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               <box style={{ flexDirection: 'column' }}>
@@ -471,7 +476,7 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
       fullScreen
     >
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
-        <box style={{ flexDirection: 'column', height: '40%' }}>
+        <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
           {memories.length === 0 ? (
             <text style={{ color: FAINT }}>no memories here yet</text>
           ) : (
@@ -498,7 +503,8 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
             />
           )}
         </box>
-        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
+        <PanelDivider />
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 3 }}>
           {preview ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               {preview.disabled && <text style={{ color: FAINT, bold: true }}>SUPPRESSED</text>}
@@ -705,7 +711,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
   return (
     <PanelFrame title="Switch project" hint="↑↓ to move · tab: sessions · enter to jump to its last session · ctrl+x delete · esc to close" fullScreen>
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
-        <box style={{ flexDirection: 'column', height: '40%' }}>
+        <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading projects...</text>
           ) : projects.length === 0 ? (
@@ -735,7 +741,8 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
             />
           )}
         </box>
-        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
+        <PanelDivider />
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 3 }}>
           {preview() ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               <box style={{ flexDirection: 'column' }}>
