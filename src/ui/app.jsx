@@ -178,7 +178,7 @@ function agentStatus(agent) {
 function SteerMessage({ item, verbose, selected, focus }) {
   const layout = useLayout()
   focus.item(item.messageId, layout)
-  return <Message item={item} verbose={verbose} />
+  return <Message item={item} verbose={verbose} showLocked />
 }
 
 function MouseFocusRegion({ children, onPress, ...props }) {

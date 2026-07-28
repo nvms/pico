@@ -166,7 +166,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
   )
 }
 
-export function Message({ item, verbose }) {
+export function Message({ item, verbose, showLocked = false }) {
   if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
   if (item.kind === 'agent-notice-group') {
@@ -289,7 +289,7 @@ export function Message({ item, verbose }) {
   }
 
   if (item.kind === 'user') {
-    const label = item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · USER' : item.steered ? 'USER · STEERED' : null
+    const label = showLocked && item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · USER' : item.steered ? 'USER · STEERED' : null
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
@@ -302,7 +302,7 @@ export function Message({ item, verbose }) {
   }
 
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
-  const label = item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · ASSISTANT' : item.steered ? 'ASSISTANT · STEERED' : null
+  const label = showLocked && item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · ASSISTANT' : item.steered ? 'ASSISTANT · STEERED' : null
   return (
     <box style={{ flexDirection: 'column', paddingX: 2, bg: item.steerSelected ? accent() : undefined }}>
       <text> </text>
