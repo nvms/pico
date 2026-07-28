@@ -307,7 +307,14 @@ export function Message({ item, verbose, showLocked = false }) {
     <box style={{ flexDirection: 'column', paddingX: 2, bg: item.steerSelected ? accent() : undefined }}>
       <text> </text>
       {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
-      <Markdown text={text} highlight={highlight} codeBg={null} codeBlock={TranscriptCodeBlock} />
+      <Markdown
+        text={text}
+        highlight={highlight}
+        codeBg={null}
+        codeBlock={TranscriptCodeBlock}
+        tableBorderColor={MUTED}
+        tableRowHoverBg={PANEL_BG}
+      />
     </box>
   )
 }
