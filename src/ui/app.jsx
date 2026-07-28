@@ -73,7 +73,7 @@ const COMMANDS = [
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
-  { name: 'parallel', desc: 'Run a task with parallel agents: /parallel [--agents N] <task>' },
+  { name: 'parallel', desc: 'Run a task with parallel agents: /parallel <task>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
@@ -1146,12 +1146,11 @@ export function App({ boot }) {
       return
     }
     if (c.name === 'parallel') {
-      const match = args.match(/^(?:--agents(?:=|\s+)(\d+)\s+)?([\s\S]+)$/)
-      const task = match?.[2]?.trim()
-      const agentLimit = match?.[1] ? Number(match[1]) : researchAgentLimit()
-      if (!task || !Number.isInteger(agentLimit) || agentLimit < 1 || agentLimit > 100) return flash('usage: /parallel [--agents 1-100] <task>')
+      const task = args.trim()
+      const agentLimit = researchAgentLimit()
+      if (!task) return flash('usage: /parallel <task>')
       if (!boot.researchModel || !models.some((m) => m.name === boot.researchModel && m.available !== false)) {
-        setPendingResearch({ task, agentLimit })
+        setPendingResearch({ task })
         setShowResearchModelPanel(true)
         return
       }
@@ -2520,7 +2519,7 @@ export function App({ boot }) {
             const returnTo = researchModelReturn()
             setPendingResearch(null)
             setResearchModelReturn(null)
-            if (pending) runCommand({ name: 'parallel' }, `--agents ${pending.agentLimit} ${pending.task}`)
+            if (pending) runCommand({ name: 'parallel' }, pending.task)
             else if (returnTo === 'config') setShowConfigPanel(true)
           }}
           onPickDefault={() => {}}
