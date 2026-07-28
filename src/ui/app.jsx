@@ -2244,7 +2244,7 @@ export function App({ boot }) {
 
       {steer() && (
         <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 2, paddingY: 1, marginTop: 1 }}>
-          <text style={{ color: accent(), bold: true }}>{steer().editing ? `${steer().adding ? 'ADD' : 'EDIT'} ${steer().role.toUpperCase()}` : `STEER · ${steer().changes.length} staged`}</text>
+          <text style={{ color: accent(), bold: true }}>{steer().editing ? `${steer().adding ? 'Add' : 'Edit'} ${steer().role}` : `Steer · ${steer().changes.length} staged`}</text>
           {steer().editing ? (
             <TextArea
               focused={fm.is('steer')}

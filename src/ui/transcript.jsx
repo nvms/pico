@@ -289,7 +289,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'user') {
-    const label = showLocked && item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · USER' : item.steered ? 'USER · STEERED' : null
+    const label = showLocked && item.locked ? 'Locked · compacted' : item.steerSelected ? 'Steer · user' : item.steered ? 'User · steered' : null
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
@@ -302,7 +302,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
-  const label = showLocked && item.locked ? 'LOCKED · COMPACTED' : item.steerSelected ? 'STEER · ASSISTANT' : item.steered ? 'ASSISTANT · STEERED' : null
+  const label = showLocked && item.locked ? 'Locked · compacted' : item.steerSelected ? 'Steer · assistant' : item.steered ? 'Assistant · steered' : null
   return (
     <box style={{ flexDirection: 'column', paddingX: 2, bg: item.steerSelected ? accent() : undefined }}>
       <text> </text>
