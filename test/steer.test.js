@@ -63,6 +63,28 @@ test('inserting after an assistant tool call keeps its results contiguous', () =
   assert.deepEqual(deriveState(events).providerHistory.map((message) => message.role), ['assistant', 'tool', 'user'])
 })
 
+test('steering deletes messages from transcript and provider history', () => {
+  const events = [
+    message('u1', 'user', 'Question'),
+    message('a1', 'assistant', 'Accidental answer'),
+    event('s1', 'steer', { changes: [{ op: 'delete', target: 'a1' }] }),
+  ]
+  const state = deriveState(events)
+  assert.deepEqual(state.providerHistory, [{ role: 'user', content: 'Question' }])
+  assert.equal(state.transcript.some((item) => item.messageId === 'a1'), false)
+})
+
+test('deleting an assistant tool call also deletes its tool results', () => {
+  const assistant = event('a1', 'message', { message: {
+    role: 'assistant',
+    content: 'Checking',
+    tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'read', arguments: '{}' } }],
+  } })
+  const result = event('t1', 'message', { message: { role: 'tool', content: 'result', tool_call_id: 'call-1' } })
+  const events = [assistant, result, event('s1', 'steer', { changes: [{ op: 'delete', target: 'a1' }] })]
+  assert.deepEqual(deriveState(events).providerHistory, [])
+})
+
 test('messages before the latest compaction are locked and cannot be changed', () => {
   const events = [
     message('u1', 'user', 'Old'),
@@ -71,6 +93,7 @@ test('messages before the latest compaction are locked and cannot be changed', (
     message('u2', 'user', 'Current'),
     event('s1', 'steer', { changes: [
       { op: 'replace', target: 'a1', message: { role: 'assistant', content: 'Changed old answer' } },
+      { op: 'delete', target: 'a1' },
       { op: 'replace', target: 'u2', message: { role: 'user', content: 'Changed current' } },
     ] }),
   ]

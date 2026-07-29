@@ -289,7 +289,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'user') {
-    const label = showLocked && item.locked ? 'Locked · compacted' : item.steerSelected ? 'Steer · user' : item.steered ? 'User · steered' : null
+    const label = showLocked && item.locked ? 'Locked · compacted' : showLocked ? 'User' : null
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
@@ -302,19 +302,21 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
-  const label = showLocked && item.locked ? 'Locked · compacted' : item.steerSelected ? 'Steer · assistant' : item.steered ? 'Assistant · steered' : null
+  const label = showLocked && item.locked ? 'Locked · compacted' : showLocked ? 'Assistant' : null
   return (
-    <box style={{ flexDirection: 'column', paddingX: 2, bg: item.steerSelected ? accent() : undefined }}>
+    <box style={{ flexDirection: 'column' }}>
       <text> </text>
-      {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
-      <Markdown
-        text={text}
-        highlight={highlight}
-        codeBg={null}
-        codeBlock={TranscriptCodeBlock}
-        tableBorderColor={MUTED}
-        tableRowHoverBg={PANEL_BG}
-      />
+      <box style={{ flexDirection: 'column', paddingX: 2, paddingY: 1, bg: item.steerSelected ? accent() : undefined }}>
+        {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
+        <Markdown
+          text={text}
+          highlight={highlight}
+          codeBg={null}
+          codeBlock={TranscriptCodeBlock}
+          tableBorderColor={MUTED}
+          tableRowHoverBg={PANEL_BG}
+        />
+      </box>
     </box>
   )
 }

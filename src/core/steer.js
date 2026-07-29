@@ -91,13 +91,31 @@ export function applySteering(events) {
         if (anchor && (!active.has(change.after) || anchor._sourceIndex < compactIndex)) continue
         if (!anchor && change.after != null) continue
         const inserted = insertedEvent(event, change, sourceIndex)
-        const tailId = insertionTails.get(change.after) || change.after
+        const stagedTail = insertionTails.get(change.after)
+        const tailId = stagedTail && active.has(stagedTail) ? stagedTail : change.after
         const tail = tailId == null ? null : messages.get(tailId)
         const at = insertionIndex(timeline, tail)
         timeline.splice(at, 0, inserted)
         messages.set(inserted.id, inserted)
         active.add(inserted.id)
         insertionTails.set(change.after, inserted.id)
+        continue
+      }
+      if (change.op === 'delete') {
+        const target = messages.get(change.target)
+        if (!target || !active.has(change.target) || target._sourceIndex < compactIndex) continue
+        const start = timeline.indexOf(target)
+        const end = insertionIndex(timeline, target)
+        const removed = new Set([target])
+        if (target.data.message.tool_calls?.length) {
+          for (let index = start + 1; index < end; index++) {
+            if (timeline[index].type === 'message') removed.add(timeline[index])
+          }
+        }
+        for (let index = timeline.length - 1; index >= 0; index--) {
+          if (removed.has(timeline[index])) timeline.splice(index, 1)
+        }
+        for (const message of removed) active.delete(message.id)
       }
     }
     rebuildActive()

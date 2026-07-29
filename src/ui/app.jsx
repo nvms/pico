@@ -1057,9 +1057,22 @@ export function App({ boot }) {
     const target = rows[draft.selected]
     const change = draft.adding
       ? { op: 'insert', id: makeEvent('message').id, after: target?.messageId ?? null, message: { role: draft.role, content: value } }
-      : { op: 'replace', target: target.messageId, message: { role: target.role, content: value } }
+      : { op: 'replace', target: target.messageId, message: { role: draft.role, content: value } }
     setSteer({ ...draft, editing: false, adding: false, changes: [...draft.changes, change] })
     setSteerText('')
+  }
+
+  function stageSteerDelete() {
+    const draft = steer()
+    const rows = steerRows()
+    const target = rows[draft.selected]
+    if (!target) return
+    if (target.locked) return flash('locked · this message is before the latest compaction')
+    const changes = [...draft.changes, { op: 'delete', target: target.messageId }]
+    const remaining = rows.filter((row) => row.messageId !== target.messageId)
+    const selected = Math.min(draft.selected, Math.max(0, remaining.length - 1))
+    setSteer({ ...draft, selected, changes })
+    if (remaining[selected]) steerListFocus.focus(remaining[selected].messageId)
   }
 
   async function runCommand(c, args = '') {
@@ -1749,6 +1762,7 @@ export function App({ boot }) {
       else if (event.key === 'escape') closeSteer()
       else if (event.key === 'return') startSteerEdit()
       else if (event.key === 'a') startSteerAdd()
+      else if (event.key === 'x' || event.key === 'd') stageSteerDelete()
       else if (event.key === 'up' || event.key === 'k') {
         const selected = Math.max(0, draft.selected - 1)
         steerListFocus.focus(rows[selected]?.messageId)
@@ -2256,7 +2270,7 @@ export function App({ boot }) {
                 setSteer({ ...steer(), editing: false, adding: false })
               }}
               onKeyDown={(event) => {
-                if (event.key === 'tab' && steer().adding) {
+                if (event.key === 'tab') {
                   const at = STEER_ROLES.indexOf(steer().role)
                   setSteer({ ...steer(), role: STEER_ROLES[(at + 1) % STEER_ROLES.length] })
                   return true
@@ -2270,7 +2284,7 @@ export function App({ boot }) {
               cursor={{ blink: true, bg: accent(), color: 'black' }}
             />
           ) : (
-            <text style={{ color: MUTED }}>{'↑↓ select · enter edit · a add after · ctrl+s apply · esc discard'}</text>
+            <text style={{ color: MUTED }}>{'↑↓ select · enter edit · a add after · x/d delete · ctrl+s apply · esc discard'}</text>
           )}
         </box>
       )}
