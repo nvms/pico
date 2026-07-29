@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { utimes } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { scanUserTools } from '../src/core/user-tools.js'
 import { createRecorder, recorded, defaultTitle } from '../src/core/tools/recorder.js'
@@ -56,6 +56,8 @@ test('reports broken tools as errors without failing the scan', async () => {
 
 test('recorded tools get default titles and json fullOutput', async () => {
   assert.equal(defaultTitle('http_get', { url: 'https://example.com' }), 'https://example.com')
+  assert.equal(defaultTitle('read', { path: join(homedir(), 'code/trend/src/selection.js') }), '~/code/trend/src/selection.js')
+  assert.equal(defaultTitle('read', { path: homedir() }), '~')
   assert.equal(defaultTitle('noop', {}), 'noop')
   const recorder = createRecorder()
   const run = recorded(recorder, 'http_get', async ({ url }) => ({ status: 200, url }))
@@ -63,6 +65,11 @@ test('recorded tools get default titles and json fullOutput', async () => {
   const entry = recorder.entries[0]
   assert.equal(entry.title, 'https://example.com')
   assert.match(entry.fullOutput, /"status": 200/)
+
+  recorder.begin('read', { path: 'initial' })
+  recorder.extra({ title: join(homedir(), 'code/trend/src/selection.js') })
+  recorder.done()
+  assert.equal(recorder.entries[1].title, '~/code/trend/src/selection.js')
 })
 
 test('edits are picked up via mtime cache busting', async () => {

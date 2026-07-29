@@ -1,6 +1,15 @@
+import { homedir } from 'node:os'
+
+function collapseHomePath(value) {
+  const home = homedir()
+  if (value === home) return '~'
+  if (value.startsWith(`${home}/`) || value.startsWith(`${home}\\`)) return `~${value.slice(home.length)}`
+  return value
+}
+
 export function defaultTitle(name, args = {}) {
   const candidate = args.path || args.command || args.pattern || args.url || args.name
-  if (typeof candidate === 'string' && candidate) return candidate
+  if (typeof candidate === 'string' && candidate) return collapseHomePath(candidate)
   const raw = JSON.stringify(args)
   if (!raw || raw === '{}') return name
   return raw.length > 60 ? raw.slice(0, 60) + '…' : raw
@@ -21,7 +30,11 @@ export function createRecorder() {
       }
     },
     extra(fields) {
-      if (this.pending) Object.assign(this.pending, fields)
+      if (!this.pending) return
+      const normalized = typeof fields.title === 'string'
+        ? { ...fields, title: collapseHomePath(fields.title) }
+        : fields
+      Object.assign(this.pending, normalized)
     },
     done(fields = {}) {
       if (!this.pending) return
