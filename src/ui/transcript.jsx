@@ -4,7 +4,7 @@ import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
 
-function MarkdownSnippet({ value, language, highlight: highlightCode, codeBg }) {
+function ProseSnippet({ value, language, highlight: highlightCode, codeBg }) {
   const shown = highlightCode ? highlightCode(value, language) : value
   return (
     <box style={{ bg: codeBg, paddingX: 1 }}>
@@ -29,7 +29,7 @@ function CodeSnippet({ value, language, highlight: highlightCode, codeBg }) {
 
 function TranscriptCodeBlock(props) {
   const language = props.language?.toLowerCase()
-  const Component = language === 'md' || language === 'markdown' ? MarkdownSnippet : CodeSnippet
+  const Component = ['md', 'markdown', 'text', 'txt', 'plaintext'].includes(language) ? ProseSnippet : CodeSnippet
   return <Component {...props} />
 }
 
