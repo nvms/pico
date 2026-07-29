@@ -5,10 +5,6 @@ A coding agent that runs in your terminal. Rendering is [@trendr/core](https://g
 
 ![pico terminal interface](.github/assets/pico.png)
 
-<p align="center">
-  <img src=".github/assets/quick-task.gif" alt="pico demo">
-</p>
-
 ## Install
 
 ```
