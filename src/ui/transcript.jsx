@@ -140,7 +140,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
         <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${error}`}</text>
       )}
       {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
-        <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert) + 1, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert), marginTop: 1 }}>
           <Diff
             before={revert.before}
             after={revert.after}
@@ -311,7 +311,7 @@ export function Message({ item, verbose, showLocked = false }) {
       <text> </text>
       <box style={{ flexDirection: 'row' }}>
         <box style={{ width: 1, flexShrink: 0, bg: item.steerSelected ? accent() : undefined }} />
-        <box style={{ flexDirection: 'column', flexGrow: 1, paddingLeft: 1, paddingRight: 2, paddingY: 1, bg: item.steerSelected ? SELECT_BG : undefined }}>
+        <box style={{ flexDirection: 'column', flexGrow: 1, paddingLeft: 1, paddingRight: 2, paddingY: showLocked ? 1 : 0, bg: item.steerSelected ? SELECT_BG : undefined }}>
           {label && <text style={{ color: item.steerSelected ? accent() : MUTED, bold: true }}>{label}</text>}
           <Markdown
             text={text}
