@@ -1,5 +1,5 @@
 import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
@@ -293,9 +293,12 @@ export function Message({ item, verbose, showLocked = false }) {
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
-        <box style={{ bg: item.steerSelected ? accent() : PANEL_BG, flexDirection: 'column', paddingX: 2, paddingY: 1 }}>
-          {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
-          <text style={{ color: FG }}>{item.text}</text>
+        <box style={{ flexDirection: 'row' }}>
+          <box style={{ width: 1, flexShrink: 0, bg: item.steerSelected ? accent() : PANEL_BG }} />
+          <box style={{ bg: item.steerSelected ? SELECT_BG : PANEL_BG, flexDirection: 'column', flexGrow: 1, paddingLeft: 1, paddingRight: 2, paddingY: 1 }}>
+            {label && <text style={{ color: item.steerSelected ? accent() : MUTED, bold: true }}>{label}</text>}
+            <text style={{ color: FG }}>{item.text}</text>
+          </box>
         </box>
       </box>
     )
@@ -306,16 +309,19 @@ export function Message({ item, verbose, showLocked = false }) {
   return (
     <box style={{ flexDirection: 'column' }}>
       <text> </text>
-      <box style={{ flexDirection: 'column', paddingX: 2, paddingY: 1, bg: item.steerSelected ? accent() : undefined }}>
-        {label && <text style={{ color: item.steerSelected ? FG : MUTED, bold: true }}>{label}</text>}
-        <Markdown
-          text={text}
-          highlight={highlight}
-          codeBg={null}
-          codeBlock={TranscriptCodeBlock}
-          tableBorderColor={MUTED}
-          tableRowHoverBg={PANEL_BG}
-        />
+      <box style={{ flexDirection: 'row' }}>
+        <box style={{ width: 1, flexShrink: 0, bg: item.steerSelected ? accent() : undefined }} />
+        <box style={{ flexDirection: 'column', flexGrow: 1, paddingLeft: 1, paddingRight: 2, paddingY: 1, bg: item.steerSelected ? SELECT_BG : undefined }}>
+          {label && <text style={{ color: item.steerSelected ? accent() : MUTED, bold: true }}>{label}</text>}
+          <Markdown
+            text={text}
+            highlight={highlight}
+            codeBg={null}
+            codeBlock={TranscriptCodeBlock}
+            tableBorderColor={MUTED}
+            tableRowHoverBg={PANEL_BG}
+          />
+        </box>
       </box>
     </box>
   )
