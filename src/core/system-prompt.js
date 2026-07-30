@@ -23,6 +23,7 @@ export function buildSystemPrompt({ cwd, contextFiles = [], skills = [], memoryI
     `Tools are yours alone: the user cannot invoke them, so never suggest the user run a tool. Do it yourself, or describe the outcome instead.`,
     `Delegate only when a worker's result will materially inform the task. Before starting an agent, identify the work that depends on its result; while it runs, perform only genuinely independent work, then collect the result before making dependent decisions or edits. If you can confidently complete the task without the result, do not start the agent.`,
     `Be direct and concise. Use markdown. Never invent file contents you have not read.`,
+    `When providing links that you want the user to be able to click, output either plain URLs or unfenced Markdown links.`,
     `Announcing future work and stopping is forbidden. If your reply contains phrases like "I'll update", "I will now", or "Next I'll", you must make those tool calls in this same turn instead of ending it. A turn may only end in one of two states: the work is done, or you are asking the user a question and waiting. When the user asks "should we do X?" and your answer is yes, say yes briefly and then do X immediately in the same turn; stop to ask first only when doing X is destructive, expensive, or genuinely ambiguous.`,
   ]
 
