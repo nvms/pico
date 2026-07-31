@@ -2049,6 +2049,7 @@ export function App({ boot }) {
     { kind: 'shell-command', text: activeShell.command },
     { kind: 'shell-output', text: shellOutput?.output || 'no output yet' },
   ] : null
+  const transcriptSource = activeShell ? `shell:${activeShell.id}` : activeAgent ? `agent:${activeAgent.id}` : 'main'
   const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript)
   const hiddenCount = Math.max(0, transcript.length - histWindow())
   const isolatedTranscript = activeAgent || activeShell
@@ -2185,7 +2186,7 @@ export function App({ boot }) {
         )}
         {items.map((item, i) => steer() && item.messageId ? (
           <SteerMessage
-            key={hiddenCount + i}
+            key={`${transcriptSource}:${item.messageId || item.callId || hiddenCount + i}`}
             item={item}
             verbose={verbose()}
             selected={item.messageId === selectedSteerMessageId}
@@ -2193,7 +2194,7 @@ export function App({ boot }) {
           />
         ) : (
           <ConversationSearchMessage
-            key={hiddenCount + i}
+            key={`${transcriptSource}:${item.messageId || item.callId || hiddenCount + i}`}
             item={item}
             verbose={verbose()}
             currentMatch={conversationSearchMatches[conversationSearch.index()]?.itemIndex === i ? conversationSearchMatches[conversationSearch.index()] : null}
