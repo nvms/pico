@@ -120,7 +120,7 @@ test('background bash descriptions are not marked as shell code', async () => {
   assert.equal(recorder.entries[0].title, 'slow number counter')
   assert.equal(recorder.entries[0].titleLang, null)
   assert.match(result.note, /will notify you when it exits/)
-  assert.match(result.note, /do not schedule a wake-up/)
+  assert.match(result.note, /end your turn and wait instead of polling/)
   shells.kill(result.shellId)
 })
 

@@ -23,7 +23,7 @@ function killTree(child, signal = 'SIGTERM') {
 export function createBash({ cwd, env, recorder, signal, shells, sessionId, sessionFile, autoBackgroundMs = AUTO_BACKGROUND_MS }) {
   return {
     name: 'bash',
-    description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands still running after 150 seconds are automatically backgrounded. Run known long-lived commands with background true. Background shells notify you when they exit; inspect them with shell_output and stop them with shell_kill.',
+    description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands still running after 150 seconds are automatically backgrounded. Run known long-lived commands with background true. Background shells notify you when they exit. If no independent work remains, end your turn and wait for that notification instead of polling. Use shell_output only when intermediate output is needed to diagnose a problem or make a decision before exit. Stop shells with shell_kill.',
     schema: {
       command: { type: 'string', description: 'the command to run' },
       timeout: { type: 'number', description: 'optional foreground timeout in milliseconds; commands still running after 150 seconds are backgrounded instead', optional: true },
@@ -37,7 +37,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
         return {
           shellId: id,
           status: 'running',
-          note: 'the shell will notify you when it exits; do not schedule a wake-up to poll it',
+          note: 'the shell will notify you when it exits; if no independent work remains, end your turn and wait instead of polling with shell_output, wake-ups, sleeps, or another shell',
         }
       }
       return new Promise((resolve) => {
@@ -80,7 +80,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
               resolve({
                 shellId: id,
                 status: 'running',
-                note: `automatically backgrounded after ${autoBackgroundMs}ms; the shell will notify you when it exits`,
+                note: `automatically backgrounded after ${autoBackgroundMs}ms; the shell will notify you when it exits; if no independent work remains, end your turn and wait instead of polling`,
               })
             }, autoBackgroundMs)
           : null

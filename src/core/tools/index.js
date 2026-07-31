@@ -30,7 +30,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     local.push(
       {
         name: 'shell_output',
-        description: 'Read recent output from a background shell started with bash background: true.',
+        description: 'Read recent output from a background shell started with bash background: true. Use only when intermediate output is needed to diagnose a suspected problem or make a decision before the shell exits. Do not use for routine progress polling; completion is delivered automatically, so if no independent work remains, end your turn and wait.',
         schema: {
           id: { type: 'string', description: 'the shell id' },
           tail: { type: 'number', description: 'how many trailing lines to return, default 100', optional: true },
