@@ -2302,6 +2302,7 @@ export function App({ boot }) {
         <TextArea
           color={FG}
           lineCounter
+          scrollbar
           focused={fm.is('input') && !anyPanel() && !questionRequest()}
           value={input()}
           onChange={(v) => {
