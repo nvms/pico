@@ -28,6 +28,10 @@ export function hydrateImages(history) {
 // output token; this guards against truly dead streams, not slow ones
 const STALL_MS = 300000
 
+export function compactionHistory(history, prompt) {
+  return hydrateImages([...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }])
+}
+
 export async function compactHistory({ history, modelName, auth, prompt, signal, onStream }) {
   const out = await compose(
     model({
@@ -36,7 +40,7 @@ export async function compactHistory({ history, modelName, auth, prompt, signal,
       ...(auth?.headers && { headers: auth.headers }),
     }),
   )({
-    history: [...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }],
+    history: await compactionHistory(history, prompt),
     tools: [],
     abortSignal: signal,
     ...(onStream && { stream: onStream }),

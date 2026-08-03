@@ -600,8 +600,12 @@ export function App({ boot }) {
       setExpedited([])
       setQueued([])
       if (controller.signal.aborted) setInput(next.join('\n'))
-      else executeTurn(next.join('\n'))
+      else {
+        executeTurn(next.join('\n'))
+        return
+      }
     }
+    flushSystemNotes()
   }
 
   function maybeAutoCompact() {

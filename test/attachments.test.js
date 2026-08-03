@@ -4,7 +4,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { extractImagePaths, mediaTypeFor, buildUserContent, finalizeUserContent, splitTextByImagePaths, placeholderizeImagePaths, inputTextFromContent } from '../src/ui/attachments.js'
-import { hydrateImages } from '../src/core/agent.js'
+import { compactionHistory, hydrateImages } from '../src/core/agent.js'
 
 const yes = () => true
 
@@ -122,4 +122,19 @@ test('hydrateImages converts path parts to base64 and degrades gracefully', asyn
   assert.equal(hydrated[1].content[1].source.data, Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'))
   assert.match(hydrated[1].content[2].text, /image unavailable/)
   assert.equal(mediaTypeFor('a.JPG'), 'image/jpeg')
+})
+
+test('compaction history hydrates images and excludes system messages', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pico-compact-img-'))
+  const img = join(dir, 'x.png')
+  await writeFile(img, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+
+  const history = await compactionHistory([
+    { role: 'system', content: 'system' },
+    { role: 'user', content: [{ type: 'image', source: { kind: 'path', path: img, mediaType: 'image/png' } }] },
+  ], 'summarize')
+
+  assert.equal(history.length, 2)
+  assert.equal(history[0].content[0].source.kind, 'base64')
+  assert.deepEqual(history[1], { role: 'user', content: 'summarize' })
 })
