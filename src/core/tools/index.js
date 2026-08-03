@@ -152,9 +152,9 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       },
       {
         name: 'agent_start',
-        description: 'Start one background worker, consuming one unit of the current turn\'s agent_plan budget. Collected or completed workers do not restore budget within that turn. Workers can inspect, modify, and test the current project with the configured tools. Continue only independent work until you collect its result with agent_collect.',
+        description: 'Start one background worker, consuming one unit of the current turn\'s agent_plan budget. Workers do not receive the parent conversation, only the supplied prompt and their available project context and tools. Make the prompt self-contained by including all conversation-specific terms, goals, constraints, and decisions the worker cannot discover itself. Collected or completed workers do not restore budget within that turn. Continue only independent work until you collect its result with agent_collect.',
         schema: {
-          prompt: { type: 'string', description: 'complete, self-contained task and desired output' },
+          prompt: { type: 'string', description: 'complete, self-contained task and desired output, including necessary context from the parent conversation' },
           description: { type: 'string', description: 'short label shown to the user' },
           tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured worker tools', optional: true },
         },
