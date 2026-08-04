@@ -2065,9 +2065,6 @@ export function App({ boot }) {
       ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools')
       : visibleItems
   const { matches: conversationSearchMatches, items } = conversationSearch.prepare(groupedItems)
-  const runningBashIndex = compactToolHistory()
-    ? -1
-    : items.findLastIndex((item) => item.kind === 'tool' && item.name === 'bash' && item.status === 'running')
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
 
@@ -2205,7 +2202,6 @@ export function App({ boot }) {
             key={`${transcriptSource}:${item.messageId || item.callId || hiddenCount + i}`}
             item={item}
             verbose={verbose()}
-            showRunningCommand={i === runningBashIndex}
             currentMatch={conversationSearchMatches[conversationSearch.index()]?.itemIndex === i ? conversationSearchMatches[conversationSearch.index()] : null}
             search={conversationSearch}
           />

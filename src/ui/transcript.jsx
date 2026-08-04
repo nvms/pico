@@ -119,7 +119,7 @@ function ToolGroup({ item, verbose }) {
   )
 }
 
-function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, showRunningCommand = false, startedAt, durationMs }) {
+function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
   const shownTitle = titleLang && title ? highlight(title, titleLang) : title
   const preview = diffPreview(diff, revert)
   const running = status === 'running'
@@ -150,11 +150,11 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
         <text> </text>
         <text style={{ color: MUTED }}>{`${name.padEnd(5)} `}</text>
         <box style={{ flexGrow: 1, height: 1 }}>
-          <text style={{ overflow: 'truncate', color: FG }}>{running && showRunningCommand ? '' : shownTitle || name}</text>
+          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || name}</text>
         </box>
         <text style={{ color: FAINT }}>{`  ${info}`}</text>
       </box>
-      {running && showRunningCommand && name === 'bash' && title && (
+      {running && verbose && name === 'bash' && title && (
         <box style={{ bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
           <text style={{ color: FG }}>{highlight(title, titleLang || 'bash')}</text>
         </box>
@@ -189,7 +189,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
   )
 }
 
-export function Message({ item, verbose, showLocked = false, showRunningCommand = false }) {
+export function Message({ item, verbose, showLocked = false }) {
   if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
   if (item.kind === 'agent-notice-group') {
@@ -213,7 +213,7 @@ export function Message({ item, verbose, showLocked = false, showRunningCommand 
   }
 
   if (item.kind === 'tool') {
-    return <ToolCard {...item} verbose={verbose} showRunningCommand={showRunningCommand} />
+    return <ToolCard {...item} verbose={verbose} />
   }
 
   if (item.kind === 'summary') {

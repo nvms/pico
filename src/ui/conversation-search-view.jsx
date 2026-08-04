@@ -9,10 +9,10 @@ function ScrollAnchor({ target }) {
   return null
 }
 
-function SearchMessage({ item, verbose, showRunningCommand, currentMatch, search }) {
+function SearchMessage({ item, verbose, currentMatch, search }) {
   const layout = useLayout()
   if (currentMatch) search.scrollToMatch(layout, currentMatch)
-  return <Message item={item} verbose={verbose} showRunningCommand={showRunningCommand} />
+  return <Message item={item} verbose={verbose} />
 }
 
 export function createConversationSearch({ fm, verbose, setFollow, setOffset }) {
