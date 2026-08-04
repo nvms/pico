@@ -16,6 +16,7 @@ export function buildSystemPrompt({ cwd, contextFiles = [], skills = [], memoryI
     `Current date and time: ${now.toString()}`,
     ``,
     `Use the available tools to read, search, and modify files, and to run commands.`,
+    `Use absolute paths in tool calls.`,
     `Prefer the built-in tools for file and shell work: read, write, edit, bash, glob, grep.`,
     `Tools with server-prefixed names come from MCP servers: reach for them only when they provide a capability the built-in tools do not, never as a substitute for simple file access or shell commands.`,
     `Prefer reading files before editing them. Keep edits minimal and precise.`,
