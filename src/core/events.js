@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
 
 export const SESSION_VERSION = 1
 
@@ -35,4 +37,14 @@ export function parseLine(line) {
 
 export function parseLines(text) {
   return text.split('\n').map(parseLine).filter(Boolean)
+}
+
+export async function readEvents(file) {
+  const events = []
+  const lines = createInterface({ input: createReadStream(file), crlfDelay: Infinity })
+  for await (const line of lines) {
+    const event = parseLine(line)
+    if (event) events.push(event)
+  }
+  return events
 }

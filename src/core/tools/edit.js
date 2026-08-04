@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { makeReversibleEdit } from '../reversible-edit.js'
 import { makeDiff } from './diff.js'
 
 const LOOKALIKES = { '‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-' }
@@ -64,17 +65,25 @@ export function createEdit({ cwd, recorder, tracker }) {
       const before = await readFile(full, 'utf-8')
 
       let after
+      let splices
       if (replaceAll) {
+        if (!oldText) throw new Error('oldText must not be empty when replaceAll is set')
         if (!before.includes(oldText)) throw new Error(`string not found in ${path}`)
+        splices = []
+        for (let start = before.indexOf(oldText); start !== -1; start = before.indexOf(oldText, start + oldText.length)) {
+          splices.push({ start, oldText, newText })
+        }
         after = before.split(oldText).join(newText)
       } else {
         const { start, end } = locate(before, oldText, path)
+        const actualOldText = before.slice(start, end)
+        splices = [{ start, oldText: actualOldText, newText }]
         after = before.slice(0, start) + newText + before.slice(end)
       }
 
       await writeFile(full, after, 'utf-8')
       const diff = makeDiff(path, before, after)
-      recorder.extra({ diff, revert: { path: full, before, after } })
+      recorder.extra({ diff, revert: makeReversibleEdit(full, before, after, splices) })
 
       const result = { ok: true, path, additions: diff.additions, deletions: diff.deletions }
       const context = tracker.check(full)

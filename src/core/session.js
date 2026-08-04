@@ -1,9 +1,9 @@
-import { access, appendFile, open, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, appendFile, open, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
 import { withSessionLock } from './session-lock.js'
 import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
-import { makeEvent, makeHeader, serializeLine, parseLines } from './events.js'
+import { makeEvent, makeHeader, readEvents, serializeLine } from './events.js'
 
 const appendQueues = new Map()
 const writeFailures = new Map()
@@ -76,7 +76,7 @@ export function appendSessionEvent(file, event) {
       return
     }
     writeFailures.delete(file)
-    scheduleSessionIndexUpdate(file)
+    scheduleSessionIndexUpdate(file, event)
   })
   appendQueues.set(file, queued)
   return queued
@@ -118,7 +118,7 @@ export function openSession({ file, header }) {
 }
 
 export async function loadSession(file) {
-  const events = parseLines(await readFile(file, 'utf-8'))
+  const events = await readEvents(file)
   const header = events[0]?.type === 'session' ? events.shift() : null
   if (!header) throw new Error(`not a pico session file: ${file}`)
   return { header, events }

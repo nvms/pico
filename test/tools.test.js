@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createToolset } from '../src/core/tools/index.js'
@@ -9,6 +9,7 @@ import { createShellManager } from '../src/core/shells.js'
 import { createBash } from '../src/core/tools/bash.js'
 import { createRecorder, recorded } from '../src/core/tools/recorder.js'
 import { createEdit } from '../src/core/tools/edit.js'
+import { reapplyEdits, revertEdits } from '../src/core/rewind.js'
 
 async function fixture() {
   const cwd = await mkdtemp(join(tmpdir(), 'pico-tools-'))
@@ -45,8 +46,25 @@ test('edit replaces unique text and records diff and revert', async () => {
   assert.match(await readFile(join(cwd, 'hello.js'), 'utf-8'), /const a = 10/)
   const entry = recorder.entries[0]
   assert.ok(entry.diff.hunks.length)
-  assert.match(entry.revert.before, /const a = 1\n/)
-  assert.match(entry.revert.after, /const a = 10/)
+  assert.equal(entry.revert.version, 2)
+  assert.deepEqual(entry.revert.splices, [{ start: 0, oldText: 'const a = 1', newText: 'const a = 10' }])
+  assert.equal(typeof entry.revert.before.hash, 'string')
+  assert.equal(typeof entry.revert.after.hash, 'string')
+  assert.ok(JSON.stringify(entry.revert).length < 500)
+})
+
+test('replaceAll compact metadata rewinds every replacement', async () => {
+  const { cwd, byName, recorder } = await fixture()
+  const file = join(cwd, 'repeated.txt')
+  await writeFile(file, 'one x two x three')
+  await byName.edit.execute({ path: 'repeated.txt', oldText: 'x', newText: 'longer', replaceAll: true })
+  const edit = { callId: 'replace-all', revert: recorder.entries[0].revert }
+
+  assert.equal(await readFile(file, 'utf-8'), 'one longer two longer three')
+  assert.deepEqual((await revertEdits([edit])).reverted, ['replace-all'])
+  assert.equal(await readFile(file, 'utf-8'), 'one x two x three')
+  assert.deepEqual((await reapplyEdits([edit])).reapplied, ['replace-all'])
+  assert.equal(await readFile(file, 'utf-8'), 'one longer two longer three')
 })
 
 test('edit rejects ambiguous text', async () => {
@@ -70,6 +88,19 @@ test('write with identical content is a recorded no-op', async () => {
   assert.equal(result.unchanged, true)
   assert.equal(recorder.entries[0].revert, undefined)
   assert.equal(recorder.entries[0].diff, undefined)
+})
+
+test('write does not treat unreadable files as missing', async () => {
+  if (process.platform === 'win32' || process.getuid?.() === 0) return
+  const { cwd, byName } = await fixture()
+  const file = join(cwd, 'unreadable.js')
+  await writeFile(file, 'protected\n')
+  await chmod(file, 0o000)
+  try {
+    await assert.rejects(byName.write.execute({ path: 'unreadable.js', content: 'replacement\n' }), /EACCES/)
+  } finally {
+    await chmod(file, 0o600)
+  }
 })
 
 test('write creates files with parents and diffs overwrites', async () => {

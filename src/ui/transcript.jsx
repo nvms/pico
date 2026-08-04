@@ -33,10 +33,27 @@ function TranscriptCodeBlock(props) {
   return <Component {...props} />
 }
 
+function diffPreview(diff, revert) {
+  if (!diff?.hunks?.length) return { before: String(revert?.before || ''), after: String(revert?.after || '') }
+  const before = []
+  const after = []
+  diff.hunks.forEach((hunk, index) => {
+    if (index) {
+      before.push('⋯')
+      after.push('⋯')
+    }
+    for (const line of hunk.lines) {
+      if (line.type !== 'add') before.push(line.text)
+      if (line.type !== 'remove') after.push(line.text)
+    }
+  })
+  return { before: before.join('\n'), after: after.join('\n') }
+}
+
 function diffPreviewLines(diff, revert) {
   if (diff?.hunks?.length) return diff.hunks.reduce((sum, h) => sum + h.lines.length, 0)
-  // events recorded before created-file writes carried hunks: size from the content itself
-  return Math.max(String(revert?.after || '').split('\n').length, String(revert?.before || '').split('\n').length, 2)
+  const preview = diffPreview(diff, revert)
+  return Math.max(preview.after.split('\n').length, preview.before.split('\n').length, 2)
 }
 
 function fmtDuration(ms) {
@@ -104,6 +121,7 @@ function ToolGroup({ item, verbose }) {
 
 function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
   const shownTitle = titleLang && title ? highlight(title, titleLang) : title
+  const preview = diffPreview(diff, revert)
   const running = status === 'running'
   const interrupted = status === 'interrupted'
   const reverted = status === 'reverted'
@@ -142,8 +160,8 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
       {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
         <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert), marginTop: 1 }}>
           <Diff
-            before={revert.before}
-            after={revert.after}
+            before={preview.before}
+            after={preview.after}
             language={langForPath(revert.path)}
             highlight={highlight}
             context={3}

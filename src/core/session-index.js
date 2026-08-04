@@ -11,6 +11,7 @@ const DELETED_SUFFIX = '.jsonl.deleted'
 const FLUSH_DELAY_MS = 1000
 
 const dirtyFiles = new Set()
+const pendingEvents = new Map()
 let flushTimer = null
 let indexWrites = Promise.resolve()
 
@@ -115,11 +116,18 @@ async function rebuildIndex(dir, names) {
   return sessions
 }
 
-async function refreshFiles(dir, sessions, files) {
+async function refreshFiles(dir, sessions, files, eventsByFile = new Map()) {
   for (const file of files) {
     try {
-      const row = await withSessionLock(file, () => metadataFromFile(file))
       const at = sessions.findIndex((session) => session.file === file)
+      const events = eventsByFile.get(file)
+      let row
+      if (at >= 0 && events?.length) {
+        const { mtimeMs } = await stat(file)
+        row = events.reduce(applyEvent, { ...sessions[at], at: mtimeMs })
+      } else {
+        row = await withSessionLock(file, () => metadataFromFile(file))
+      }
       if (at < 0) sessions.push(row)
       else sessions[at] = row
     } catch (err) {
@@ -142,7 +150,11 @@ async function currentSessions(dir) {
   }
 
   const dirty = names.filter((name) => name.endsWith(`.jsonl${DIRTY_SUFFIX}`)).map((name) => fileFromDirtyName(dir, name))
-  if (dirty.length > 0) sessions = await refreshFiles(dir, sessions, [...new Set(dirty)])
+  if (dirty.length > 0) {
+    const files = [...new Set(dirty)]
+    sessions = await refreshFiles(dir, sessions, files)
+    files.forEach((file) => pendingEvents.delete(file))
+  }
 
   const deleted = new Set(names.filter((name) => name.endsWith(DELETED_SUFFIX)).map((name) => join(dir, name.slice(0, -'.deleted'.length))))
   if (deleted.size > 0) {
@@ -178,15 +190,22 @@ function scheduleFlush() {
   flushTimer.unref?.()
 }
 
-export function scheduleSessionIndexUpdate(file) {
+export function scheduleSessionIndexUpdate(file, event) {
   dirtyFiles.add(file)
+  if (event) {
+    const events = pendingEvents.get(file) || []
+    events.push(event)
+    pendingEvents.set(file, events)
+  }
   scheduleFlush()
 }
 
 export function flushSessionIndex() {
   if (dirtyFiles.size === 0) return indexWrites
   const files = [...dirtyFiles]
+  const eventsByFile = new Map(files.map((file) => [file, pendingEvents.get(file)]))
   dirtyFiles.clear()
+  files.forEach((file) => pendingEvents.delete(file))
   clearTimeout(flushTimer)
   flushTimer = null
   const byDir = Map.groupBy(files, dirname)
@@ -196,19 +215,25 @@ export function flushSessionIndex() {
       try {
         await withIndexLock(dir, async () => {
           let sessions
+          let rebuilt = false
           try {
             sessions = await readIndex(dir)
           } catch {
             sessions = await rebuildIndex(dir)
+            rebuilt = true
           }
-          await refreshFiles(dir, sessions, projectFiles)
+          await refreshFiles(dir, sessions, projectFiles, rebuilt ? new Map() : eventsByFile)
         })
       } catch (err) {
         failed.push(...projectFiles)
       }
     }))
     if (failed.length > 0) {
-      failed.forEach((file) => dirtyFiles.add(file))
+      failed.forEach((file) => {
+        dirtyFiles.add(file)
+        const events = eventsByFile.get(file)
+        if (events?.length) pendingEvents.set(file, [...events, ...(pendingEvents.get(file) || [])])
+      })
       scheduleFlush()
       throw new Error('failed to update session index')
     }
@@ -217,6 +242,7 @@ export function flushSessionIndex() {
 
 export function removeFromSessionIndex(file) {
   dirtyFiles.delete(file)
+  pendingEvents.delete(file)
   const dir = dirname(file)
   return enqueueIndexWrite(() => withIndexLock(dir, async () => {
     await rm(dirtyPath(file), { force: true })

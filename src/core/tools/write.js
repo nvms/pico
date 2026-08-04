@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
+import { makeWriteEdit } from '../reversible-edit.js'
 import { makeDiff } from './diff.js'
 
 export function createWrite({ cwd, recorder, tracker }) {
@@ -17,7 +18,9 @@ export function createWrite({ cwd, recorder, tracker }) {
       let before = null
       try {
         before = await readFile(full, 'utf-8')
-      } catch {}
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err
+      }
 
       if (before === content) {
         return { ok: true, path, unchanged: true, note: 'file already had exactly this content' }
@@ -27,12 +30,12 @@ export function createWrite({ cwd, recorder, tracker }) {
       const result = { ok: true, path }
       if (before !== null) {
         const diff = makeDiff(path, before, content)
-        recorder.extra({ diff, revert: { path: full, before, after: content } })
+        recorder.extra({ diff, revert: makeWriteEdit(full, before, content, true) })
         result.additions = diff.additions
         result.deletions = diff.deletions
       } else {
         const diff = makeDiff(path, '', content)
-        recorder.extra({ diff, revert: { path: full, before: '', after: content }, created: true })
+        recorder.extra({ diff, revert: makeWriteEdit(full, '', content, false), created: true })
         result.additions = diff.additions
         result.created = true
       }

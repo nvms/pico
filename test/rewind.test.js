@@ -1,9 +1,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { implicitRewindTarget, revertEdits, reapplyEdits } from '../src/core/rewind.js'
+import { makeReversibleEdit, makeWriteEdit } from '../src/core/reversible-edit.js'
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), 'pico-rewind-'))
@@ -55,6 +56,31 @@ test('reverts stacked edits newest first', async () => {
   const { reverted } = await revertEdits(edits)
   assert.deepEqual(reverted, ['c2', 'c1'])
   assert.equal(await readFile(file, 'utf-8'), 'v1')
+})
+
+test('compact edits revert and reapply in order', async () => {
+  const { file } = await fixture()
+  await writeFile(file, 'alpha THREE omega')
+  const first = makeReversibleEdit(file, 'alpha one omega', 'alpha two omega', [{ start: 6, oldText: 'one', newText: 'two' }])
+  const second = makeReversibleEdit(file, 'alpha two omega', 'alpha THREE omega', [{ start: 6, oldText: 'two', newText: 'THREE' }])
+  const edits = [{ callId: 'c1', revert: first }, { callId: 'c2', revert: second }]
+
+  assert.deepEqual((await revertEdits(edits)).reverted, ['c2', 'c1'])
+  assert.equal(await readFile(file, 'utf-8'), 'alpha one omega')
+  assert.deepEqual((await reapplyEdits(edits)).reapplied, ['c1', 'c2'])
+  assert.equal(await readFile(file, 'utf-8'), 'alpha THREE omega')
+})
+
+test('rewinding a compact created-file write removes the file', async () => {
+  const { dir } = await fixture()
+  const file = join(dir, 'created.txt')
+  await writeFile(file, 'created content')
+  const edits = [{ callId: 'c1', revert: makeWriteEdit(file, '', 'created content', false) }]
+
+  assert.deepEqual((await revertEdits(edits)).reverted, ['c1'])
+  await assert.rejects(access(file), { code: 'ENOENT' })
+  assert.deepEqual((await reapplyEdits(edits)).reapplied, ['c1'])
+  assert.equal(await readFile(file, 'utf-8'), 'created content')
 })
 
 test('reapply restores edits in order', async () => {
