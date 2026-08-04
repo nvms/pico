@@ -150,6 +150,16 @@ test('bash receives additional environment variables', async () => {
   assert.equal(result.stdout, '/scratch/example')
 })
 
+test('shell_output tells the model not to reread an exited shell', async () => {
+  const shells = { output: () => ({ status: 'exited', exitCode: 0, output: 'done', totalLines: 1 }) }
+  const { tools } = createToolset({ cwd: process.cwd(), shells, allowNames: ['shell_output'] })
+  const shellOutput = tools.find((tool) => tool.name === 'shell_output')
+
+  const result = await shellOutput.execute({ id: '1' })
+
+  assert.equal(result.note, 'This shell has exited and its output is complete. Do not call shell_output again for this shell.')
+})
+
 test('glob finds files and ignores node_modules', async () => {
   const { cwd, byName } = await fixture()
   await mkdir(join(cwd, 'node_modules/junk'), { recursive: true })

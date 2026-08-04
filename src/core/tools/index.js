@@ -35,7 +35,13 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
           id: { type: 'string', description: 'the shell id' },
           tail: { type: 'number', description: 'how many trailing lines to return, default 100', optional: true },
         },
-        execute: ({ id, tail = 100 }) => shells.output(id, { tail: Math.min(tail, 500) }),
+        execute: ({ id, tail = 100 }) => {
+          const result = shells.output(id, { tail: Math.min(tail, 500) })
+          if (result.status === 'exited') {
+            result.note = 'This shell has exited and its output is complete. Do not call shell_output again for this shell.'
+          }
+          return result
+        },
       },
       {
         name: 'shell_kill',
