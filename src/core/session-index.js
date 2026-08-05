@@ -1,7 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
-import { parseLines } from './events.js'
+import { dirname, join } from 'node:path'
+import { streamEvents } from './events.js'
 import { withIndexLock, withSessionLock } from './session-lock.js'
 
 const INDEX_VERSION = 4
@@ -48,22 +48,29 @@ function applyEvent(meta, event) {
 }
 
 async function metadataFromFile(file) {
-  const text = await readFile(file, 'utf-8')
-  const [header, ...events] = parseLines(text)
-  if (!header || header.type !== 'session') throw new Error('invalid session')
-  const { mtimeMs } = await stat(file)
-  return events.reduce(applyEvent, {
-    file,
-    header,
-    title: 'Untitled session',
-    automaticTitle: null,
-    customTitle: undefined,
-    color: null,
-    turns: 0,
-    preview: [],
-    previewMessageCount: 0,
-    at: mtimeMs,
-  })
+  let meta = null
+  for await (const event of streamEvents(file)) {
+    if (!meta) {
+      if (event.type !== 'session') throw new Error('invalid session')
+      meta = {
+        file,
+        header: event,
+        title: 'Untitled session',
+        automaticTitle: null,
+        customTitle: undefined,
+        color: null,
+        turns: 0,
+        preview: [],
+        previewMessageCount: 0,
+        at: 0,
+      }
+    } else {
+      meta = applyEvent(meta, event)
+    }
+  }
+  if (!meta) throw new Error('invalid session')
+  meta.at = (await stat(file)).mtimeMs
+  return meta
 }
 
 function indexPath(dir) {
