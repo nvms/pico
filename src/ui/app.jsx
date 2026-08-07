@@ -1685,6 +1685,7 @@ export function App({ boot }) {
   }
   const conversationSearch = createConversationSearch({ fm, verbose, setFollow, setOffset })
   conversationSearch.registerFocus()
+  let conversationSearchMatches = []
   agentsVersion()
   const agentRows = agents.list()
   shellsVersion()
@@ -2064,7 +2065,9 @@ export function App({ boot }) {
     : compactToolHistory()
       ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools')
       : visibleItems
-  const { matches: conversationSearchMatches, items } = conversationSearch.prepare(groupedItems)
+  const preparedConversation = conversationSearch.prepare(groupedItems)
+  conversationSearchMatches = preparedConversation.matches
+  const items = preparedConversation.items
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
 
