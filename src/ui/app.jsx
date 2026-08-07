@@ -2429,7 +2429,7 @@ export function App({ boot }) {
       </MouseFocusRegion>}
 
       {showCommands && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
           {matchedCommands.length === 0 ? (
             <text style={{ color: FAINT }}>no matching commands</text>
           ) : (
@@ -2455,7 +2455,7 @@ export function App({ boot }) {
       )}
 
       {showFiles && matchedFiles.length > 0 && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
           <Menu
             counter
             items={matchedFiles}
@@ -2477,7 +2477,7 @@ export function App({ boot }) {
       )}
 
       {showCompletion && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
           <Menu
             counter
             items={compCtx.matches}
