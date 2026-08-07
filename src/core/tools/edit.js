@@ -19,7 +19,7 @@ function normalize(text) {
       offsets.push(i)
     }
   }
-  for (const match of text.matchAll(/\s+$/gm)) {
+  for (const match of text.matchAll(/[^\S\n]+$/gm)) {
     keep(last, match.index)
     last = match.index + match[0].length
   }

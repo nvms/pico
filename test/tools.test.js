@@ -270,6 +270,22 @@ test('a fuzzy edit tolerating trailing whitespace keeps the rest of the line', a
   assert.equal(await readFile(file, 'utf-8'), 'keep me   \ndone\nkeep me too   \n')
 })
 
+test('a fuzzy edit does not ignore a missing blank line', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pico-edit-'))
+  const file = join(dir, 'blank-line.txt')
+  const before = 'function a() {}   \n\nfunction b() {}\n'
+  await writeFile(file, before)
+
+  const recorder = createRecorder()
+  const edit = createEdit({ cwd: dir, recorder, tracker: { check: () => [] } })
+  await assert.rejects(
+    edit.execute({ path: 'blank-line.txt', oldText: 'function a() {}\nfunction b() {}', newText: 'function merged() {}' }),
+    /not found/,
+  )
+
+  assert.equal(await readFile(file, 'utf-8'), before)
+})
+
 test('edit still reports missing and ambiguous strings', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pico-edit-'))
   await writeFile(join(dir, 'b.txt'), 'alpha\nalpha\n')
