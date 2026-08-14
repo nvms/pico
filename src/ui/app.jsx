@@ -242,7 +242,7 @@ function compactTranscriptRuns(items, active = false) {
       let end = i + 1
       while (end < items.length && items[end].kind === 'tool') end++
       const run = items.slice(i, end)
-      result.push(run.length === 1 ? run[0] : { kind: 'tool-group', callId: run.at(-1).callId, tools: run, active: active && end === items.length })
+      result.push({ kind: 'tool-group', callId: run.at(-1).callId, tools: run, active: active && end === items.length })
       i = end
       continue
     }

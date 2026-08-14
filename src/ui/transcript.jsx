@@ -78,6 +78,20 @@ function mixColor(from, to, amount) {
 
 const TOOL_DESCRIPTION_LIMIT = 5
 const BASH_OUTPUT_LINES = 8
+const TOOL_NAME_FLASH_MS = 900
+const DESCRIPTION_REVEAL_DELAY_MS = 500
+const DESCRIPTION_REVEAL_MS = 700
+
+function delayedLinear(t) {
+  const delay = DESCRIPTION_REVEAL_DELAY_MS / (DESCRIPTION_REVEAL_DELAY_MS + DESCRIPTION_REVEAL_MS)
+  return t <= delay ? 0 : (t - delay) / (1 - delay)
+}
+
+function DescriptionReveal({ children, active }) {
+  const reveal = useAnimated(active ? 0 : 1, ease(DESCRIPTION_REVEAL_DELAY_MS + DESCRIPTION_REVEAL_MS, delayedLinear))
+  if (active) reveal.set(1)
+  return <text style={{ color: mixColor(accent(), FG, reveal()) }}>{children}</text>
+}
 
 function outputLines(value) {
   if (!value) return []
@@ -107,7 +121,7 @@ function BashOutput({ value, lineStart, lineCount }) {
 
 function ToolGroup({ item, verbose }) {
   const latestCallId = item.tools.at(-1)?.callId
-  const glow = useAnimated(0, ease(500, linear))
+  const glow = useAnimated(0, ease(TOOL_NAME_FLASH_MS, linear))
   if (latestCallId !== glow._callId) {
     glow._callId = latestCallId
     if (item.active) {
@@ -151,7 +165,7 @@ function ToolGroup({ item, verbose }) {
         {descriptions.map((tool, index) => (
           <box key={tool.callId} style={{ flexDirection: 'row' }}>
             <text style={{ color: MUTED }}>{`${tool.name.padStart(5)}  `}</text>
-            <text style={{ color: item.active && index === 0 ? mixColor(FG, accent(), glow()) : FG }}>{tool.description}</text>
+            <DescriptionReveal active={item.active && index === 0}>{tool.description}</DescriptionReveal>
           </box>
         ))}
         {hiddenDescriptions > 0 && (
@@ -201,7 +215,11 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
         </box>
         <text style={{ color: FAINT }}>{`  ${info}`}</text>
       </box>
-      {description && <text style={{ color: MUTED, paddingLeft: 8 }}>{description}</text>}
+      {description && (
+        <box style={{ paddingLeft: 8 }}>
+          <text style={{ color: MUTED }}>{description}</text>
+        </box>
+      )}
       {verbose && name === 'bash' && title && (
         <box style={{ paddingLeft: 8 }}>
           <text style={{ color: FG }}>{highlight(title, titleLang || 'bash')}</text>
