@@ -145,7 +145,7 @@ function ToolGroup({ item, verbose }) {
   const latestName = item.tools.at(-1)?.name
   const descriptions = item.tools.filter((tool) => tool.description).slice(-TOOL_DESCRIPTION_LIMIT).reverse()
   const hiddenDescriptions = item.tools.filter((tool) => tool.description).length - descriptions.length
-  const runningBash = item.tools.findLast((tool) => tool.name === 'bash' && tool.status === 'running')
+  const visibleBash = item.active && item.tools.at(-1)?.name === 'bash' ? item.tools.at(-1) : null
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
       <text> </text>
@@ -174,7 +174,7 @@ function ToolGroup({ item, verbose }) {
             <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
           </box>
         )}
-        {runningBash?.fullOutput && <BashOutput value={runningBash.fullOutput} lineStart={runningBash.outputLineStart} lineCount={runningBash.outputLineCount} />}
+        {visibleBash?.fullOutput && <BashOutput value={visibleBash.fullOutput} lineStart={visibleBash.outputLineStart} lineCount={visibleBash.outputLineCount} />}
       </box>
     </box>
   )
