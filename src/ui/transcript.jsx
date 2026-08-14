@@ -145,6 +145,7 @@ function ToolGroup({ item, verbose }) {
   const latestName = item.tools.at(-1)?.name
   const descriptions = item.tools.filter((tool) => tool.description).slice(-TOOL_DESCRIPTION_LIMIT).reverse()
   const hiddenDescriptions = item.tools.filter((tool) => tool.description).length - descriptions.length
+  const toolNameWidth = Math.max(0, ...descriptions.map((tool) => tool.name.length))
   const visibleBash = item.active && item.tools.at(-1)?.name === 'bash' ? item.tools.at(-1) : null
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
@@ -164,13 +165,13 @@ function ToolGroup({ item, verbose }) {
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
         {descriptions.map((tool, index) => (
           <box key={tool.callId} style={{ flexDirection: 'row' }}>
-            <text style={{ color: MUTED }}>{`${tool.name.padStart(5)}  `}</text>
+            <text style={{ color: MUTED }}>{`${tool.name.padStart(toolNameWidth)}  `}</text>
             <DescriptionReveal active={item.active && index === 0}>{tool.description}</DescriptionReveal>
           </box>
         ))}
         {hiddenDescriptions > 0 && (
           <box style={{ flexDirection: 'row' }}>
-            <text>{'       '}</text>
+            <text>{' '.repeat(toolNameWidth + 2)}</text>
             <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
           </box>
         )}

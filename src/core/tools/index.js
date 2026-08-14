@@ -259,7 +259,8 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     })
   }
 
-  const describedTools = new Set(local.slice(0, 6).map((tool) => tool.name))
+  const describedToolNames = new Set(['read', 'write', 'edit', 'bash', 'glob', 'grep', 'web_search'])
+  const describedTools = new Set(local.filter((tool) => describedToolNames.has(tool.name)).map((tool) => tool.name))
   const byName = new Map()
   for (const tool of [...local, ...userTools, ...mcpTools]) {
     if (allowNames && !allowNames.includes(tool.name)) continue

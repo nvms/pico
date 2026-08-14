@@ -34,6 +34,7 @@ export function createWebTools({ dredge, recorder, signal }) {
         'Search the web. Google-style operators work: site:, filetype:pdf, quoted phrases. Returns ranked results; pass a result url to web_fetch to read it.',
       schema: {
         q: { type: 'string', description: 'the search query' },
+        description: { type: 'string', description: 'briefly explain what this search is intended to find, shown to the human watching' },
       },
       execute: async ({ q }) => {
         recorder.extra({ title: q })
