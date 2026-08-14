@@ -551,20 +551,26 @@ export function App({ boot }) {
     const state = derived()
     if (state.providerHistory.length < 4) return flash('nothing to compact yet')
 
-    let auth = null
-    if (model().provider === 'codex') {
-      auth = await openaiCredentials().catch(() => null)
-      if (!auth) return flash('codex models need a ChatGPT sign-in: run /connect')
-    }
-
-    const keepFrom = compactionKeepFrom(state, model().context)
-
     const controller = new AbortController()
     refs.abort = controller
     setBusy(true)
     setCompacting(true)
     setCompactStatus(null)
     setStartedAt(Date.now())
+
+    let auth = null
+    if (model().provider === 'codex') {
+      auth = await openaiCredentials().catch(() => null)
+      if (!auth) {
+        flash('codex models need a ChatGPT sign-in: run /connect')
+        setCompacting(false)
+        setBusy(false)
+        refs.abort = null
+        return
+      }
+    }
+
+    const keepFrom = compactionKeepFrom(state, model().context)
     let streamed = ''
     try {
       const raw = await compactHistory({
@@ -623,19 +629,23 @@ export function App({ boot }) {
   async function runAgentTurn() {
     const researchAgentLimit = refs.nextResearchAgentLimit || null
     refs.nextResearchAgentLimit = null
-    let auth = null
-    if (model().provider === 'codex') {
-      auth = await openaiCredentials().catch(() => null)
-      if (!auth) {
-        flash('codex models need a ChatGPT sign-in: run /connect')
-        return
-      }
-    }
     setFollow(true)
     setHistWindow(HISTORY_WINDOW)
     setBusy(true)
     setTurnPhase('responding')
     setStartedAt(Date.now())
+
+    let auth = null
+    if (model().provider === 'codex') {
+      auth = await openaiCredentials().catch(() => null)
+      if (!auth) {
+        setTurnPhase('idle')
+        setBusy(false)
+        flash('codex models need a ChatGPT sign-in: run /connect')
+        flushSystemNotes()
+        return
+      }
+    }
 
     const controller = new AbortController()
     refs.abort = controller
