@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
+import { sgr, stripAnsi, updateSgrState } from '@trendr/core'
 
 const MAX_OUTPUT_CHARS = 30000
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024
-const OUTPUT_PREVIEW_LINES = 8
+const OUTPUT_PREVIEW_LINES = 10
 const MAX_PREVIEW_LINE_CHARS = 4000
 export const AUTO_BACKGROUND_MS = 150000
 
@@ -14,25 +15,31 @@ function capped(text) {
 function createOutputPreview() {
   let lines = []
   let current = ''
+  let currentStartStyle = ''
   let completed = 0
+  const ansiState = { fg: null, bg: null, attrs: 0 }
 
   function add(chunk) {
     const parts = String(chunk).split('\n')
     current = (current + parts[0]).slice(0, MAX_PREVIEW_LINE_CHARS)
+    updateSgrState(parts[0], ansiState)
     for (let i = 1; i < parts.length; i++) {
-      lines.push(current)
+      lines.push({ text: current, startStyle: currentStartStyle })
       if (lines.length > OUTPUT_PREVIEW_LINES) lines.shift()
       completed++
+      currentStartStyle = ansiState.fg != null || ansiState.bg != null || ansiState.attrs ? sgr(ansiState.fg, ansiState.bg, ansiState.attrs) : ''
       current = parts[i].slice(0, MAX_PREVIEW_LINE_CHARS)
+      updateSgrState(parts[i], ansiState)
     }
   }
 
   function snapshot() {
-    const visible = current ? [...lines, current].slice(-OUTPUT_PREVIEW_LINES) : lines
+    const hasCurrentText = stripAnsi(current).length > 0
+    const visible = hasCurrentText ? [...lines, { text: current, startStyle: currentStartStyle }].slice(-OUTPUT_PREVIEW_LINES) : lines
     if (!visible.length) return null
-    const count = completed + (current ? 1 : 0)
+    const count = completed + (hasCurrentText ? 1 : 0)
     return {
-      fullOutput: visible.join('\n'),
+      fullOutput: visible.map((line) => `${line.startStyle}${line.text}`).join('\n'),
       outputLineStart: count - visible.length + 1,
       outputLineCount: count,
     }

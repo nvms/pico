@@ -143,18 +143,31 @@ test('bash runs commands and captures exit codes', async () => {
   assert.equal(recorder.entries[0].titleLang, 'bash')
 })
 
-test('bash records only its last eight output lines with their original positions', async () => {
+test('bash records only its last ten output lines with their original positions', async () => {
   const { byName, recorder } = await fixture()
   await byName.bash.execute({
     command: `node -e "for (let i = 1; i <= 20; i++) console.log('line ' + i)"`,
     description: 'generate a bounded output preview',
   })
 
-  assert.equal(recorder.entries[0].fullOutput.split('\n').length, 8)
-  assert.match(recorder.entries[0].fullOutput, /^line 13\n/)
+  assert.equal(recorder.entries[0].fullOutput.split('\n').length, 10)
+  assert.match(recorder.entries[0].fullOutput, /^line 11\n/)
   assert.match(recorder.entries[0].fullOutput, /line 20$/)
-  assert.equal(recorder.entries[0].outputLineStart, 13)
+  assert.equal(recorder.entries[0].outputLineStart, 11)
   assert.equal(recorder.entries[0].outputLineCount, 20)
+})
+
+test('bash carries active ANSI styles into its retained output window', async () => {
+  const { byName, recorder } = await fixture()
+  await byName.bash.execute({
+    command: `node -e "process.stdout.write('\\x1b[31m'); for (let i = 1; i <= 12; i++) console.log('red ' + i); process.stdout.write('\\x1b[0m')"`,
+    description: 'generate colored output across the preview boundary',
+  })
+
+  assert.match(recorder.entries[0].fullOutput, /^\x1b\[0;38;5;1mred 3\n/)
+  assert.match(recorder.entries[0].fullOutput, /\x1b\[0;38;5;1mred 12$/)
+  assert.equal(recorder.entries[0].outputLineStart, 3)
+  assert.equal(recorder.entries[0].outputLineCount, 12)
 })
 
 test('aborting bash terminates a foreground command and its children', async () => {

@@ -77,7 +77,7 @@ function mixColor(from, to, amount) {
 }
 
 const TOOL_DESCRIPTION_LIMIT = 5
-const BASH_OUTPUT_LINES = 8
+const BASH_OUTPUT_LINES = 10
 const TOOL_NAME_FLASH_MS = 900
 const DESCRIPTION_REVEAL_DELAY_MS = 500
 const DESCRIPTION_REVEAL_MS = 700
