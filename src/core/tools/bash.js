@@ -2,11 +2,43 @@ import { spawn } from 'node:child_process'
 
 const MAX_OUTPUT_CHARS = 30000
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024
+const OUTPUT_PREVIEW_LINES = 8
+const MAX_PREVIEW_LINE_CHARS = 4000
 export const AUTO_BACKGROUND_MS = 150000
 
 function capped(text) {
   if (text.length <= MAX_OUTPUT_CHARS) return text
   return text.slice(0, MAX_OUTPUT_CHARS) + `\n[output truncated at ${MAX_OUTPUT_CHARS} characters]`
+}
+
+function createOutputPreview() {
+  let lines = []
+  let current = ''
+  let completed = 0
+
+  function add(chunk) {
+    const parts = String(chunk).split('\n')
+    current = (current + parts[0]).slice(0, MAX_PREVIEW_LINE_CHARS)
+    for (let i = 1; i < parts.length; i++) {
+      lines.push(current)
+      if (lines.length > OUTPUT_PREVIEW_LINES) lines.shift()
+      completed++
+      current = parts[i].slice(0, MAX_PREVIEW_LINE_CHARS)
+    }
+  }
+
+  function snapshot() {
+    const visible = current ? [...lines, current].slice(-OUTPUT_PREVIEW_LINES) : lines
+    if (!visible.length) return null
+    const count = completed + (current ? 1 : 0)
+    return {
+      fullOutput: visible.join('\n'),
+      outputLineStart: count - visible.length + 1,
+      outputLineCount: count,
+    }
+  }
+
+  return { add, snapshot }
 }
 
 function killTree(child, signal = 'SIGTERM') {
@@ -28,11 +60,11 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
       command: { type: 'string', description: 'the command to run' },
       timeout: { type: 'number', description: 'optional foreground timeout in milliseconds; commands still running after 150 seconds are backgrounded instead', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
-      description: { type: 'string', description: 'for background shells: a few words naming what this is for, shown to the human watching (e.g. "vite dev server", "watching ci")', optional: true },
+      description: { type: 'string', description: 'a few words explaining the purpose of this command, shown to the human watching' },
     },
     execute: ({ command, timeout, background, description }) => {
       if (background && shells) {
-        recorder.extra({ title: description || command, titleLang: description ? null : 'bash', background: true })
+        recorder.extra({ title: command, titleLang: 'bash', description, background: true })
         const { id } = shells.start(command, { cwd, env, description, sessionId, sessionFile })
         return {
           shellId: id,
@@ -57,9 +89,22 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
         let settled = false
         let timedOut = false
         let killTimer = null
+        const preview = createOutputPreview()
 
-        const collectStdout = (chunk) => { stdout = (stdout + chunk).slice(-MAX_BUFFER_BYTES) }
-        const collectStderr = (chunk) => { stderr = (stderr + chunk).slice(-MAX_BUFFER_BYTES) }
+        const updateOutput = () => {
+          const snapshot = preview.snapshot()
+          if (snapshot) recorder.extra(snapshot)
+        }
+        const collectStdout = (chunk) => {
+          stdout = (stdout + chunk).slice(-MAX_BUFFER_BYTES)
+          preview.add(chunk)
+          updateOutput()
+        }
+        const collectStderr = (chunk) => {
+          stderr = (stderr + chunk).slice(-MAX_BUFFER_BYTES)
+          preview.add(chunk)
+          updateOutput()
+        }
         child.stdout.on('data', collectStdout)
         child.stderr.on('data', collectStderr)
 
@@ -76,7 +121,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
               clearTimeout(timeoutTimer)
               cleanup()
               shells.reveal(id)
-              recorder.extra({ title: description || command, titleLang: description ? null : 'bash', background: true })
+              recorder.extra({ title: command, titleLang: 'bash', description, background: true })
               resolve({
                 shellId: id,
                 status: 'running',
@@ -114,7 +159,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
           cleanup()
           if (id) shells.discardHidden(id)
           const exitCode = code ?? 1
-          recorder.extra({ fullOutput: [stdout, stderr].filter(Boolean).join('\n') })
+          updateOutput()
           resolve({
             stdout: capped(stdout),
             stderr: capped(stderr),

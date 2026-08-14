@@ -7,8 +7,8 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames }) {
-  const recorder = createRecorder()
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate }) {
+  const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
   const deps = { cwd, env, recorder, tracker, signal, shells, sessionId, sessionFile }
@@ -259,6 +259,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     })
   }
 
+  const describedTools = new Set(local.slice(0, 6).map((tool) => tool.name))
   const byName = new Map()
   for (const tool of [...local, ...userTools, ...mcpTools]) {
     if (allowNames && !allowNames.includes(tool.name)) continue
@@ -267,6 +268,9 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
   const tools = [...byName.values()].map((tool) => ({
     ...tool,
     execute: recorded(recorder, tool.name, async (args) => {
+      if (describedTools.has(tool.name) && !args.description?.trim()) {
+        throw new Error('description is required; retry with a brief explanation of why this call is needed')
+      }
       if (maxToolCalls && recorder.entries.length >= maxToolCalls) {
         throw new Error('tool call limit reached for this run; do not call more tools, summarize what you have and finish')
       }

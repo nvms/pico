@@ -76,6 +76,35 @@ function mixColor(from, to, amount) {
   return `#${a.map((value, i) => Math.round(value + (b[i] - value) * amount).toString(16).padStart(2, '0')).join('')}`
 }
 
+const TOOL_DESCRIPTION_LIMIT = 5
+const BASH_OUTPUT_LINES = 8
+
+function outputLines(value) {
+  if (!value) return []
+  const lines = value.split('\n')
+  if (lines.at(-1) === '') lines.pop()
+  return lines
+}
+
+function BashOutput({ value, lineStart, lineCount }) {
+  const lines = outputLines(value)
+  if (!lines.length) return null
+  const shown = lines.slice(-BASH_OUTPUT_LINES)
+  const first = lineStart || (lineCount ? lineCount - shown.length + 1 : lines.length - shown.length + 1)
+  const last = lineCount || first + shown.length - 1
+  const gutterWidth = String(last).length
+  return (
+    <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
+      {shown.map((line, i) => (
+        <box key={first + i} style={{ flexDirection: 'row' }}>
+          <text style={{ color: FAINT }}>{`${String(first + i).padStart(gutterWidth)} `}</text>
+          <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
+        </box>
+      ))}
+    </box>
+  )
+}
+
 function ToolGroup({ item, verbose }) {
   const latestCallId = item.tools.at(-1)?.callId
   const glow = useAnimated(0, ease(500, linear))
@@ -100,6 +129,9 @@ function ToolGroup({ item, verbose }) {
   const entries = [...counts]
   const totalMs = item.tools.reduce((sum, tool) => sum + (tool.durationMs || 0), 0)
   const latestName = item.tools.at(-1)?.name
+  const descriptions = item.tools.filter((tool) => tool.description).slice(-TOOL_DESCRIPTION_LIMIT).reverse()
+  const hiddenDescriptions = item.tools.filter((tool) => tool.description).length - descriptions.length
+  const runningBash = item.tools.findLast((tool) => tool.name === 'bash' && tool.status === 'running')
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
       <text> </text>
@@ -115,12 +147,27 @@ function ToolGroup({ item, verbose }) {
         </box>
         {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
       </box>
+      <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
+        {descriptions.map((tool, index) => (
+          <box key={tool.callId} style={{ flexDirection: 'row' }}>
+            <text style={{ color: MUTED }}>{`${tool.name.padStart(5)}  `}</text>
+            <text style={{ color: item.active && index === 0 ? mixColor(FG, accent(), glow()) : FG }}>{tool.description}</text>
+          </box>
+        ))}
+        {hiddenDescriptions > 0 && (
+          <box style={{ flexDirection: 'row' }}>
+            <text>{'       '}</text>
+            <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
+          </box>
+        )}
+        {runningBash?.fullOutput && <BashOutput value={runningBash.fullOutput} lineStart={runningBash.outputLineStart} lineCount={runningBash.outputLineCount} />}
+      </box>
     </box>
   )
 }
 
-function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
-  const shownTitle = titleLang && title ? highlight(title, titleLang) : title
+function ToolCard({ name, title, titleLang, description, status, diff, revert, fullOutput, outputLineStart, outputLineCount, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
+  const shownTitle = name === 'bash' ? null : titleLang && title ? highlight(title, titleLang) : title
   const preview = diffPreview(diff, revert)
   const running = status === 'running'
   const interrupted = status === 'interrupted'
@@ -137,7 +184,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
     : failed ? `failed${took ? ` · ${took}` : ''}`
     : background ? 'background · shell listed below'
     : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
-    : outLines ? `${outLines.length} ${outLines.length === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}${showExpandHint ? ' · ctrl+o' : ''}`
+    : outLines ? `${outputLineCount || outLines.length} ${(outputLineCount || outLines.length) === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}${showExpandHint ? ' · ctrl+o' : ''}`
     : `done${took ? ` · ${took}` : ''}`
 
   return (
@@ -150,12 +197,13 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
         <text> </text>
         <text style={{ color: MUTED }}>{`${name.padEnd(5)} `}</text>
         <box style={{ flexGrow: 1, height: 1 }}>
-          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || name}</text>
+          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || (name === 'bash' ? '' : name)}</text>
         </box>
         <text style={{ color: FAINT }}>{`  ${info}`}</text>
       </box>
-      {running && verbose && name === 'bash' && title && (
-        <box style={{ bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
+      {description && <text style={{ color: MUTED, paddingLeft: 8 }}>{description}</text>}
+      {verbose && name === 'bash' && title && (
+        <box style={{ paddingLeft: 8 }}>
           <text style={{ color: FG }}>{highlight(title, titleLang || 'bash')}</text>
         </box>
       )}
@@ -163,7 +211,7 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
         <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${error}`}</text>
       )}
       {revert && !running && !reverted && !(diff && diff.additions === 0 && diff.deletions === 0) && (
-        <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert), marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', height: diffPreviewLines(diff, revert), marginTop: 1, paddingLeft: 8 }}>
           <Diff
             before={preview.before}
             after={preview.after}
@@ -176,9 +224,9 @@ function ToolCard({ name, title, titleLang, status, diff, revert, fullOutput, er
           />
         </box>
       )}
-      {outLines && verbose && !running && (
+      {name === 'bash' && fullOutput && <box style={{ paddingLeft: 8 }}><BashOutput value={fullOutput} lineStart={outputLineStart} lineCount={outputLineCount} /></box>}
+      {outLines && verbose && name !== 'bash' && !running && (
         <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
-          <text style={{ color: MUTED }}>{`$ ${title}`}</text>
           {outLines.slice(0, 200).map((line, i) => (
             <text key={i} style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
           ))}

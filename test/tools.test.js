@@ -18,9 +18,27 @@ async function fixture() {
   await writeFile(join(cwd, 'sub', 'nested.js'), 'export const x = 40 + 2\n')
   const tracker = createContextTracker({ stopDir: cwd, loaded: new Set() })
   const { tools, recorder } = createToolset({ cwd, tracker })
-  const byName = Object.fromEntries(tools.map((t) => [t.name, t]))
-  return { cwd, byName, recorder }
+  const rawByName = Object.fromEntries(tools.map((t) => [t.name, t]))
+  const byName = Object.fromEntries(tools.map((tool) => [tool.name, {
+    ...tool,
+    execute: (args) => tool.execute({ description: `test ${tool.name}`, ...args }),
+  }]))
+  return { cwd, byName, rawByName, recorder }
 }
+
+test('file and shell tools require purpose descriptions', async () => {
+  const { byName } = await fixture()
+  for (const name of ['read', 'write', 'edit', 'bash', 'glob', 'grep']) {
+    assert.equal(byName[name].schema.description.optional, undefined)
+    assert.match(byName[name].schema.description.description, /purpose|why/)
+  }
+})
+
+test('described tools reject missing and blank descriptions at runtime', async () => {
+  const { rawByName } = await fixture()
+  await assert.rejects(rawByName.read.execute({ path: 'hello.js' }), /description is required/)
+  await assert.rejects(rawByName.read.execute({ path: 'hello.js', description: '   ' }), /description is required/)
+})
 
 test('read returns numbered lines and records full output', async () => {
   const { byName, recorder } = await fixture()
@@ -125,6 +143,20 @@ test('bash runs commands and captures exit codes', async () => {
   assert.equal(recorder.entries[0].titleLang, 'bash')
 })
 
+test('bash records only its last eight output lines with their original positions', async () => {
+  const { byName, recorder } = await fixture()
+  await byName.bash.execute({
+    command: `node -e "for (let i = 1; i <= 20; i++) console.log('line ' + i)"`,
+    description: 'generate a bounded output preview',
+  })
+
+  assert.equal(recorder.entries[0].fullOutput.split('\n').length, 8)
+  assert.match(recorder.entries[0].fullOutput, /^line 13\n/)
+  assert.match(recorder.entries[0].fullOutput, /line 20$/)
+  assert.equal(recorder.entries[0].outputLineStart, 13)
+  assert.equal(recorder.entries[0].outputLineCount, 20)
+})
+
 test('aborting bash terminates a foreground command and its children', async () => {
   const controller = new AbortController()
   const recorder = createRecorder()
@@ -139,7 +171,7 @@ test('aborting bash terminates a foreground command and its children', async () 
   assert.notEqual(result.exitCode, 0)
 })
 
-test('background bash descriptions are not marked as shell code', async () => {
+test('background bash records its command and description separately', async () => {
   const shells = createShellManager()
   const recorder = createRecorder()
   recorder.begin('bash', {})
@@ -148,8 +180,9 @@ test('background bash descriptions are not marked as shell code', async () => {
   const result = await bash.execute({ command: 'sleep 1', background: true, description: 'slow number counter' })
   recorder.done()
 
-  assert.equal(recorder.entries[0].title, 'slow number counter')
-  assert.equal(recorder.entries[0].titleLang, null)
+  assert.equal(recorder.entries[0].title, 'sleep 1')
+  assert.equal(recorder.entries[0].titleLang, 'bash')
+  assert.equal(recorder.entries[0].description, 'slow number counter')
   assert.match(result.note, /will notify you when it exits/)
   assert.match(result.note, /end your turn and wait instead of polling/)
   shells.kill(result.shellId)
@@ -176,7 +209,7 @@ test('bash receives additional environment variables', async () => {
   const { tools } = createToolset({ cwd, tracker, env: { PICO_SCRATCHPAD: '/scratch/example' } })
   const bash = tools.find((tool) => tool.name === 'bash')
 
-  const result = await bash.execute({ command: "printf '%s' \"$PICO_SCRATCHPAD\"" })
+  const result = await bash.execute({ command: "printf '%s' \"$PICO_SCRATCHPAD\"", description: 'check an injected environment variable' })
 
   assert.equal(result.stdout, '/scratch/example')
 })

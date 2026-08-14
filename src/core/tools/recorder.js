@@ -15,7 +15,7 @@ export function defaultTitle(name, args = {}) {
   return raw.length > 60 ? raw.slice(0, 60) + '…' : raw
 }
 
-export function createRecorder() {
+export function createRecorder(onChange) {
   return {
     currentCall: null,
     entries: [],
@@ -25,9 +25,11 @@ export function createRecorder() {
         callId: this.currentCall?.id ?? null,
         name,
         title: defaultTitle(name, args),
+        description: args.description,
         status: 'done',
         startedAt: Date.now(),
       }
+      onChange?.(this.pending)
     },
     extra(fields) {
       if (!this.pending) return
@@ -35,6 +37,7 @@ export function createRecorder() {
         ? { ...fields, title: collapseHomePath(fields.title) }
         : fields
       Object.assign(this.pending, normalized)
+      onChange?.(this.pending)
     },
     done(fields = {}) {
       if (!this.pending) return

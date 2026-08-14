@@ -134,6 +134,7 @@ function agentTranscript(agent) {
         callId: call.id,
         name: call.function?.name || 'tool',
         args,
+        description: args.description,
         title: uiTitle(call.function?.name || 'tool', args),
         status: 'running',
         startedAt: event.at || agent.updatedAt,
@@ -241,7 +242,7 @@ function compactTranscriptRuns(items, active = false) {
       let end = i + 1
       while (end < items.length && items[end].kind === 'tool') end++
       const run = items.slice(i, end)
-      result.push(run.length === 1 ? run[0] : { kind: 'tool-group', tools: run, active: active && end === items.length })
+      result.push(run.length === 1 ? run[0] : { kind: 'tool-group', callId: run.at(-1).callId, tools: run, active: active && end === items.length })
       i = end
       continue
     }
@@ -683,6 +684,14 @@ export function App({ boot }) {
       maxAgentStarts: researchAgentLimit ? 100 : undefined,
       requireAgentPlan: !!researchAgentLimit,
       allowNames: researchAgentLimit ? ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel'] : undefined,
+      onToolUpdate: (pending) => {
+        if (pending.name !== 'bash') return
+        setOverlay((items) => items.map((item) =>
+          item.kind === 'tool' && item.callId === pending.callId
+            ? { ...item, fullOutput: pending.fullOutput, outputLineStart: pending.outputLineStart, outputLineCount: pending.outputLineCount }
+            : item,
+        ))
+      },
     })
 
     refs.turnThoughts = ''
@@ -713,6 +722,7 @@ export function App({ boot }) {
             kind: 'tool',
             callId: event.call.id,
             name: event.call.function.name,
+            description: args.description,
             title: uiTitle(event.call.function.name, args),
             titleLang: event.call.function.name === 'bash' ? 'bash' : null,
             status: 'running',
