@@ -141,6 +141,8 @@ test('bash runs commands and captures exit codes', async () => {
   assert.equal(bad.exitCode, 3)
   assert.equal(recorder.entries[0].title, 'echo hello && exit 0')
   assert.equal(recorder.entries[0].titleLang, 'bash')
+  assert.equal(recorder.entries[0].exitCode, 0)
+  assert.equal(recorder.entries[1].exitCode, 3)
 })
 
 test('bash records only its last ten output lines with their original positions', async () => {

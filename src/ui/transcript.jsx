@@ -1,5 +1,5 @@
 import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from '../core/tools/recorder.js'
@@ -87,9 +87,9 @@ function delayedLinear(t) {
   return t <= delay ? 0 : (t - delay) / (1 - delay)
 }
 
-function DescriptionReveal({ children, active }) {
-  const reveal = useAnimated(active ? 0 : 1, ease(DESCRIPTION_REVEAL_DELAY_MS + DESCRIPTION_REVEAL_MS, delayedLinear))
-  if (active) reveal.set(1)
+function DescriptionReveal({ children, running }) {
+  const reveal = useAnimated(running ? 0 : 1, ease(DESCRIPTION_REVEAL_DELAY_MS + DESCRIPTION_REVEAL_MS, delayedLinear))
+  if (!running) reveal.set(1)
   return <text style={{ color: mixColor(accent(), FG, reveal()) }}>{children}</text>
 }
 
@@ -117,6 +117,14 @@ function BashOutput({ value, lineStart, lineCount }) {
       ))}
     </box>
   )
+}
+
+function CompactToolSign({ tool }) {
+  if (tool.name !== 'bash') return <text>{'  '}</text>
+  if (tool.status === 'running') return <box style={{ width: 2 }}><Spinner color={accent()} /></box>
+  if (tool.exitCode === 0) return <text style={{ color: GREEN }}>{'✓ '}</text>
+  if (tool.exitCode != null) return <text style={{ color: RED }}>{'× '}</text>
+  return <text>{'  '}</text>
 }
 
 function ToolGroup({ item, verbose }) {
@@ -163,15 +171,16 @@ function ToolGroup({ item, verbose }) {
         {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
       </box>
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
-        {descriptions.map((tool, index) => (
+        {descriptions.map((tool) => (
           <box key={tool.callId} style={{ flexDirection: 'row' }}>
+            <CompactToolSign tool={tool} />
             <text style={{ color: MUTED }}>{`${tool.name.padStart(toolNameWidth)}  `}</text>
-            <DescriptionReveal active={item.active && index === 0}>{tool.description}</DescriptionReveal>
+            <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>
           </box>
         ))}
         {hiddenDescriptions > 0 && (
           <box style={{ flexDirection: 'row' }}>
-            <text>{' '.repeat(toolNameWidth + 2)}</text>
+            <text>{' '.repeat(toolNameWidth + 4)}</text>
             <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
           </box>
         )}

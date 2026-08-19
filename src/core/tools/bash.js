@@ -167,6 +167,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
           if (id) shells.discardHidden(id)
           const exitCode = code ?? 1
           updateOutput()
+          recorder.extra({ exitCode })
           resolve({
             stdout: capped(stdout),
             stderr: capped(stderr),
