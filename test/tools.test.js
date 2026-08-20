@@ -38,6 +38,12 @@ test('described tools reject missing and blank descriptions at runtime', async (
   const { rawByName } = await fixture()
   await assert.rejects(rawByName.read.execute({ path: 'hello.js' }), /description is required/)
   await assert.rejects(rawByName.read.execute({ path: 'hello.js', description: '   ' }), /description is required/)
+
+  const wakeups = { schedule: () => ({ id: '1' }) }
+  const { tools } = createToolset({ cwd: process.cwd(), wakeups })
+  const schedule = tools.find((tool) => tool.name === 'schedule_wakeup')
+  assert.equal(schedule.schema.description.optional, undefined)
+  await assert.rejects(schedule.execute({ delaySeconds: 5, note: 'continue' }), /description is required/)
 })
 
 test('read returns numbered lines and records full output', async () => {
