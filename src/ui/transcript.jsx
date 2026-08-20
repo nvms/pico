@@ -121,6 +121,7 @@ function BashOutput({ value, lineStart, lineCount }) {
 
 function CompactToolSign({ tool }) {
   if (tool.name !== 'bash') return <text>{'  '}</text>
+  if (tool.background) return <text style={{ color: accent() }}>{'↪ '}</text>
   if (tool.status === 'running') return <box style={{ width: 2 }}><Spinner color={accent()} /></box>
   if (tool.exitCode === 0) return <text style={{ color: GREEN }}>{'✓ '}</text>
   if (tool.exitCode != null) return <text style={{ color: RED }}>{'× '}</text>
