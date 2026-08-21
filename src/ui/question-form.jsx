@@ -170,7 +170,7 @@ export function QuestionForm({ request, focused, onSubmit, onCancel }) {
         <text style={{ color: FAINT }}>{item.type === 'multi' ? 'space: select · enter: continue' : 'enter: answer'} · esc: cancel</text>
       </box>
       <text style={{ color: FG, bold: true }}>{item.question}</text>
-      {item.description && <text style={{ color: MUTED }}>{item.description}</text>}
+      {item.description && <text style={{ color: FG_SOFT }}>{item.description}</text>}
       {item.type === 'text' ? (
         <box style={{ bg: SELECT_BG, paddingX: 1, marginTop: 1 }}>
           <TextInput
@@ -185,12 +185,12 @@ export function QuestionForm({ request, focused, onSubmit, onCancel }) {
         <box style={{ flexDirection: 'column', marginTop: 1 }}>
           {rows().map((option, index) => (
             <box style={{ flexDirection: 'column', bg: cursor() === index ? SELECT_BG : undefined, paddingX: 1 }}>
-              <text style={{ color: cursor() === index ? accent() : FG_SOFT }}>
+              <text style={{ color: cursor() === index ? accent() : FG }}>
                 {item.type === 'multi'
                   ? `${option.other ? (otherAnswer() ? '[x]' : '[ ]') : (selected(option.label) ? '[x]' : '[ ]')} `
                   : `${cursor() === index ? '›' : ' '} `}{option.label}
               </text>
-              {option.description && <text style={{ color: FAINT }}>{` · ${option.description}`}</text>}
+              {option.description && <text style={{ color: FG_SOFT }}>{` · ${option.description}`}</text>}
               {option.other && (custom() || otherAnswer()) && (
                 <box style={{ bg: custom() ? PANEL_BG : undefined, paddingLeft: 4 }}>
                   <TextInput
