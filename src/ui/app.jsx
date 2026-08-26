@@ -10,6 +10,8 @@ import { deriveState, userEntries, rewindStats } from '../core/derive.js'
 import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from '../core/history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from '../core/agent.js'
 import { createAgentManager } from '../core/agents.js'
+import { runDeliberation, validateDeliberation } from '../core/deliberation.js'
+import { deliberationsFromEvents } from '../core/deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from '../core/compaction.js'
 import { createToolset } from '../core/tools/index.js'
 import { scanUserTools } from '../core/user-tools.js'
@@ -115,6 +117,42 @@ function stripWindowStart(current, target, length, size) {
 
 function agentTranscript(agent) {
   if (!agent) return []
+  if (agent.role === 'deliberation') {
+    const items = [{ kind: 'user', text: agent.prompt }]
+    const tools = new Map()
+    for (const entry of agent.timeline) {
+      if (entry.kind === 'turn') {
+        const turn = entry.value
+        items.push({ kind: 'deliberation-turn', role: turn.role, round: turn.round, text: turn.text })
+        continue
+      }
+      const event = entry.value
+      if (event.type === 'tool_executing') {
+        const call = event.call || {}
+        let args = {}
+        try {
+          args = typeof call.function?.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function?.arguments || {}
+        } catch {}
+        const item = { kind: 'tool', callId: call.id, name: call.function?.name || 'tool', args, description: args.description, title: uiTitle(call.function?.name || 'tool', args), status: 'running', startedAt: event.at }
+        tools.set(call.id, item)
+        items.push(item)
+      }
+      if (event.type === 'tool_complete' || event.type === 'tool_error') {
+        const item = tools.get(event.call?.id)
+        if (item) {
+          item.status = event.type === 'tool_error' ? 'error' : 'done'
+          item.error = event.error ? String(event.error) : null
+          item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
+        }
+      }
+    }
+    if (agent.result) {
+      items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, interrupted: agent.status === 'cancelled' })
+    } else if (agent.error) {
+      items.push({ kind: 'assistant', text: agent.error, interrupted: true })
+    }
+    return items
+  }
   const items = [{ kind: 'user', text: agent.prompt }]
   const tools = new Map()
   let response = ''
@@ -238,11 +276,12 @@ function collapseSteerTools(items) {
 function compactTranscriptRuns(items, active = false) {
   const result = []
   for (let i = 0; i < items.length;) {
-    if (items[i].kind === 'tool') {
+    if (items[i].kind === 'tool' || items[i].kind === 'thoughts') {
       let end = i + 1
-      while (end < items.length && items[end].kind === 'tool') end++
+      while (end < items.length && (items[end].kind === 'tool' || items[end].kind === 'thoughts')) end++
       const run = items.slice(i, end)
-      result.push({ kind: 'tool-group', callId: run.at(-1).callId, tools: run, active: active && end === items.length })
+      const tools = run.filter((item) => item.kind === 'tool')
+      result.push({ kind: 'tool-group', callId: tools.at(-1)?.callId, items: run, tools, active: active && end === items.length })
       i = end
       continue
     }
@@ -305,6 +344,7 @@ export function App({ boot }) {
   const [showModelPanel, setShowModelPanel] = createSignal(false)
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
+  const [selectingDeliberationModel, setSelectingDeliberationModel] = createSignal(false)
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [agentsVersion, setAgentsVersion] = createSignal(0)
   const [viewedAgentId, setViewedAgentId] = createSignal(null)
@@ -405,6 +445,83 @@ export function App({ boot }) {
     },
   })
   const agents = refs.agents
+
+  const deliberations = {
+    run: async ({ brief, rounds, signal }) => {
+      const options = validateDeliberation({ brief, rounds })
+      brief = options.brief
+      rounds = options.rounds
+      const existingIds = deliberationsFromEvents(refs.allEvents).map((item) => Number(item.deliberationId)).filter(Number.isFinite)
+      const id = String(Math.max(0, ...existingIds) + 1)
+      const modelName = boot.deliberationModel
+      const worker = boot.models.find((m) => m.name === modelName)
+      if (!worker || worker.available === false) throw new Error(`deliberation model unavailable: ${modelName}`)
+      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
+      const sessionId = refs.session?.id
+      if (!sessionId) throw new Error('deliberation requires an active session')
+      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: modelName }))
+      setAgentsVersion((v) => v + 1)
+
+      const persistDeliberation = (event) => {
+        persist(event)
+        setAgentsVersion((v) => v + 1)
+      }
+
+      const runWorker = async ({ history, role, round, tools: enabled = true, onStream }) => {
+        const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
+        const workerTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
+        const toolset = createToolset({
+          cwd: boot.cwd,
+          env: { PICO_SCRATCHPAD: scratchpad },
+          tracker: createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(boot.tracker.loaded) }),
+          shells: boot.shells,
+          sessionId,
+          sessionFile: refs.session?.file,
+          dredge: boot.dredge,
+          signal,
+          maxToolCalls: 30,
+          allowNames: enabled ? workerTools : [],
+        })
+        return runTurn({
+          history,
+          tools: toolset.tools,
+          recorder: toolset.recorder,
+          modelName,
+          effort: worker.effort ? 'low' : null,
+          auth,
+          system: `You are one participant in an isolated, bounded deliberation. Research actively with project and web tools, prefer primary sources, and distinguish evidence from inference. Do not ask the user questions or modify project files. Your persistent scratchpad is ${scratchpad}.`,
+          signal,
+          onStream,
+        })
+      }
+
+      const result = await runDeliberation({
+        brief,
+        rounds,
+        signal,
+        runParticipant: ({ history, role, round }) => runWorker({
+          history,
+          role,
+          round,
+          onStream: (event) => {
+            if (['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)) {
+              persistDeliberation(makeEvent('deliberation_event', { deliberationId: id, role, round, event }))
+            }
+          },
+        }),
+        runSynthesis: ({ history }) => runWorker({ history, role: 'synthesizer', tools: false }),
+        onEvent: (event) => persistDeliberation(makeEvent('deliberation_turn', { deliberationId: id, ...event })),
+      })
+      persistDeliberation(makeEvent('deliberation_result', { deliberationId: id, result: result.result, usage: result.usage, interrupted: result.interrupted, error: result.error }))
+      if (result.error) throw new Error(result.error)
+      return {
+        deliberationId: id,
+        synthesis: result.result,
+        interrupted: result.interrupted,
+        review: 'The full deliberation transcript and tool activity are available in the session activity panel.',
+      }
+    },
+  }
 
   onSessionWriteError((err) => flash(`session not saved: ${String(err.message || err).slice(0, 80)}`))
   boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
@@ -672,6 +789,7 @@ export function App({ boot }) {
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
+      deliberations: boot.deliberationModel ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
       askUser: (questions) => new Promise((resolve) => {
         setQuestionRequest({ questions, resolve })
@@ -694,11 +812,17 @@ export function App({ boot }) {
       },
     })
 
-    refs.turnThoughts = ''
     refs.sendAfterToolTriggered = false
     const onStream = (event) => {
       if (event.type === 'thinking') {
-        refs.turnThoughts += event.content
+        setOverlay((items) => {
+          const next = [...items]
+          flushStream(next)
+          const last = next.at(-1)
+          if (last?.kind === 'thoughts') last.text += event.content
+          else next.push({ kind: 'thoughts', text: event.content })
+          return next
+        })
         setTurnPhase('thinking')
       } else if (event.type === 'content') {
         setTurnPhase('responding')
@@ -775,8 +899,10 @@ export function App({ boot }) {
       return
     }
 
-    if (refs.turnThoughts) persist(makeEvent('thoughts', { text: refs.turnThoughts }))
-    for (const message of result.messages) persist(makeEvent('message', { message }))
+    const turnTranscript = [...overlay()]
+    flushStream(turnTranscript)
+    for (const message of result.messages) persist(makeEvent('message', { message, hideFromTranscript: true }))
+    persist(makeEvent('turn_transcript', { items: turnTranscript }))
     for (const entry of recorder.entries) persist(makeEvent('tool_meta', entry))
     for (const path of tracker.loaded) {
       if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
@@ -1668,6 +1794,16 @@ export function App({ boot }) {
     if (viewedAgentId() === agent.id) setViewedAgentId(null)
   }
 
+  function stopOrDismissDeliberation(item) {
+    if (item.status === 'running') {
+      interrupt()
+      return
+    }
+    persist(makeEvent('deliberation_dismiss', { deliberationId: item.deliberationId }))
+    setAgentsVersion((v) => v + 1)
+    if (viewedAgentId() === item.id) setViewedAgentId(null)
+  }
+
   function dismissShell(shell) {
     boot.shells.dismiss(shell.id)
     if (viewedShellId() === shell.id) setViewedShellId(null)
@@ -1707,7 +1843,8 @@ export function App({ boot }) {
   conversationSearch.registerFocus()
   let conversationSearchMatches = []
   agentsVersion()
-  const agentRows = agents.list()
+  const deliberationRows = deliberationsFromEvents(refs.allEvents)
+  const agentRows = [...agents.list(), ...deliberationRows].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
   shellsVersion()
   const shellRows = boot.shells.list()
     .filter((shell) => shell.sessionId === refs.session?.id)
@@ -1823,9 +1960,11 @@ export function App({ boot }) {
     if (fm.is('activity-strip') && event.ctrl && event.key === 'x') {
       const target = fm.current()
       const shell = target.startsWith('shell-') ? shellRows.find((s) => `shell-${s.id}` === target) : null
-      const agent = target.startsWith('agent-') ? agents.get(target.slice('agent-'.length)) : null
+      const item = target.startsWith('agent-') ? agentRows.find((row) => `agent-${row.id}` === target) : null
+      const agent = item?.role === 'deliberation' ? null : item
       if (shell) shell.status === 'running' ? killShell(shell) : dismissShell(shell)
-      if (agent) ['queued', 'running'].includes(agent.status) ? cancelAgent(agent) : dismissAgent(agent)
+      if (item?.role === 'deliberation') stopOrDismissDeliberation(item)
+      else if (agent) ['queued', 'running'].includes(agent.status) ? cancelAgent(agent) : dismissAgent(agent)
       event.stopPropagation()
       return
     }
@@ -1857,10 +1996,11 @@ export function App({ boot }) {
     }
     if (fm.is('agent-strip') && event.ctrl && event.key === 'x') {
       const target = fm.current()
-      const agent = target === 'agent-main' ? null : agents.get(target.slice('agent-'.length))
-      if (agent) {
-        if (['queued', 'running'].includes(agent.status)) cancelAgent(agent)
-        else dismissAgent(agent)
+      const item = target === 'agent-main' ? null : agentRows.find((row) => `agent-${row.id}` === target)
+      if (item?.role === 'deliberation') stopOrDismissDeliberation(item)
+      else if (item) {
+        if (['queued', 'running'].includes(item.status)) cancelAgent(item)
+        else dismissAgent(item)
       }
       event.stopPropagation()
       return
@@ -2035,10 +2175,10 @@ export function App({ boot }) {
   const shellWindow = visibleShells.slice(shellWindowStart, shellWindowStart + SHELL_STRIP_MAX)
   agentsVersion()
   const visibleAgents = agentRows
-  const viewedAgent = viewedAgentId() ? agents.get(viewedAgentId()) : null
+  const viewedAgent = viewedAgentId() ? agentRows.find((row) => row.id === viewedAgentId()) : null
   const agentStripFocus = fm.is('agent-strip') || (fm.is('activity-strip') && fm.current().startsWith('agent-')) ? fm.current() : null
   const focusedAgentId = agentStripFocus && agentStripFocus !== 'agent-main' ? agentStripFocus.slice('agent-'.length) : null
-  const focusedAgent = focusedAgentId ? agents.get(focusedAgentId) : null
+  const focusedAgent = focusedAgentId ? agentRows.find((row) => row.id === focusedAgentId) : null
   const hintedAgent = focusedAgent || viewedAgent
   const agentActionHint = hintedAgent
     ? `ctrl+x ${['queued', 'running'].includes(hintedAgent.status) ? 'cancel' : 'dismiss'}`
@@ -2140,9 +2280,16 @@ export function App({ boot }) {
   if (showConfigPanel()) {
     return (
       <ConfigPanel
-        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, researchAgentLimit: researchAgentLimit() }}
+        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, deliberationModel: boot.deliberationModel, researchAgentLimit: researchAgentLimit() }}
         focused
         onPickResearchModel={() => {
+          setSelectingDeliberationModel(false)
+          setResearchModelReturn('config')
+          setShowConfigPanel(false)
+          setShowResearchModelPanel(true)
+        }}
+        onPickDeliberationModel={() => {
+          setSelectingDeliberationModel(true)
           setResearchModelReturn('config')
           setShowConfigPanel(false)
           setShowResearchModelPanel(true)
@@ -2549,16 +2696,23 @@ export function App({ boot }) {
       {showResearchModelPanel() && (
         <ModelPanel
           models={models.filter((m) => m.available !== false)}
-          current={boot.researchModel}
+          current={selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
           defaultName={null}
-          title="Choose parallel worker model"
-          hint="enter: save worker model · esc: cancel"
+          title={selectingDeliberationModel() ? 'Choose deliberation model' : 'Choose parallel worker model'}
+          hint="enter: save model · esc: cancel"
           focused={showResearchModelPanel()}
           onPick={(m) => {
-            boot.researchModel = m.name
-            writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
+            if (selectingDeliberationModel()) {
+              boot.deliberationModel = m.name
+              writeConfig({ models: { deliberation: m.name } }).catch(() => {})
+              flash(`deliberation: ${m.name}`)
+            } else {
+              boot.researchModel = m.name
+              writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
+              flash(`parallel workers: ${m.name}`)
+            }
+            setSelectingDeliberationModel(false)
             setShowResearchModelPanel(false)
-            flash(`parallel workers: ${m.name}`)
             const pending = pendingResearch()
             const returnTo = researchModelReturn()
             setPendingResearch(null)
@@ -2569,6 +2723,7 @@ export function App({ boot }) {
           onPickDefault={() => {}}
           onClose={() => {
             setShowResearchModelPanel(false)
+            setSelectingDeliberationModel(false)
             setPendingResearch(null)
             if (researchModelReturn() === 'config') setShowConfigPanel(true)
             setResearchModelReturn(null)

@@ -79,6 +79,12 @@ function foldMessage(state, event) {
   const message = event.data.message
   if (!message) return
   pushHistory(state, message, event.id)
+  if (event.data.hideFromTranscript) {
+    for (const call of message.tool_calls || []) {
+      state.toolItems.set(call.id, { kind: 'tool', callId: call.id, status: 'done', hidden: true })
+    }
+    return
+  }
   const base = {
     messageId: event.id,
     eventId: event.id,
@@ -193,6 +199,13 @@ export function deriveState(events) {
     switch (event.type) {
       case 'message':
         foldMessage(state, event)
+        break
+      case 'turn_transcript':
+        for (const item of event.data.items || []) {
+          const restored = { ...item, eventId: event.id }
+          state.transcript.push(restored)
+          if (restored.kind === 'tool' && restored.callId) state.toolItems.set(restored.callId, restored)
+        }
         break
       case 'tool_meta': {
         const item = state.toolItems.get(event.data.callId)

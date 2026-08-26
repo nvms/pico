@@ -136,6 +136,21 @@ test('effort events track session effort, absent means unset', () => {
   assert.equal(reset.effort, null)
 })
 
+test('ordered turn transcripts restore interleaved thoughts and tools', () => {
+  const hidden = makeEvent('message', { message: { role: 'assistant', content: '', tool_calls: [{ id: 'call-1', function: { name: 'read', arguments: '{}' } }] }, hideFromTranscript: true })
+  const tool = makeEvent('message', { message: { role: 'tool', tool_call_id: 'call-1', content: 'ok' }, hideFromTranscript: true })
+  const trace = makeEvent('turn_transcript', { items: [
+    { kind: 'thoughts', text: 'first thought' },
+    { kind: 'tool', callId: 'call-1', name: 'read', status: 'done' },
+    { kind: 'thoughts', text: 'second thought' },
+    { kind: 'assistant', text: 'answer' },
+  ] })
+  const state = deriveState([user('question'), hidden, tool, trace])
+  assert.deepEqual(state.transcript.map((item) => item.kind), ['user', 'thoughts', 'tool', 'thoughts', 'assistant'])
+  assert.deepEqual(state.providerHistory.map((message) => message.role), ['user', 'assistant', 'tool'])
+  assert.equal(state.toolItems.get('call-1').name, 'read')
+})
+
 test('thoughts events become collapsible transcript items', () => {
   const events = [user('hard question'), makeEvent('thoughts', { text: 'step one\nstep two' }), assistant('answer')]
   const state = deriveState(events)

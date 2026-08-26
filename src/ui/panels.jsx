@@ -94,20 +94,20 @@ function ConfigNumberField({ value, focused, onChange }) {
   )
 }
 
-function ConfigModelField({ model, focused, onPick }) {
+function ConfigModelField({ model, label, path, focused, onPick }) {
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       <box style={{ flexDirection: 'row' }}>
-        <Button label="Parallel worker model" focused={focused} onPress={onPick} />
+        <Button label={label} focused={focused} onPress={onPick} />
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>models.researchWorker</text>
+        <text style={{ color: FAINT }}>{path}</text>
       </box>
-      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'} · model used by parallel agents`}</text>
+      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'}`}</text>
     </box>
   )
 }
 
-export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onClose }) {
+export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onPickDeliberationModel, onClose }) {
   const fields = [
     { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
     { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row', path: 'display.compactToolHistory' },
@@ -135,7 +135,10 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
             </Field>
           ))}
           <Field name="researchModel">
-            {({ focused: fieldFocused }) => <ConfigModelField model={values.researchModel} focused={fieldFocused} onPick={onPickResearchModel} />}
+            {({ focused: fieldFocused }) => <ConfigModelField model={values.researchModel} label="Parallel worker model" path="models.researchWorker" focused={fieldFocused} onPick={onPickResearchModel} />}
+          </Field>
+          <Field name="deliberationModel">
+            {({ focused: fieldFocused }) => <ConfigModelField model={values.deliberationModel} label="Deliberation model" path="models.deliberation" focused={fieldFocused} onPick={onPickDeliberationModel} />}
           </Field>
           <Field name="researchAgentLimit">
             {({ focused: fieldFocused }) => <ConfigNumberField value={values.researchAgentLimit} focused={fieldFocused} onChange={(value) => onChange('researchAgentLimit', value)} />}

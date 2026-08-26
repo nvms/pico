@@ -142,7 +142,9 @@ function ToolGroup({ item, verbose }) {
   if (verbose) {
     return (
       <box style={{ flexDirection: 'column' }}>
-        {item.tools.map((tool, i) => <ToolCard key={i} {...tool} verbose showExpandHint={false} />)}
+        {(item.items || item.tools).map((entry, i) => entry.kind === 'thoughts'
+          ? <Message key={i} item={entry} verbose />
+          : <ToolCard key={i} {...entry} verbose showExpandHint={false} />)}
       </box>
     )
   }
@@ -152,9 +154,12 @@ function ToolGroup({ item, verbose }) {
   const entries = [...counts]
   const totalMs = item.tools.reduce((sum, tool) => sum + (tool.durationMs || 0), 0)
   const latestName = item.tools.at(-1)?.name
-  const descriptions = item.tools.filter((tool) => tool.description).slice(-TOOL_DESCRIPTION_LIMIT).reverse()
-  const hiddenDescriptions = item.tools.filter((tool) => tool.description).length - descriptions.length
-  const toolNameWidth = Math.max(0, ...descriptions.map((tool) => tool.name.length))
+  const activity = (item.items || item.tools).map((entry) => entry.kind === 'thoughts'
+    ? { ...entry, name: 'thoughts', description: entry.text.replace(/\s+/g, ' ').trim(), thought: true }
+    : entry).filter((entry) => entry.description)
+  const descriptions = activity.slice(-TOOL_DESCRIPTION_LIMIT).reverse()
+  const hiddenDescriptions = activity.length - descriptions.length
+  const toolNameWidth = Math.max(0, ...descriptions.map((entry) => entry.name.length))
   const visibleBash = item.active && item.tools.at(-1)?.name === 'bash' ? item.tools.at(-1) : null
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
@@ -172,11 +177,13 @@ function ToolGroup({ item, verbose }) {
         {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
       </box>
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
-        {descriptions.map((tool) => (
-          <box key={tool.callId} style={{ flexDirection: 'row' }}>
-            <CompactToolSign tool={tool} />
-            <text style={{ color: MUTED }}>{`${tool.name.padStart(toolNameWidth)}  `}</text>
-            <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>
+        {descriptions.map((tool, i) => (
+          <box key={tool.callId || `thought-${i}`} style={{ flexDirection: 'row' }}>
+            {tool.thought ? <text>{'  '}</text> : <CompactToolSign tool={tool} />}
+            <text style={{ color: MUTED, italic: tool.thought }}>{`${tool.name.padStart(toolNameWidth)}  `}</text>
+            {tool.thought
+              ? <box style={{ flexGrow: 1, height: 1 }}><text style={{ color: MUTED, italic: true, overflow: 'truncate' }}>{tool.description}</text></box>
+              : <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>}
           </box>
         ))}
         {hiddenDescriptions > 0 && (
@@ -316,23 +323,37 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'thoughts') {
-    const lines = item.text.split('\n')
     return (
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
-        <box style={{ flexDirection: 'row' }}>
-          <text style={{ color: MUTED, italic: true }}>{'✦ thoughts'}</text>
-          <box style={{ flexGrow: 1 }} />
-          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} · ctrl+o`}</text>
+        <box style={{ paddingX: 1 }}>
+          <text style={{ color: MUTED, italic: true }}>{item.text}</text>
         </box>
-        {verbose && (
-          <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
-            {lines.slice(0, 300).map((line, i) => (
-              <text key={i} style={{ color: FG_SOFT, italic: true }}>{line || ' '}</text>
-            ))}
-            {lines.length > 300 && <text style={{ color: FAINT }}>{`… ${lines.length - 300} more lines`}</text>}
+      </box>
+    )
+  }
+
+  if (item.kind === 'deliberation-turn') {
+    const proposer = item.role === 'proposer'
+    const synthesis = item.role === 'synthesis'
+    const label = synthesis ? 'Synthesis' : `${proposer ? 'Proposer' : 'Reviewer'} · round ${item.round}`
+    const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
+    return (
+      <box style={{ flexDirection: 'column', marginTop: 1, paddingX: 2 }}>
+        <box style={{ flexDirection: 'row' }}>
+          <box style={{ width: 1, flexShrink: 0, bg: synthesis || proposer ? accent() : MUTED }} />
+          <box style={{ flexDirection: 'column', flexGrow: 1, paddingX: 2, paddingY: 1, bg: synthesis ? SELECT_BG : proposer ? PANEL_BG : undefined }}>
+            <text style={{ color: synthesis || proposer ? accent() : MUTED, bold: true }}>{label}</text>
+            <Markdown
+              text={text}
+              highlight={highlight}
+              codeBg={null}
+              codeBlock={TranscriptCodeBlock}
+              tableBorderColor={MUTED}
+              tableRowHoverBg={PANEL_BG}
+            />
           </box>
-        )}
+        </box>
       </box>
     )
   }

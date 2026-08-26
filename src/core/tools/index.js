@@ -7,7 +7,7 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate }) {
   const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -207,6 +207,18 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         execute: ({ id }) => ({ cancelled: agents.cancel(id) }),
       },
     )
+  }
+
+  if (deliberations) {
+    local.push({
+      name: 'deliberate',
+      description: 'Evaluate competing approaches, challenge a proposal, or reach a consequential decision under genuine uncertainty through a bounded, evidence-seeking exchange between two full tool-using agents. When the user requests deliberation, call this tool immediately with a self-contained brief: do not research first or approximate deliberation with multiple ordinary agents. Its participants own all supporting research. Use ordinary agents when independent work can be divided and collected. Do not deliberate routine implementation or questions answerable through direct research.',
+      schema: {
+        brief: { type: 'string', description: 'self-contained decision, relevant context, constraints, and desired outcome' },
+        rounds: { type: 'integer', description: 'number of proposer-reviewer exchanges (1-5, default 3)', optional: true },
+      },
+      execute: ({ brief, rounds }) => deliberations.run({ brief, rounds, sessionId, sessionFile, signal }),
+    })
   }
 
   if (memory) {
