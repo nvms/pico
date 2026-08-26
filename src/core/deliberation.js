@@ -12,7 +12,7 @@ export function validateDeliberation({ brief, rounds = DEFAULT_DELIBERATION_ROUN
 }
 
 function participantPrompt(brief, role, rounds) {
-  return `You are the ${role} in a ${rounds}-round deliberation about the following decision:\n\n${brief}\n\nResearch before making claims. Use the available project and web tools whenever they can replace assumption with evidence. Cite URLs and project paths in your response. Challenge weak premises, address the peer's strongest points, and work toward the best decision rather than defending a fixed position. Do not modify project files. Return a concise message addressed to the other participant.`
+  return `You are the ${role} in a ${rounds}-round deliberation about the following decision:\n\n${brief}\n\nResearch before making claims. Use the available project and web tools whenever they can replace assumption with evidence. Cite URLs and project paths in your response. Challenge weak premises and address the peer's strongest points. Do not seek agreement for its own sake or defend a fixed position. Change your position only when evidence warrants it, and preserve material disagreement and uncertainty. Do not modify project files. Return a concise message addressed to the other participant.`
 }
 
 function peerMessage(role, text, round, rounds) {
@@ -21,7 +21,7 @@ function peerMessage(role, text, round, rounds) {
 
 function synthesisPrompt(brief, turns) {
   const transcript = turns.map((turn) => `Round ${turn.round}, ${turn.role}:\n${turn.text}`).join('\n\n')
-  return `Synthesize this deliberation into a decision for the main agent. State the recommendation, decisive evidence, unresolved uncertainty, and implementation constraints. Preserve useful URLs and project paths. Do not mention the deliberation process unless disagreement remains.\n\nDecision brief:\n${brief}\n\nTranscript:\n${transcript}`
+  return `Synthesize this deliberation into a decision for the main agent. State the recommendation, decisive evidence, unresolved uncertainty, material disagreement, and implementation constraints. Do not manufacture consensus: preserve disagreements that the evidence did not resolve. Preserve useful URLs and project paths. Do not mention the deliberation process unless disagreement remains.\n\nDecision brief:\n${brief}\n\nTranscript:\n${transcript}`
 }
 
 export async function runDeliberation({ brief, rounds, runParticipant, runSynthesis, onEvent = () => {}, signal }) {

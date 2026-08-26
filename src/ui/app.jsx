@@ -76,6 +76,7 @@ const COMMANDS = [
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },
   { name: 'parallel', desc: 'Run a task with parallel agents: /parallel <task>' },
+  { name: 'deliberate', desc: 'Deliberate on a decision: /deliberate <decision>' },
   { name: 'wakeups', desc: 'View and cancel scheduled wake-ups' },
   { name: 'memory', desc: 'Browse and manage saved memories: project and global' },
   { name: 'compact', desc: 'Summarize the conversation to free the context window' },
@@ -346,6 +347,7 @@ export function App({ boot }) {
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
   const [selectingDeliberationModel, setSelectingDeliberationModel] = createSignal(false)
   const [pendingResearch, setPendingResearch] = createSignal(null)
+  const [pendingDeliberation, setPendingDeliberation] = createSignal(null)
   const [agentsVersion, setAgentsVersion] = createSignal(0)
   const [viewedAgentId, setViewedAgentId] = createSignal(null)
   const [agentWindowOffset, setAgentWindowOffset] = createSignal(0)
@@ -1320,6 +1322,18 @@ export function App({ boot }) {
       }
       refs.nextResearchAgentLimit = agentLimit
       send(`Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`)
+      return
+    }
+    if (c.name === 'deliberate') {
+      const decision = args.trim()
+      if (!decision) return flash('usage: /deliberate <decision>')
+      if (!boot.deliberationModel || !models.some((m) => m.name === boot.deliberationModel && m.available !== false)) {
+        setPendingDeliberation({ decision })
+        setSelectingDeliberationModel(true)
+        setShowResearchModelPanel(true)
+        return
+      }
+      send(`Deliberate on the following decision: ${decision}\n\nImmediately call deliberate with a self-contained brief. Do not research first, start ordinary agents, or approximate the deliberation yourself. The deliberation participants own all supporting research.`)
       return
     }
     if (c.name === 'model') {
@@ -2714,10 +2728,13 @@ export function App({ boot }) {
             setSelectingDeliberationModel(false)
             setShowResearchModelPanel(false)
             const pending = pendingResearch()
+            const pendingDecision = pendingDeliberation()
             const returnTo = researchModelReturn()
             setPendingResearch(null)
+            setPendingDeliberation(null)
             setResearchModelReturn(null)
             if (pending) runCommand({ name: 'parallel' }, pending.task)
+            else if (pendingDecision) runCommand({ name: 'deliberate' }, pendingDecision.decision)
             else if (returnTo === 'config') setShowConfigPanel(true)
           }}
           onPickDefault={() => {}}
@@ -2725,6 +2742,7 @@ export function App({ boot }) {
             setShowResearchModelPanel(false)
             setSelectingDeliberationModel(false)
             setPendingResearch(null)
+            setPendingDeliberation(null)
             if (researchModelReturn() === 'config') setShowConfigPanel(true)
             setResearchModelReturn(null)
           }}
