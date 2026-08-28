@@ -1,40 +1,18 @@
 {
-  "name": "picocode",
-  "version": "0.9.119",
-  "description": "a TUI coding agent built on trend and @prsm/ai",
+  "name": "pico-monorepo",
+  "private": true,
   "type": "module",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/nvms/pico.git"
-  },
-  "bin": {
-    "pico": "./bin/pico"
-  },
-  "files": [
-    "bin",
-    "dist"
+  "workspaces": [
+    "packages/*"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "node esbuild.config.js",
-    "test": "node --test 'test/**/*.test.js'",
-    "start": "node dist/pico.js",
-    "prepublishOnly": "node scripts/snapshot-catalog.js && npm run build"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
-    "@prsm/ai": "^1.6.1",
-    "@shikijs/cli": "^3.0.0",
-    "@trendr/core": "0.4.39",
-    "diff": "^7.0.0",
-    "fast-glob": "^3.3.0",
-    "proper-lockfile": "^4.1.2"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.0"
+    "build": "npm run build -w picocode",
+    "test": "npm test --workspaces",
+    "start": "node packages/pico/dist/pico.js"
   },
   "allowScripts": {
     "esbuild@0.25.12": true

@@ -1,0 +1,172 @@
+import { readFileSync } from 'node:fs'
+import { mount } from '@trendr/core'
+import { parseArgs, USAGE } from './cli-args.js'
+import { discoverKeys, applyKeys, keyHint } from 'picocode-core/keys.js'
+import { defaultModel } from 'picocode-core/models.js'
+import { loadCatalog, extractModels } from 'picocode-core/catalog.js'
+import { loadCodexModels } from 'picocode-core/codex-models.js'
+import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
+import { readConfig } from 'picocode-core/config.js'
+import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
+import { buildProjectBoot } from 'picocode-core/boot.js'
+import { resolveDredge } from 'picocode-core/tools/web.js'
+import { createShellManager } from 'picocode-core/shells.js'
+import { createWakeupManager } from 'picocode-core/wakeups.js'
+import { createGitService } from 'picocode-core/git.js'
+import { App } from './ui/app.jsx'
+import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
+
+let cli
+try {
+  cli = parseArgs(process.argv.slice(2))
+} catch (err) {
+  console.error(`pico: ${err.message}`)
+  console.error(USAGE)
+  process.exit(1)
+}
+if (cli.mode === 'help') {
+  console.log(USAGE)
+  process.exit(0)
+}
+if (cli.mode === 'version') {
+  console.log(pkg.version)
+  process.exit(0)
+}
+if (cli.mode === 'update') {
+  const { isDevInstall, runUpdate, fetchLatestVersion, newerVersion } = await import('picocode-core/update.js')
+  if (isDevInstall(import.meta.url)) {
+    console.error('this pico runs from a source checkout; update it with git, not npm')
+    process.exit(1)
+  }
+  const latest = await fetchLatestVersion().catch(() => null)
+  if (latest && !newerVersion(pkg.version, latest)) {
+    console.log(`pico v${pkg.version} is already the latest`)
+    process.exit(0)
+  }
+  console.error(`updating picocode ${latest ? `to v${latest} ` : ''}via npm...`)
+  const result = await runUpdate()
+  if (result.ok) {
+    console.log(`updated${latest ? ` to v${latest}` : ''}`)
+    process.exit(0)
+  }
+  console.error(`update failed:\n${result.output}`)
+  process.exit(1)
+}
+if (cli.mode === 'connect') {
+  const { connectOpenAI } = await import('picocode-core/openai-auth.js')
+  try {
+    console.error('opening your browser for ChatGPT sign-in...')
+    const { email } = await connectOpenAI({ onUrl: (url) => console.error(`if the browser did not open, visit:\n${url}`) })
+    console.log(`connected as ${email || 'your ChatGPT account'}`)
+    process.exit(0)
+  } catch (err) {
+    console.error(`connect failed: ${err.message}`)
+    process.exit(1)
+  }
+}
+if (cli.mode === 'headless') {
+  const { runHeadless } = await import('./headless.js')
+  process.exit(await runHeadless(cli))
+}
+
+const keys = discoverKeys()
+const chatgpt = await openaiConnected()
+const providers = [...applyKeys(keys), ...(chatgpt ? ['codex'] : [])]
+const catalogData = await loadCatalog()
+const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
+const models = [
+  ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
+    ...m,
+    available: providers.includes(m.provider),
+    keyHint: keyHint(m.provider),
+  })),
+  ...(await loadCodexModels(codexCreds)).map((m) => ({
+    ...m,
+    context: m.context
+      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.input
+      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context
+      ?? null,
+    available: chatgpt,
+    keyHint: '/connect',
+  })),
+]
+
+if (providers.length === 0) {
+  console.error('pico: no credentials found.')
+  console.error('set one of: GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY')
+  console.error('or sign in with a ChatGPT plan: pico --connect')
+  process.exit(1)
+}
+
+let mcpNotify = () => {}
+let shellsNotify = () => {}
+let shellsExit = () => {}
+const shells = createShellManager({
+  onChange: () => shellsNotify(),
+  onExit: (shell) => shellsExit(shell),
+})
+process.on('exit', () => shells.killAll())
+
+let wakeupsNotify = () => {}
+let wakeupsFire = () => {}
+const wakeups = createWakeupManager({
+  onChange: () => wakeupsNotify(),
+  onFire: (wakeup) => wakeupsFire(wakeup),
+})
+
+let gitNotify = () => {}
+const git = createGitService({ onChange: () => gitNotify() })
+process.on('exit', () => git.dispose())
+
+const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotify() })
+
+const config = await readConfig()
+const configuredDefault = config.defaultModel && models.find((m) => m.name === config.defaultModel)
+
+const detectedTheme = await detectTerminalTheme()
+const themeOverride = paletteList().some((p) => p.key === config.theme) ? config.theme : null
+setPalette(themeOverride || detectedTheme)
+const theme = { accent: DEFAULT_ACCENT, muted: MUTED }
+
+const boot = {
+  ...(await bootProject(process.cwd())),
+  theme,
+  version: pkg.version,
+  models,
+  providers,
+  initialModel: configuredDefault || defaultModel(models),
+  researchModel: config.models?.researchWorker || null,
+  deliberationModel: config.models?.deliberation || config.models?.researchWorker || null,
+  researchAgentLimit: Number.isInteger(config.research?.agentLimit) && config.research.agentLimit >= 1 && config.research.agentLimit <= 100
+    ? config.research.agentLimit
+    : 10,
+  detectedTheme,
+  themePref: themeOverride || 'auto',
+  dredge: resolveDredge(config),
+  initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
+  autoCompact: config.autoCompact !== false,
+  clouds: config.animation?.clouds === true,
+  compactToolHistory: config.display?.compactToolHistory === true,
+  gitFooter: config.display?.gitStatus !== false,
+  wideSidebar: config.display?.wideSidebar !== false,
+  refs: {},
+  shells,
+  wakeups,
+  git,
+  setMcpNotify: (fn) => { mcpNotify = fn },
+  setGitNotify: (fn) => { gitNotify = fn },
+  setShellsNotify: (fn) => { shellsNotify = fn },
+  setShellsExit: (fn) => { shellsExit = fn },
+  setWakeupsNotify: (fn) => { wakeupsNotify = fn },
+  setWakeupsFire: (fn) => { wakeupsFire = fn },
+  rebuild: bootProject,
+}
+
+git.retarget(boot.root)
+git.setEnabled(boot.gitFooter)
+
+const app = mount(() => <App boot={boot} />, { title: `pico · ${boot.root.split('/').pop()}`, theme })
+boot.setTheme = app.setTheme
+boot.mcp.connectAll()

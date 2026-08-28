@@ -16,4 +16,5 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: npm install -g npm@latest
       - run: npm ci
-      - run: npm publish --access public
+      - run: npm publish --access public -w picocode-core
+      - run: npm publish --access public -w picocode

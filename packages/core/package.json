@@ -1,0 +1,33 @@
+{
+  "name": "picocode-core",
+  "version": "0.9.119",
+  "description": "The agent runtime behind pico: sessions, tools, subagents, MCP, memory, and model access",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nvms/pico.git",
+    "directory": "packages/core"
+  },
+  "exports": {
+    "./*": "./src/*"
+  },
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test 'test/**/*.test.js'",
+    "snapshot": "node scripts/snapshot-catalog.js",
+    "prepublishOnly": "node scripts/snapshot-catalog.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@prsm/ai": "^1.6.1",
+    "diff": "^7.0.0",
+    "fast-glob": "^3.3.0",
+    "proper-lockfile": "^4.1.2"
+  }
+}
