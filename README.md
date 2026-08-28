@@ -5,6 +5,8 @@ A coding agent that runs in your terminal. Rendering is [@trendr/core](https://g
 
 ![pico terminal interface](.github/assets/pico.png)
 
+The repository is a workspace: `packages/core` is the runtime ([picocode-core](packages/core)) and `packages/pico` is the terminal client.
+
 ## Install
 
 ```
