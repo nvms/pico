@@ -172,8 +172,8 @@ test('bash carries active ANSI styles into its retained output window', async ()
     description: 'generate colored output across the preview boundary',
   })
 
-  assert.match(recorder.entries[0].fullOutput, /^\x1b\[0;38;5;1mred 3\n/)
-  assert.match(recorder.entries[0].fullOutput, /\x1b\[0;38;5;1mred 12$/)
+  assert.match(recorder.entries[0].fullOutput, /^\x1b\[31mred 3\n/)
+  assert.match(recorder.entries[0].fullOutput, /\x1b\[31mred 12$/)
   assert.equal(recorder.entries[0].outputLineStart, 3)
   assert.equal(recorder.entries[0].outputLineCount, 12)
 })

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { sgr, stripAnsi, updateSgrState } from '@trendr/core'
+import { stripAnsi, createSgrTracker } from '../ansi.js'
 
 const MAX_OUTPUT_CHARS = 30000
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024
@@ -17,19 +17,19 @@ function createOutputPreview() {
   let current = ''
   let currentStartStyle = ''
   let completed = 0
-  const ansiState = { fg: null, bg: null, attrs: 0 }
+  const sgr = createSgrTracker()
 
   function add(chunk) {
     const parts = String(chunk).split('\n')
     current = (current + parts[0]).slice(0, MAX_PREVIEW_LINE_CHARS)
-    updateSgrState(parts[0], ansiState)
+    sgr.feed(parts[0])
     for (let i = 1; i < parts.length; i++) {
       lines.push({ text: current, startStyle: currentStartStyle })
       if (lines.length > OUTPUT_PREVIEW_LINES) lines.shift()
       completed++
-      currentStartStyle = ansiState.fg != null || ansiState.bg != null || ansiState.attrs ? sgr(ansiState.fg, ansiState.bg, ansiState.attrs) : ''
+      currentStartStyle = sgr.style()
       current = parts[i].slice(0, MAX_PREVIEW_LINE_CHARS)
-      updateSgrState(parts[i], ansiState)
+      sgr.feed(parts[i])
     }
   }
 
