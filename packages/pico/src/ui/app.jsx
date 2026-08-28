@@ -1,57 +1,30 @@
-import { existsSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
-import { createSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectData, appendSessionEvent, onSessionWriteError } from 'picocode-core/session.js'
-import { createContextTracker } from 'picocode-core/context.js'
-import { deriveState, userEntries, rewindStats } from 'picocode-core/derive.js'
-import { appendPrompt, loadProjectPrompts, loadGlobalPrompts } from 'picocode-core/history.js'
-import { runTurn, summarizeText, compactHistory, compactProgress } from 'picocode-core/agent.js'
-import { createAgentManager } from 'picocode-core/agents.js'
-import { runDeliberation, validateDeliberation } from 'picocode-core/deliberation.js'
-import { deliberationsFromEvents } from 'picocode-core/deliberation-history.js'
-import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from 'picocode-core/compaction.js'
-import { createToolset } from 'picocode-core/tools/index.js'
-import { scanUserTools } from 'picocode-core/user-tools.js'
-import { createSkillIndex } from 'picocode-core/skills.js'
-import { createCommandIndex } from 'picocode-core/commands.js'
-import { initPrompt } from 'picocode-core/init.js'
-import { implicitRewindTarget, revertEdits, reapplyEdits } from 'picocode-core/rewind.js'
-import { buildSystemPrompt } from 'picocode-core/system-prompt.js'
+import { listSessions, deleteSession, deleteProjectData } from 'picocode-core/session.js'
+import { userEntries, rewindStats } from 'picocode-core/derive.js'
+import { loadProjectPrompts, loadGlobalPrompts } from 'picocode-core/history.js'
+import { implicitRewindTarget } from 'picocode-core/rewind.js'
 import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpdate } from 'picocode-core/update.js'
-import { memoryIndex } from 'picocode-core/memory.js'
-import { transcriptToMarkdown } from 'picocode-core/export.js'
-import { findModel, estimateCost } from 'picocode-core/models.js'
-import { adhocModel } from 'picocode-core/catalog.js'
 import { STEER_ROLES, steerableTranscript } from 'picocode-core/steer.js'
 import { writeConfig } from 'picocode-core/config.js'
-import { connectOpenAI, openaiCredentials, openaiStatus, disconnectOpenAI } from 'picocode-core/openai-auth.js'
-import { agentScratchDir, ensureDir } from 'picocode-core/paths.js'
-import { loadCodexModels } from 'picocode-core/codex-models.js'
+import { openaiStatus } from 'picocode-core/openai-auth.js'
+import { EFFORT_LEVELS, SESSION_COLORS } from 'picocode-core/controller.js'
+import { agentTranscript } from 'picocode-core/agent-transcript.js'
 import { fuzzyScore } from 'picocode-core/fuzzy.js'
 import { completionContext, applyCompletion } from 'picocode-core/completion.js'
-import { extractImagePaths, mediaTypeFor, finalizeUserContent, placeholderizeImagePaths, inputTextFromContent } from 'picocode-core/attachments.js'
+import { extractImagePaths, placeholderizeImagePaths } from 'picocode-core/attachments.js'
 import { listFiles } from 'picocode-core/files.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from 'picocode-core/format.js'
 import { AnimatedValue } from './animated-value.jsx'
-import { Message, uiTitle } from './transcript.jsx'
+import { Message } from './transcript.jsx'
 import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
-
-const EFFORT_LEVELS = [
-  { key: null, desc: 'let the provider decide how much to think' },
-  { key: 'low', desc: 'quick answers, minimal thinking' },
-  { key: 'medium', desc: 'moderate thinking budget' },
-  { key: 'high', desc: 'generous thinking budget' },
-  { key: 'max', desc: 'maximum thinking budget' },
-]
 
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
@@ -88,19 +61,6 @@ const COMMANDS = [
   { name: 'help', desc: 'List every command and what it does' },
 ]
 
-const SESSION_COLORS = {
-  red: '#f87171',
-  orange: '#fb923c',
-  yellow: '#facc15',
-  green: '#6BE795',
-  teal: '#2dd4bf',
-  cyan: '#22d3ee',
-  blue: '#60a5fa',
-  purple: '#a78bfa',
-  pink: '#f472b6',
-  gray: '#9ca3af',
-}
-
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
 const MEMORY_SCOPES = ['all', 'project', 'global']
 const SHELL_STRIP_MAX = 5
@@ -116,86 +76,6 @@ function stripWindowStart(current, target, length, size) {
   return start
 }
 
-function agentTranscript(agent) {
-  if (!agent) return []
-  if (agent.role === 'deliberation') {
-    const items = [{ kind: 'user', text: agent.prompt }]
-    const tools = new Map()
-    for (const entry of agent.timeline) {
-      if (entry.kind === 'turn') {
-        const turn = entry.value
-        items.push({ kind: 'deliberation-turn', role: turn.role, round: turn.round, text: turn.text })
-        continue
-      }
-      const event = entry.value
-      if (event.type === 'tool_executing') {
-        const call = event.call || {}
-        let args = {}
-        try {
-          args = typeof call.function?.arguments === 'string' ? JSON.parse(call.function.arguments) : call.function?.arguments || {}
-        } catch {}
-        const item = { kind: 'tool', callId: call.id, name: call.function?.name || 'tool', args, description: args.description, title: uiTitle(call.function?.name || 'tool', args), status: 'running', startedAt: event.at }
-        tools.set(call.id, item)
-        items.push(item)
-      }
-      if (event.type === 'tool_complete' || event.type === 'tool_error') {
-        const item = tools.get(event.call?.id)
-        if (item) {
-          item.status = event.type === 'tool_error' ? 'error' : 'done'
-          item.error = event.error ? String(event.error) : null
-          item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
-        }
-      }
-    }
-    if (agent.result) {
-      items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, interrupted: agent.status === 'cancelled' })
-    } else if (agent.error) {
-      items.push({ kind: 'assistant', text: agent.error, interrupted: true })
-    }
-    return items
-  }
-  const items = [{ kind: 'user', text: agent.prompt }]
-  const tools = new Map()
-  let response = ''
-
-  for (const event of agent.events) {
-    if (event.type === 'content') response += event.content
-    if (event.type === 'tool_executing') {
-      const call = event.call || {}
-      let args = {}
-      try {
-        args = typeof call.function?.arguments === 'string'
-          ? JSON.parse(call.function.arguments)
-          : call.function?.arguments || {}
-      } catch {}
-      const item = {
-        kind: 'tool',
-        callId: call.id,
-        name: call.function?.name || 'tool',
-        args,
-        description: args.description,
-        title: uiTitle(call.function?.name || 'tool', args),
-        status: 'running',
-        startedAt: event.at || agent.updatedAt,
-      }
-      tools.set(call.id, item)
-      items.push(item)
-    }
-    if (event.type === 'tool_complete' || event.type === 'tool_error') {
-      const item = tools.get(event.call?.id)
-      if (item) {
-        item.status = event.type === 'tool_error' ? 'error' : 'done'
-        item.error = event.error ? String(event.error) : null
-        item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
-      }
-    }
-  }
-
-  const text = agent.result || response
-  if (text) items.push({ kind: 'assistant', text, interrupted: agent.status === 'cancelled' })
-  else if (agent.error) items.push({ kind: 'assistant', text: agent.error, interrupted: true })
-  return items
-}
 
 function agentElapsed(agent, now = Date.now()) {
   if (!agent.startedAt) return 'waiting'
@@ -299,24 +179,25 @@ function compactTranscriptRuns(items, active = false) {
   return result
 }
 
-export function App({ boot }) {
-  const { cwd, root, version, models, skills, mcp, tracker, startupContext } = boot
+export function App({ boot, controller: ctl }) {
+  const { cwd, root, version, models, skills, mcp } = boot
+  const state = ctl.state
 
-  const [derived, setDerived] = createSignal(deriveState([]))
+  const [derived, setDerived] = createSignal(state.derived)
   const [terminalWidth, setTerminalWidth] = createSignal(process.stdout.columns || 80)
   useResize(({ width }) => setTerminalWidth(width))
-  const [overlay, setOverlay] = createSignal([])
-  const [streaming, setStreaming] = createSignal(null)
-  const [turnPhase, setTurnPhase] = createSignal('idle')
-  const [busy, setBusy] = createSignal(false)
-  const [compacting, setCompacting] = createSignal(false)
-  const [compactStatus, setCompactStatus] = createSignal(null)
-  const [startedAt, setStartedAt] = createSignal(0)
+  const [overlay, setOverlay] = createSignal(state.overlay)
+  const [streaming, setStreaming] = createSignal(state.streaming)
+  const [turnPhase, setTurnPhase] = createSignal(state.turnPhase)
+  const [busy, setBusy] = createSignal(state.busy)
+  const [compacting, setCompacting] = createSignal(state.compacting)
+  const [compactStatus, setCompactStatus] = createSignal(state.compactStatus)
+  const [startedAt, setStartedAt] = createSignal(state.startedAt)
   const [input, setInput] = createSignal('')
-  const [model, setModel] = createSignal(boot.initialModel)
-  const [defaultModel, setDefaultModel] = createSignal(boot.initialModel)
-  const [effort, setEffort] = createSignal(boot.initialEffort)
-  const [defaultEffort, setDefaultEffort] = createSignal(boot.initialEffort)
+  const [model, setModel] = createSignal(state.model)
+  const [defaultModel, setDefaultModel] = createSignal(state.defaultModel)
+  const [effort, setEffort] = createSignal(state.effort)
+  const [defaultEffort, setDefaultEffort] = createSignal(state.defaultEffort)
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
   const [showThemePanel, setShowThemePanel] = createSignal(false)
   const [showConfigPanel, setShowConfigPanel] = createSignal(false)
@@ -326,21 +207,21 @@ export function App({ boot }) {
   const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
   const [wideSidebar, setWideSidebar] = createSignal(boot.wideSidebar)
   const [researchAgentLimit, setResearchAgentLimit] = createSignal(boot.researchAgentLimit)
-  const [questionRequest, setQuestionRequest] = createSignal(null)
+  const [questionRequest, setQuestionRequest] = createSignal(state.question)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
   const [themePref, setThemePref] = createSignal(boot.themePref || 'auto')
-  const [queued, setQueued] = createSignal([])
-  const [expedited, setExpedited] = createSignal([])
-  const [sent, setSent] = createSignal([])
+  const [queued, setQueued] = createSignal(state.queued)
+  const [expedited, setExpedited] = createSignal(state.expedited)
+  const [sent, setSent] = createSignal(state.sent)
   const [histIdx, setHistIdx] = createSignal(-1)
   const [cmdIndex, setCmdIndex] = createSignal(0)
   const [cmdCycle, setCmdCycle] = createSignal(null)
   const [fileIndex, setFileIndex] = createSignal(0)
   const [fileList, setFileList] = createSignal([])
   const [filesDismissed, setFilesDismissed] = createSignal(false)
-  const [view, setView] = createSignal('chat')
+  const [view, setViewSignal] = createSignal('chat')
   const [verbose, setVerbose] = createSignal(false)
   const [showModelPanel, setShowModelPanel] = createSignal(false)
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
@@ -348,7 +229,7 @@ export function App({ boot }) {
   const [selectingDeliberationModel, setSelectingDeliberationModel] = createSignal(false)
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [pendingDeliberation, setPendingDeliberation] = createSignal(null)
-  const [agentsVersion, setAgentsVersion] = createSignal(0)
+  const [agentsVersion, setAgentsVersion] = createSignal(state.activityVersion)
   const [viewedAgentId, setViewedAgentId] = createSignal(null)
   const [agentWindowOffset, setAgentWindowOffset] = createSignal(0)
   const [showHistoryPanel, setShowHistoryPanel] = createSignal(false)
@@ -382,209 +263,79 @@ export function App({ boot }) {
   const [steerText, setSteerText] = createSignal('')
 
   const refs = boot.refs
-  refs.session ??= null
-  refs.allEvents ??= []
-  refs.persisted ??= 0
-  refs.abort = refs.abort || null
-  refs.rewindUndo = refs.rewindUndo || null
   refs.quitAt ??= 0
-  refs.attachments ??= new Map()
-  refs.imageCount ??= 0
 
-  refs.agents ??= createAgentManager({
-    concurrency: 8,
-    defaults: () => ({ model: boot.researchModel }),
-    onChange: () => setAgentsVersion((v) => v + 1),
-    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools })),
-    onEvent: (agent, event) => {
-      if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
-    },
-    onFinish: (agent) => {
-      persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
-      noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id, sessionId: agent.sessionId, sessionFile: agent.sessionFile })
-    },
-    // this closure outlives any single render, so it reads the live boot
-    // rather than the bindings destructured when the manager was created:
-    // /connect and project switches both replace them
-    run: async (agent, signal, onStream) => {
-      const worker = boot.models.find((m) => m.name === agent.model)
-      if (!worker || worker.available === false) throw new Error(`research model unavailable: ${agent.model}`)
-      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
-      const sessionId = refs.session?.id
-      if (!sessionId) throw new Error('worker requires an active session')
-      const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
-      const workerTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
-      const requestedTools = agent.tools?.length ? agent.tools.filter((name) => workerTools.includes(name)) : workerTools
-      const { tools, recorder } = createToolset({
-        cwd: boot.cwd,
-        env: { PICO_SCRATCHPAD: scratchpad },
-        // a private tracker seeded from the main one: a worker may read an
-        // AGENTS.md the main agent has not seen, and consuming it from the
-        // shared set would mean the main agent never receives it
-        tracker: createContextTracker({
-          stopDir: boot.startupContext.stopDir,
-          loaded: new Set(boot.tracker.loaded),
-        }),
-        shells: boot.shells,
-        sessionId,
-        sessionFile: refs.session?.file,
-        dredge: boot.dredge,
-        signal,
-        maxToolCalls: 30,
-        allowNames: requestedTools,
-      })
-      return runTurn({
-        history: [{ role: 'user', content: agent.prompt }],
-        tools,
-        recorder,
-        modelName: worker.name,
-        effort: worker.effort ? 'low' : null,
-        auth,
-        system: `You are an isolated worker operating in the user's real project. Complete only the assigned task and do not ask the user questions. You may read, modify, and test project files. Put disposable scripts, generated data, experiments, and temporary package installs in your session-persistent scratchpad at ${scratchpad}, also available as $PICO_SCRATCHPAD. Use primary sources where possible, distinguish evidence from inference, and return a concise self-contained result.`,
-        signal,
-        onStream,
-      })
-    },
-  })
-  const agents = refs.agents
-
-  const deliberations = {
-    run: async ({ brief, rounds, signal }) => {
-      const options = validateDeliberation({ brief, rounds })
-      brief = options.brief
-      rounds = options.rounds
-      const existingIds = deliberationsFromEvents(refs.allEvents).map((item) => Number(item.deliberationId)).filter(Number.isFinite)
-      const id = String(Math.max(0, ...existingIds) + 1)
-      const modelName = boot.deliberationModel
-      const worker = boot.models.find((m) => m.name === modelName)
-      if (!worker || worker.available === false) throw new Error(`deliberation model unavailable: ${modelName}`)
-      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
-      const sessionId = refs.session?.id
-      if (!sessionId) throw new Error('deliberation requires an active session')
-      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: modelName }))
-      setAgentsVersion((v) => v + 1)
-
-      const persistDeliberation = (event) => {
-        persist(event)
-        setAgentsVersion((v) => v + 1)
-      }
-
-      const runWorker = async ({ history, role, round, tools: enabled = true, onStream }) => {
-        const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
-        const workerTools = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
-        const toolset = createToolset({
-          cwd: boot.cwd,
-          env: { PICO_SCRATCHPAD: scratchpad },
-          tracker: createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(boot.tracker.loaded) }),
-          shells: boot.shells,
-          sessionId,
-          sessionFile: refs.session?.file,
-          dredge: boot.dredge,
-          signal,
-          maxToolCalls: 30,
-          allowNames: enabled ? workerTools : [],
-        })
-        return runTurn({
-          history,
-          tools: toolset.tools,
-          recorder: toolset.recorder,
-          modelName,
-          effort: worker.effort ? 'low' : null,
-          auth,
-          system: `You are one participant in an isolated, bounded deliberation. Research actively with project and web tools, prefer primary sources, and distinguish evidence from inference. Do not ask the user questions or modify project files. Your persistent scratchpad is ${scratchpad}.`,
-          signal,
-          onStream,
-        })
-      }
-
-      const result = await runDeliberation({
-        brief,
-        rounds,
-        signal,
-        runParticipant: ({ history, role, round }) => runWorker({
-          history,
-          role,
-          round,
-          onStream: (event) => {
-            if (['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)) {
-              persistDeliberation(makeEvent('deliberation_event', { deliberationId: id, role, round, event }))
-            }
-          },
-        }),
-        runSynthesis: ({ history }) => runWorker({ history, role: 'synthesizer', tools: false }),
-        onEvent: (event) => persistDeliberation(makeEvent('deliberation_turn', { deliberationId: id, ...event })),
-      })
-      persistDeliberation(makeEvent('deliberation_result', { deliberationId: id, result: result.result, usage: result.usage, interrupted: result.interrupted, error: result.error }))
-      if (result.error) throw new Error(result.error)
-      return {
-        deliberationId: id,
-        synthesis: result.result,
-        interrupted: result.interrupted,
-        review: 'The full deliberation transcript and tool activity are available in the session activity panel.',
-      }
-    },
+  function setView(next) {
+    setViewSignal(next)
+    ctl.hold(next !== 'chat')
   }
 
-  onSessionWriteError((err) => flash(`session not saved: ${String(err.message || err).slice(0, 80)}`))
-  boot.setMcpNotify(() => setMcpServers(boot.mcp.list()))
-  boot.setShellsNotify(() => setShellsVersion((v) => v + 1))
-  boot.setWakeupsNotify(() => setShellsVersion((v) => v + 1))
-  boot.setGitNotify(() => setGitVersion((v) => v + 1))
-  boot.setWakeupsFire((wakeup) => {
-    flash(`wake-up ${wakeup.id} fired`)
-    noteSystem(
-      `[system notification] scheduled wake-up ${wakeup.id} fired. Note to self: ${wakeup.note}`,
-      { wake: true },
-    )
-  })
-  boot.setShellsExit((shell) => {
-    if (shell.killedBy === 'model') {
-      flash(`shell ${shell.id} killed`)
-      return
+  // the controller owns every piece of conversation state; these signals
+  // mirror it so the render tree below stays reactive without knowing that
+  const mirror = (get, set, value) => {
+    if (get() !== value) set(value)
+  }
+  function syncFromController() {
+    mirror(derived, setDerived, state.derived)
+    mirror(overlay, setOverlay, state.overlay)
+    mirror(streaming, setStreaming, state.streaming)
+    mirror(turnPhase, setTurnPhase, state.turnPhase)
+    mirror(busy, setBusy, state.busy)
+    mirror(compacting, setCompacting, state.compacting)
+    mirror(compactStatus, setCompactStatus, state.compactStatus)
+    mirror(startedAt, setStartedAt, state.startedAt)
+    mirror(model, setModel, state.model)
+    mirror(defaultModel, setDefaultModel, state.defaultModel)
+    mirror(effort, setEffort, state.effort)
+    mirror(defaultEffort, setDefaultEffort, state.defaultEffort)
+    mirror(questionRequest, setQuestionRequest, state.question)
+    mirror(queued, setQueued, state.queued)
+    mirror(expedited, setExpedited, state.expedited)
+    mirror(sent, setSent, state.sent)
+    mirror(agentsVersion, setAgentsVersion, state.activityVersion)
+  }
+
+  // trend re-runs this component on every signal change, so the controller
+  // is subscribed once and each handler reaches the newest render through
+  // refs.ui, which is replaced below on every pass
+  refs.ui = {
+    sync: syncFromController,
+    flash: (message) => flash(message),
+    derived: (next) => {
+      setAccent(next.color)
+      boot.setTheme?.({ accent: next.color || DEFAULT_ACCENT, muted: MUTED })
+    },
+    question: () => fm.focus('question'),
+    turn: () => {
+      setFollow(true)
+      setHistWindow(HISTORY_WINDOW)
+    },
+    input: (text) => setInput(text),
+    session: () => {
+      setViewedAgentId(null)
+      setViewedShellId(null)
+      setHistWindow(HISTORY_WINDOW)
+      setFollow(true)
+      fm.focus('input')
+    },
+    resumed: (meta) => flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`),
+    project: (next) => {
+      process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
+      setMcpServers(next.mcp.list())
+      setFileList([])
+    },
+    mcp: (servers) => setMcpServers(servers),
+    shells: () => setShellsVersion((v) => v + 1),
+    git: () => setGitVersion((v) => v + 1),
+  }
+  if (!refs.subscribed) {
+    refs.subscribed = true
+    ctl.on('change', () => refs.ui.sync())
+    for (const type of ['flash', 'derived', 'question', 'turn', 'input', 'session', 'resumed', 'project', 'mcp', 'shells', 'git']) {
+      ctl.on(type, (payload) => refs.ui[type](payload))
     }
-    if (shell.killedBy === 'user') {
-      flash(`shell ${shell.id} killed`)
-      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false, sessionId: shell.sessionId, sessionFile: shell.sessionFile })
-      return
-    }
-    flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
-    const tail = boot.shells.output(shell.id, { tail: 30 }).output
-    const secs = Math.max(0, Math.round(((shell.endedAt || Date.now()) - shell.startedAt) / 1000))
-    const ran = secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`
-    noteSystem(
-      `[system notification] background shell ${shell.id} (${shell.description || shell.command}) exited with code ${shell.exitCode} after ${ran}.` +
-        (tail ? `\nRecent output:\n${tail}` : ''),
-      { wake: true, sessionId: shell.sessionId, sessionFile: shell.sessionFile },
-    )
-  })
-
-  function noteSystem(text, { wake, agentId, sessionId = refs.session?.id, sessionFile = refs.session?.file } = {}) {
-    refs.pendingSystemNotes ??= []
-    refs.pendingSystemNotes.push({ text, wake, agentId, sessionId, sessionFile })
-    flushSystemNotes()
   }
-
-  function discardCollectedAgentNotes(agentIds) {
-    const collected = new Set(agentIds.map(String))
-    refs.pendingSystemNotes = refs.pendingSystemNotes?.filter((note) => !collected.has(String(note.agentId))) || []
-  }
-
-  function flushSystemNotes() {
-    if (!refs.pendingSystemNotes?.length || busy() || view() !== 'chat' || !refs.session) return
-    refs.pendingSystemNotes = refs.pendingSystemNotes.filter((note) => !note.agentId || !agents.get(note.agentId)?.collectedAt)
-    const currentSessionId = refs.session.id
-    const current = refs.pendingSystemNotes.filter((note) => !note.sessionId || note.sessionId === currentSessionId)
-    const elsewhere = refs.pendingSystemNotes.filter((note) => note.sessionId && note.sessionId !== currentSessionId)
-    refs.pendingSystemNotes = []
-    for (const notes of Map.groupBy(elsewhere, (note) => note.sessionId).values()) {
-      const sessionFile = notes.find((note) => note.sessionFile)?.sessionFile
-      if (sessionFile) appendSessionEvent(sessionFile, makeEvent('system_note', { text: notes.map((n) => n.text).join('\n\n') }))
-    }
-    if (!current.length) return
-    persist(makeEvent('system_note', { text: current.map((n) => n.text).join('\n\n') }))
-    reDerive()
-    if (current.some((n) => n.wake)) runAgentTurn()
-  }
+  syncFromController()
 
   const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
   const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command · ${c.description || c.source}`, command: true }))
@@ -629,327 +380,7 @@ export function App({ boot }) {
     }).catch(() => {})
   }
 
-  function ensureSession() {
-    if (!refs.session) refs.session = createSession({ cwd, root })
-    while (refs.persisted < refs.allEvents.length) {
-      refs.session.append(refs.allEvents[refs.persisted])
-      refs.persisted++
-    }
-  }
-
-  function persist(event) {
-    refs.allEvents.push(event)
-    if (refs.session) {
-      refs.session.append(event)
-      refs.persisted = refs.allEvents.length
-    }
-  }
-
-  function reDerive() {
-    const state = deriveState(refs.allEvents)
-    setDerived(state)
-    setAccent(state.color)
-    boot.setTheme?.({ accent: state.color || DEFAULT_ACCENT, muted: MUTED })
-  }
-
-  function flushStream(items) {
-    const text = streaming()
-    if (text) items.push({ kind: 'assistant', text })
-    setStreaming(null)
-  }
-
-  async function executeTurn(text) {
-    const { content } = finalizeUserContent(text, refs.attachments)
-    persist(makeEvent('message', { message: { role: 'user', content } }))
-    ensureSession()
-    reDerive()
-    await runAgentTurn()
-  }
-
-  async function performCompaction(instructions = '') {
-    if (busy() || compacting()) return flash('finish or interrupt the current turn first')
-    const state = derived()
-    if (state.providerHistory.length < 4) return flash('nothing to compact yet')
-
-    const controller = new AbortController()
-    refs.abort = controller
-    setBusy(true)
-    setCompacting(true)
-    setCompactStatus(null)
-    setStartedAt(Date.now())
-
-    let auth = null
-    if (model().provider === 'codex') {
-      auth = await openaiCredentials().catch(() => null)
-      if (!auth) {
-        flash('codex models need a ChatGPT sign-in: run /connect')
-        setCompacting(false)
-        setBusy(false)
-        refs.abort = null
-        return
-      }
-    }
-
-    const keepFrom = compactionKeepFrom(state, model().context)
-    let streamed = ''
-    try {
-      const raw = await compactHistory({
-        history: state.providerHistory,
-        modelName: model().name,
-        auth,
-        prompt: compactionPrompt(instructions),
-        signal: controller.signal,
-        onStream: (event) => {
-          if (event.type !== 'content') return
-          streamed += event.content
-          setCompactStatus(compactProgress(streamed))
-        },
-      })
-      const summary = formatCompactSummary(raw)
-      if (!summary) throw new Error('empty summary')
-      if (summarySections(summary) < 5) throw new Error('malformed summary, conversation left untouched')
-      persist(makeEvent('compact', { summary, keepFrom, sessionFile: refs.session?.file || null }))
-      reDerive()
-      flash('compacted · recent messages kept verbatim')
-    } catch (err) {
-      if (controller.signal.aborted) flash('compaction cancelled')
-      else flash(`compact failed: ${String(err.message || err).slice(0, 100)}`)
-    } finally {
-      setCompacting(false)
-      setCompactStatus(null)
-      setBusy(false)
-      refs.abort = null
-    }
-
-    const next = [...expedited(), ...queued()]
-    if (next.length > 0) {
-      setExpedited([])
-      setQueued([])
-      if (controller.signal.aborted) setInput(next.join('\n'))
-      else {
-        executeTurn(next.join('\n'))
-        return
-      }
-    }
-    flushSystemNotes()
-  }
-
-  function maybeAutoCompact() {
-    if (boot.autoCompact === false || busy() || compacting()) return
-    const limit = model().context
-    const used = derived().lastPromptTokens
-    if (!limit || !used || derived().lastPromptModel !== model().name) return
-    const ratio = used / limit
-    if (ratio >= 0.85) {
-      flash(`context ${Math.round(ratio * 100)}% full · auto-compacting`)
-      performCompaction()
-    }
-  }
-
-  async function runAgentTurn() {
-    const researchAgentLimit = refs.nextResearchAgentLimit || null
-    refs.nextResearchAgentLimit = null
-    setFollow(true)
-    setHistWindow(HISTORY_WINDOW)
-    setBusy(true)
-    setTurnPhase('responding')
-    setStartedAt(Date.now())
-
-    let auth = null
-    if (model().provider === 'codex') {
-      auth = await openaiCredentials().catch(() => null)
-      if (!auth) {
-        setTurnPhase('idle')
-        setBusy(false)
-        flash('codex models need a ChatGPT sign-in: run /connect')
-        flushSystemNotes()
-        return
-      }
-    }
-
-    const controller = new AbortController()
-    refs.abort = controller
-    const loadedBefore = new Set(tracker.loaded)
-    boot.skills = await createSkillIndex(boot.root).catch(() => boot.skills) ?? boot.skills
-    boot.commands = await createCommandIndex(boot.root).catch(() => boot.commands) ?? boot.commands
-    const freshSkills = boot.skills
-    const userToolScan = await scanUserTools({ cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
-    for (const failure of userToolScan.errors) {
-      const key = `${failure.file}:${failure.error}`
-      if (!refs.warnedTools?.has(key)) {
-        ;(refs.warnedTools ??= new Set()).add(key)
-        flash(`tool skipped: ${failure.file.split('/').pop()} · ${failure.error}`)
-      }
-    }
-    const { tools, recorder } = createToolset({
-      cwd,
-      tracker,
-      skills: freshSkills,
-      shells: boot.shells,
-      sessionId: refs.session?.id,
-      sessionFile: refs.session?.file,
-      wakeups: boot.wakeups,
-      memory: boot.memory,
-      agents: boot.researchModel ? agents : null,
-      deliberations: boot.deliberationModel ? deliberations : null,
-      onAgentsCollected: discardCollectedAgentNotes,
-      askUser: (questions) => new Promise((resolve) => {
-        setQuestionRequest({ questions, resolve })
-        fm.focus('question')
-      }),
-      dredge: boot.dredge,
-      mcpTools: mcp.tools(),
-      userTools: userToolScan.tools,
-      signal: controller.signal,
-      maxAgentStarts: researchAgentLimit ? 100 : undefined,
-      requireAgentPlan: !!researchAgentLimit,
-      allowNames: researchAgentLimit ? ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel'] : undefined,
-      onToolUpdate: (pending) => {
-        if (pending.name !== 'bash') return
-        setOverlay((items) => items.map((item) =>
-          item.kind === 'tool' && item.callId === pending.callId
-            ? { ...item, fullOutput: pending.fullOutput, outputLineStart: pending.outputLineStart, outputLineCount: pending.outputLineCount }
-            : item,
-        ))
-      },
-    })
-
-    refs.sendAfterToolTriggered = false
-    const onStream = (event) => {
-      if (event.type === 'thinking') {
-        setOverlay((items) => {
-          const next = [...items]
-          flushStream(next)
-          const last = next.at(-1)
-          if (last?.kind === 'thoughts') last.text += event.content
-          else next.push({ kind: 'thoughts', text: event.content })
-          return next
-        })
-        setTurnPhase('thinking')
-      } else if (event.type === 'content') {
-        setTurnPhase('responding')
-        setStreaming((s) => (s || '') + event.content)
-      } else if (event.type === 'tool_calls_ready') {
-        setTurnPhase('tools')
-        setOverlay((o) => {
-          const next = [...o]
-          flushStream(next)
-          return next
-        })
-      } else if (event.type === 'tool_executing') {
-        setOverlay((o) => {
-          const next = [...o]
-          flushStream(next)
-          let args = {}
-          try {
-            args = JSON.parse(event.call.function.arguments)
-          } catch {}
-          next.push({
-            kind: 'tool',
-            callId: event.call.id,
-            name: event.call.function.name,
-            description: args.description,
-            title: uiTitle(event.call.function.name, args),
-            titleLang: event.call.function.name === 'bash' ? 'bash' : null,
-            status: 'running',
-            startedAt: Date.now(),
-          })
-          return next
-        })
-      } else if (event.type === 'tool_complete' || event.type === 'tool_error') {
-        boot.git.refresh()
-        const entry = recorder.entries.at(-1)
-        setOverlay((o) =>
-          o.map((item) =>
-            item.kind === 'tool' && item.callId === event.call.id
-              ? { ...item, ...(entry?.callId === event.call.id ? entry : {}), kind: 'tool', status: entry?.status || 'done' }
-              : item,
-          ),
-        )
-        if (expedited().length > 0) {
-          refs.sendAfterToolTriggered = true
-          controller.abort()
-        }
-      }
-    }
-
-    let result
-    try {
-      result = await runTurn({
-        history: derived().providerHistory,
-        tools,
-        recorder,
-        modelName: model().name,
-        effort: effortApplies() ? effort() ?? 'auto' : null,
-        auth,
-        system: buildSystemPrompt({
-          cwd,
-          contextFiles: startupContext.files,
-          skills: freshSkills.list(),
-          memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
-        }),
-        signal: controller.signal,
-        onStream,
-      })
-    } catch (err) {
-      setOverlay([])
-      setStreaming(null)
-      setTurnPhase('idle')
-      setBusy(false)
-      refs.abort = null
-      flash(`error: ${String(err.message || err).slice(0, 120)}`)
-      return
-    }
-
-    const turnTranscript = [...overlay()]
-    flushStream(turnTranscript)
-    for (const message of result.messages) persist(makeEvent('message', { message, hideFromTranscript: true }))
-    persist(makeEvent('turn_transcript', { items: turnTranscript }))
-    for (const entry of recorder.entries) persist(makeEvent('tool_meta', entry))
-    for (const path of tracker.loaded) {
-      if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
-    }
-    if (result.usage) persist(makeEvent('usage', { model: model().name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
-    if (result.interrupted) persist(makeEvent('interrupt', {}))
-
-    setOverlay([])
-    setStreaming(null)
-    setTurnPhase('idle')
-    reDerive()
-    setBusy(false)
-    refs.abort = null
-    boot.git.refresh()
-    if (result.stalled) {
-      flash('model stalled · turn interrupted')
-      noteSystem(
-        '[system notification] the previous turn was cut off automatically: the model produced no output for 5 minutes (provider stall). Work may have stopped mid-task; pick up where it left off.',
-        { wake: false },
-      )
-    } else if (result.error) {
-      flash(`error: ${result.error.slice(0, 120)}`)
-      noteSystem(
-        `[system notification] the previous turn ended with a provider error: ${result.error.slice(0, 300)}. Work may have stopped mid-task; pick up where it left off.`,
-        { wake: false },
-      )
-    }
-
-    const expeditedMessages = expedited()
-    const pendingMessages = queued()
-    if (expeditedMessages.length > 0 || pendingMessages.length > 0) {
-      setExpedited([])
-      setQueued([])
-      if (result.interrupted && !refs.sendAfterToolTriggered) {
-        setInput([...expeditedMessages, ...pendingMessages].join('\n'))
-      } else {
-        const next = refs.sendAfterToolTriggered ? expeditedMessages : [...expeditedMessages, ...pendingMessages]
-        if (refs.sendAfterToolTriggered && pendingMessages.length > 0) setQueued(pendingMessages)
-        executeTurn(next.join('\n'))
-        return
-      }
-    }
-    flushSystemNotes()
-    maybeAutoCompact()
-  }
+  const performCompaction = ctl.compact
 
   function completionSource(name) {
     if (name === 'color') return Object.keys(SESSION_COLORS)
@@ -985,26 +416,14 @@ export function App({ boot }) {
         return
       }
     }
-    setSent((s) => [...s, { text: value, at: Date.now() }])
     setHistIdx(-1)
-    appendPrompt(root, value).catch(() => {})
-    if (busy()) {
-      setQueued((q) => [...q, value])
-      return
-    }
-    executeTurn(value)
+    ctl.send(value)
   }
 
   function interrupt() {
     if (!busy()) return
-    refs.sendAfterToolTriggered = false
-    const request = questionRequest()
-    if (request) {
-      setQuestionRequest(null)
-      refs.focusComposerAfterQuestion = true
-      request.resolve({ cancelled: true })
-    }
-    refs.abort?.abort()
+    if (state.question) refs.focusComposerAfterQuestion = true
+    ctl.interrupt()
   }
 
   const fmtTokens = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
@@ -1040,88 +459,20 @@ export function App({ boot }) {
   }
 
   async function openContextPanel() {
-    const est = (text) => Math.round(String(text).length / 4)
     const tok = (n) => `~${fmtTokens(n)} tok`
-    const state = derived()
-
-    const memoryIndexText = memoryIndex(await boot.memory.list().catch(() => []), boot.root)
-    const skillList = boot.skills.list()
-    const files = startupContext.files
-    const systemFull = buildSystemPrompt({ cwd, contextFiles: files, skills: skillList, memoryIndexText })
-    const systemBase = buildSystemPrompt({ cwd, contextFiles: [], skills: [], memoryIndexText: '' })
-    const userToolScan = await scanUserTools({ cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
-    const { tools } = createToolset({
-      cwd,
-      tracker,
-      skills: boot.skills,
-      shells: boot.shells,
-      wakeups: boot.wakeups,
-      memory: boot.memory,
-      dredge: boot.dredge,
-      mcpTools: mcp.tools(),
-      userTools: userToolScan.tools,
-    })
-    const toolTokens = est(JSON.stringify(tools))
-
-    const history = state.providerHistory
-    const compacted = history[0]?.role === 'user'
-      && state.historyEventIds[0] === null
-      && String(history[0].content).startsWith('[system notification] The earlier portion')
-    const summaryTokens = compacted ? est(history[0].content) : 0
-    const messages = compacted ? history.slice(1) : history
-    const messageTokens = est(JSON.stringify(messages))
-
-    const rows = [
-      { name: 'system prompt', desc: 'identity, environment, tool guidance', note: tok(est(systemBase)) },
-      { name: `tool schemas (${tools.length})`, desc: tools.map((t) => t.name).join(' · '), note: tok(toolTokens) },
-    ]
-    if (files.length) {
-      rows.push({
-        name: `project instructions (${files.length})`,
-        desc: files.map((f) => f.path.replace(`${boot.root}/`, '')).join(', '),
-        note: tok(files.reduce((sum, f) => sum + est(f.content), 0)),
-      })
-    }
-    if (skillList.length) {
-      rows.push({
-        name: `skills index (${skillList.length})`,
-        desc: skillList.map((s) => s.name).join(', '),
-        note: tok(est(skillList.map((s) => `- ${s.name}: ${s.description}`).join('\n'))),
-      })
-    }
-    if (memoryIndexText) {
-      rows.push({ name: 'memory index', desc: 'one line per saved memory', note: tok(est(memoryIndexText)) })
-    }
-    if (compacted) {
-      rows.push({ name: 'compaction summary', desc: 'stands in for everything before the last compact', note: tok(summaryTokens) })
-    }
-    rows.push({
-      name: `conversation (${messages.length} messages)`,
-      desc: compacted ? 'kept verbatim since the last compact' : 'every message this session',
-      note: tok(messageTokens),
-    })
-
-    if (state.lastPromptTokens && state.lastPromptModel === model().name) {
+    const breakdown = await ctl.contextBreakdown()
+    const rows = breakdown.rows.map((row) => ({ name: row.name, desc: row.desc, note: tok(row.tokens) }))
+    if (breakdown.measured) {
       rows.push({
         name: 'last measured request',
         desc: 'provider-reported input tokens, the number behind ctx %',
-        note: `${state.lastPromptTokens.toLocaleString()} tok`,
+        note: `${breakdown.measured.toLocaleString()} tok`,
       })
     }
-
-    const contextSegments = [
-      { label: 'system', tokens: est(systemBase) },
-      { label: 'tools', tokens: toolTokens },
-      { label: 'project', tokens: Math.max(0, est(systemFull) - est(systemBase)) },
-      ...(summaryTokens ? [{ label: 'summary', tokens: summaryTokens }] : []),
-      { label: 'conversation', tokens: messageTokens },
-    ].filter((segment) => segment.tokens > 0)
-      .map((segment, i) => ({ ...segment, color: ['#67b7ff', '#c792ea', '#f7c66a', '#f78c6c', '#6be795'][i] }))
-
     setInfoPanel({
-      title: `Context · ${model().name}`,
+      title: `Context · ${breakdown.model}`,
       rows,
-      overview: contextSegments.length ? { segments: contextSegments } : null,
+      overview: breakdown.segments.length ? { segments: breakdown.segments } : null,
     })
   }
 
@@ -1147,9 +498,7 @@ export function App({ boot }) {
   }
 
   function steerPreview() {
-    const draft = steer()
-    if (!draft?.changes.length) return derived()
-    return deriveState([...refs.allEvents, { id: '__steer_preview__', at: Date.now(), type: 'steer', data: { changes: draft.changes } }])
+    return ctl.previewSteer(steer()?.changes)
   }
 
   function steerRows() {
@@ -1178,8 +527,7 @@ export function App({ boot }) {
   function applySteer() {
     const draft = steer()
     if (!draft?.changes.length) return closeSteer()
-    persist(makeEvent('steer', { changes: draft.changes }))
-    reDerive()
+    ctl.applySteer(draft.changes)
     closeSteer(true)
   }
 
@@ -1232,55 +580,9 @@ export function App({ boot }) {
     if (typeof args !== 'string') args = ''
     setInput('')
     setCmdCycle(null)
-    if (c.name === 'fork') {
-      const label = args.trim()
-      if (!label) return flash('usage: /fork <label>')
-      if (busy()) return flash('finish or interrupt the current turn first')
-      ensureSession()
-      const fork = await forkSession({ source: refs.session, cwd, root, events: refs.allEvents, label })
-      refs.session = fork.session
-      refs.allEvents = fork.events
-      refs.persisted = fork.events.length
-      refs.rewindUndo = null
-      agents.restore(fork.events)
-      setViewedAgentId(null)
-      setViewedShellId(null)
-      setQueued([])
-      setExpedited([])
-      setSent([])
-      reDerive()
-      fm.focus('input')
-      flash(`forked session as "${label}"`)
-      return
-    }
-    if (c.name === 'rename') {
-      const automaticTitle = userEntries(derived())[0]?.text.trim().slice(0, 200)
-      persist(makeEvent('title', { text: args || null }))
-      ensureSession()
-      reDerive()
-      if (args) flash(`session renamed to "${args}"`)
-      else if (automaticTitle) flash(`session name reset to "${automaticTitle}"`)
-      else flash('session name reset')
-      return
-    }
-    if (c.name === 'color') {
-      const names = Object.keys(SESSION_COLORS)
-      const values = Object.values(SESSION_COLORS)
-      let value
-      if (!args) {
-        const next = (values.indexOf(derived().color) + 1) % values.length
-        value = values[next]
-      } else {
-        value = SESSION_COLORS[args.toLowerCase()] || (/^#[0-9a-fA-F]{6}$/.test(args) ? args : null)
-        if (!value) return flash(`usage: /color to cycle, or /color <${names.join('|')}|#hex>`)
-      }
-      persist(makeEvent('color', { value }))
-      ensureSession()
-      reDerive()
-      const name = names[values.indexOf(value)]
-      flash(`session color: ${name || value}`)
-      return
-    }
+    if (c.name === 'fork') return ctl.fork(args.trim())
+    if (c.name === 'rename') return ctl.rename(args)
+    if (c.name === 'color') return ctl.setColor(args)
     if (c.name === 'config') {
       setShowConfigPanel(true)
       return
@@ -1293,74 +595,33 @@ export function App({ boot }) {
       applyThemePref(choice)
       return
     }
-    if (c.skill) {
-      const body = await skills.load(c.name)
-      if (!body) return flash(`could not load skill ${c.name}`)
-      persist(makeEvent('skill', { name: c.name, source: 'user' }))
-      send(`Follow these skill instructions now.\n\n${body}`)
-      return
-    }
-    if (c.command) {
-      const text = await boot.commands.load(c.name, args)
-      if (!text) return flash(`could not load command ${c.name}`)
-      send(text)
-      return
-    }
+    if (c.skill) return ctl.sendSkill(c.name)
+    if (c.command) return ctl.sendCommand(c.name, args)
     if (c.name === 'connect') return openConnectPanel()
-    if (c.name === 'init') {
-      send(initPrompt(args))
-      return
-    }
+    if (c.name === 'init') return ctl.sendInit(args)
     if (c.name === 'parallel') {
       const task = args.trim()
-      const agentLimit = researchAgentLimit()
-      if (!task) return flash('usage: /parallel <task>')
-      if (!boot.researchModel || !models.some((m) => m.name === boot.researchModel && m.available !== false)) {
-        setPendingResearch({ task })
-        setShowResearchModelPanel(true)
-        return
-      }
-      refs.nextResearchAgentLimit = agentLimit
-      send(`Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`)
+      if (ctl.sendParallel(task)) return
+      setPendingResearch({ task })
+      setShowResearchModelPanel(true)
       return
     }
     if (c.name === 'deliberate') {
       const decision = args.trim()
-      if (!decision) return flash('usage: /deliberate <decision>')
-      if (!boot.deliberationModel || !models.some((m) => m.name === boot.deliberationModel && m.available !== false)) {
-        setPendingDeliberation({ decision })
-        setSelectingDeliberationModel(true)
-        setShowResearchModelPanel(true)
-        return
-      }
-      send(`Deliberate on the following decision: ${decision}\n\nImmediately call deliberate with a self-contained brief. Do not research first, start ordinary agents, or approximate the deliberation yourself. The deliberation participants own all supporting research.`)
+      if (ctl.sendDeliberate(decision)) return
+      setPendingDeliberation({ decision })
+      setSelectingDeliberationModel(true)
+      setShowResearchModelPanel(true)
       return
     }
     if (c.name === 'model') {
       if (!args) return setShowModelPanel(true)
-      const exact = models.find((m) => m.name === args)
-      const adhoc = !exact && args.includes('/') ? adhocModel(args, boot.providers) : null
-      const scored = exact || adhoc
-        ? []
-        : models
-            .map((m) => [fuzzyScore(args, m.name), m])
-            .filter(([score]) => score >= 0)
-            .sort((a, b) => b[0] - a[0])
-      const pick = exact || adhoc || scored[0]?.[1]
-      if (!pick) return flash(`no available model matches "${args}"`)
-      if (pick.available === false) return flash(`set ${pick.keyHint} in your environment to use ${pick.name}`)
-      persist(makeEvent('model_switch', { from: model().name, to: pick.name }))
-      setModel(pick)
-      flash(adhoc ? `model set to ${pick.name} (not in catalog, pricing unknown)` : `model set to ${pick.name}`)
-      return
+      return ctl.switchModelByName(args)
     }
     if (c.name === 'effort') {
       if (!effortApplies()) return flash(`${model().name} does not support effort control`)
       if (!args) return setShowEffortPanel(true)
-      const level = args.toLowerCase()
-      if (level === 'default') return setSessionEffort(null)
-      if (!EFFORT_LEVELS.some((l) => l.key === level)) return flash('usage: /effort <default|low|medium|high|max>')
-      return setSessionEffort(level)
+      return ctl.setEffortByName(args.toLowerCase())
     }
     if (c.name === 'update') {
       if (isDevInstall(import.meta.url)) return flash('this pico runs from a source checkout · update it with git')
@@ -1408,50 +669,15 @@ export function App({ boot }) {
       })
     }
     if (c.name === 'tools') {
-      const scan = await scanUserTools({ cwd: boot.cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
-      const { tools: builtins } = createToolset({
-        cwd: boot.cwd,
-        tracker,
-        skills,
-        shells: boot.shells,
-        wakeups: boot.wakeups,
-        memory: boot.memory,
-        dredge: boot.dredge,
-      })
-      const mcpCount = mcp.tools().length
-      setInfoPanel({
-        title: `Tools${mcpCount ? ` · plus ${mcpCount} MCP (see /mcp)` : ''}`,
-        rows: [
-          ...builtins.map((t) => ({ name: t.name, desc: t.description.split('\n')[0], note: 'builtin' })),
-          ...scan.tools.map((t) => ({ name: t.name, desc: t.description, note: `${t.source} · ${t._file.split('/').pop()}` })),
-          ...scan.errors.map((e) => ({ name: e.file.split('/').pop(), desc: e.error, note: 'broken' })),
-        ],
-      })
+      const { rows, mcpCount } = await ctl.describeTools()
+      setInfoPanel({ title: `Tools${mcpCount ? ` · plus ${mcpCount} MCP (see /mcp)` : ''}`, rows })
       return
     }
-    if (c.name === 'new' || c.name === 'delete') {
+    if (c.name === 'new') return ctl.newSession()
+    if (c.name === 'delete') {
       if (busy()) return flash('finish or interrupt the current turn first')
-      if (c.name === 'delete') {
-        if (!refs.session) return flash('no current session to delete')
-        setShowDeleteConfirm(true)
-        return
-      }
-      refs.session = null
-      refs.allEvents = []
-      refs.persisted = 0
-      refs.rewindUndo = null
-      agents.clear()
-      setViewedAgentId(null)
-      setViewedShellId(null)
-      fm.focus('input')
-      setQueued([])
-      setExpedited([])
-      setSent([])
-      setModel(defaultModel())
-      setEffort(defaultEffort())
-      setHistWindow(HISTORY_WINDOW)
-      reDerive()
-      flash('new session')
+      if (!state.session) return flash('no current session to delete')
+      setShowDeleteConfirm(true)
       return
     }
     if (c.name === 'rewind') {
@@ -1460,30 +686,17 @@ export function App({ boot }) {
       setRewindStep('pick')
       return
     }
-    if (c.name === 'clear') {
-      if (busy()) return flash('finish or interrupt the current turn first')
-      persist(makeEvent('clear', {}))
-      reDerive()
-      flash('conversation cleared')
-      return
-    }
+    if (c.name === 'clear') return ctl.clear()
     if (c.name === 'compact') return performCompaction(args)
     if (c.name === 'cost') {
-      const state = derived()
-      const entries = Object.entries(state.usageByModel)
-      if (entries.length === 0) return flash('no usage yet')
-      const costOf = (byModel) =>
-        Object.entries(byModel).reduce((sum, [name, usage]) => sum + estimateCost(findModel(models, name), usage), 0)
-      const spent = costOf(state.usageByModel)
-      const active = costOf(state.usageActiveByModel)
-      const { promptTokens, completionTokens } = state.usage
-      const base = `$${spent.toFixed(4)} spent · ${promptTokens.toLocaleString()} in · ${completionTokens.toLocaleString()} out`
-      flash(spent - active > 0.00005 ? `${base} · current conversation $${active.toFixed(4)}` : base)
+      const cost = ctl.costSummary()
+      if (!cost) return flash('no usage yet')
+      const base = `$${cost.spent.toFixed(4)} spent · ${cost.promptTokens.toLocaleString()} in · ${cost.completionTokens.toLocaleString()} out`
+      flash(cost.spent - cost.active > 0.00005 ? `${base} · current conversation $${cost.active.toFixed(4)}` : base)
       return
     }
     if (c.name === 'export') {
-      const file = join(cwd, `pico-export-${Date.now()}.md`)
-      await writeFile(file, transcriptToMarkdown(derived().transcript, { title: `pico session · ${cwd}` }))
+      const file = await ctl.exportMarkdown()
       flash(`exported to ${file}`)
       return
     }
@@ -1505,15 +718,8 @@ export function App({ boot }) {
     if (provider.id !== 'openai') return
     setShowConnectPanel(false)
     flash('opening your browser for ChatGPT sign-in...')
-    connectOpenAI()
-      .then(async ({ email }) => {
-        boot.providers = [...new Set([...boot.providers, 'codex'])]
-        const creds = await openaiCredentials().catch(() => null)
-        const codex = (await loadCodexModels(creds)).map((m) => ({ ...m, available: true, keyHint: '/connect' }))
-        boot.models = [...boot.models.filter((m) => m.provider !== 'codex'), ...codex]
-        reDerive()
-        flash(`connected as ${email || 'your ChatGPT account'} · ${codex.length} codex models unlocked in /model`)
-      })
+    ctl.connectProvider()
+      .then(({ email, count }) => flash(`connected as ${email || 'your ChatGPT account'} · ${count} codex models unlocked in /model`))
       .catch((err) => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
   }
 
@@ -1525,10 +731,7 @@ export function App({ boot }) {
       return flash(`ctrl+x again to disconnect ${provider.label} (you will need to sign in again)`)
     }
     refs.disconnectArm = null
-    await disconnectOpenAI().catch(() => {})
-    boot.providers = boot.providers.filter((p) => p !== 'codex')
-    boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: false } : m))
-    if (model().provider === 'codex') setModel(defaultModel())
+    await ctl.disconnectProvider()
     refreshAuthProviders()
     flash('disconnected from ChatGPT')
   }
@@ -1549,27 +752,8 @@ export function App({ boot }) {
     if (busy()) return flash('finish or interrupt the current turn before switching sessions')
     setShowProjectPanel(true)
     setProjectsLoading(true)
-    listSessions({ scope: 'everywhere', root })
-      .then((metas) => {
-        const byRoot = new Map()
-        for (const m of metas) {
-          const entry = byRoot.get(m.header.root)
-          if (!entry) {
-            byRoot.set(m.header.root, {
-              root: m.header.root,
-              path: shortenPath(m.header.root),
-              latest: m,
-              sessions: [m],
-              count: 1,
-              current: m.header.root === boot.root,
-            })
-          } else {
-            entry.sessions.push(m)
-            entry.count++
-          }
-        }
-        setProjects([...byRoot.values()])
-      })
+    ctl.listProjects()
+      .then((list) => setProjects(list.map((p) => ({ ...p, path: shortenPath(p.root) }))))
       .finally(() => setProjectsLoading(false))
   }
 
@@ -1590,30 +774,8 @@ export function App({ boot }) {
     }
   }
 
-  async function switchProject(meta) {
-    if (busy()) return flash('finish or interrupt the current turn first')
-    try {
-      const previousMcp = boot.mcp
-      const next = await boot.rebuild(meta.header.root)
-      previousMcp.closeAll().catch(() => {})
-      process.chdir(next.cwd)
-      Object.assign(boot, next)
-      boot.git.retarget(next.root)
-      process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
-      next.mcp.connectAll()
-      setMcpServers(next.mcp.list())
-      setQueued([])
-      setExpedited([])
-      setFileList([])
-      await resumeSession(meta)
-      flash(`switched to ${next.displayCwd}`)
-    } catch (err) {
-      flash(`switch failed: ${String(err.message || err).slice(0, 80)}`)
-    }
-  }
-
   async function deleteSessionMeta(meta) {
-    const current = refs.session?.id === meta.header.id
+    const current = state.session?.id === meta.header.id
     if (current && busy()) return flash('finish or interrupt the current turn first')
     const armed = refs.deleteArm
     if (!armed || armed.file !== meta.file || Date.now() - armed.at > 3000) {
@@ -1638,35 +800,7 @@ export function App({ boot }) {
     if (busy()) return flash('finish or interrupt the current turn before switching sessions')
     setShowResumePanel(false)
     setShowProjectPanel(false)
-    if (meta.header.root !== boot.root) return switchProject(meta)
-    try {
-      const { header, events } = await loadSession(meta.file)
-      refs.session = openSession({ file: meta.file, header })
-      refs.allEvents = [...events]
-      refs.persisted = events.length
-      refs.rewindUndo = null
-      agents.restore(events)
-      setViewedAgentId(null)
-      setViewedShellId(null)
-      fm.focus('input')
-      reDerive()
-      const catalogMatch = models.find((m) => m.name === derived().model && m.available !== false)
-      const restored = derived().model
-        && (catalogMatch || adhocModel(derived().model, boot.providers))
-      if (restored) {
-        setModel(restored)
-      } else {
-        setModel(defaultModel())
-        if (derived().model) flash(`model ${derived().model} unavailable, using ${defaultModel().name}`)
-      }
-      setEffort(derived().effort === undefined ? defaultEffort() : derived().effort)
-      setSent(userEntries(derived()).map((e) => ({ text: recallText(e), at: header.createdAt })))
-      setHistWindow(HISTORY_WINDOW)
-      setFollow(true)
-      flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`)
-    } catch (err) {
-      flash(`resume failed: ${String(err.message || err).slice(0, 80)}`)
-    }
+    await ctl.resume(meta)
   }
 
   function openHistorySearch() {
@@ -1697,42 +831,7 @@ export function App({ boot }) {
   }
 
   async function performRewindTo(target, opt) {
-    const state = derived()
-    const { edits } = rewindStats(state, target.index)
-    const editsLabel = `${edits.length} ${edits.length === 1 ? 'edit' : 'edits'}`
-    let reverted = []
-    let skipped = []
-
-    if (opt.key === 'both' || opt.key === 'code') {
-      const result = await revertEdits(edits)
-      reverted = result.reverted
-      skipped = result.skipped
-    }
-
-    let summaryText = null
-    if (opt.key === 'summary') {
-      const tail = state.transcript.slice(target.index)
-      const text = tail.filter((m) => m.text).map((m) => `${m.kind}: ${m.text}`).join('\n')
-      flash('summarizing...')
-      let auth = null
-      if (model().provider === 'codex') auth = await openaiCredentials().catch(() => null)
-      summaryText = await summarizeText({ text, modelName: model().name, auth }).catch(() => {
-        flash('summary model call failed · kept a crude digest of the rewound turns')
-        return tail.filter((m) => m.text).slice(0, 3).map((m) => m.text.split(/\s+/).slice(0, 6).join(' ')).join(' · ')
-      })
-    }
-
-    const event = makeEvent('rewind', { target: target.eventId, mode: opt.key, summaryText, reverted, skipped })
-    persist(event)
-    refs.rewindUndo = { rewindId: event.id, edits: edits.filter((e) => reverted.includes(e.callId)) }
-    reDerive()
-    if (opt.key !== 'code') setInput(recallText(target))
-
-    const skippedNote = skipped.length ? ` · skipped ${skipped.length} drifted` : ''
-    if (opt.key === 'code') flash(`reverted ${editsLabel}, conversation kept${skippedNote} · ctrl+z to undo`)
-    else if (opt.key === 'summary') flash(`rewound and summarized${skippedNote} · ctrl+z to undo`)
-    else if (opt.key === 'both') flash(`rewound, ${editsLabel} reverted${skippedNote} · ctrl+z to undo`)
-    else flash(`rewound, file changes kept · ctrl+z to undo`)
+    await ctl.rewind(target, opt.key)
     setRewindStep(null)
     setRewindTarget(null)
   }
@@ -1741,51 +840,12 @@ export function App({ boot }) {
     return performRewindTo(rewindTarget(), opt)
   }
 
-  async function undoRewind() {
-    const undo = refs.rewindUndo
-    if (!undo) return
-    const { skipped } = await reapplyEdits(undo.edits)
-    persist(makeEvent('rewind_undo', { rewindId: undo.rewindId }))
-    refs.rewindUndo = null
-    reDerive()
-    flash(skipped.length ? `rewind undone · ${skipped.length} file(s) drifted` : 'rewind undone')
-  }
-
-  function recallText(entry) {
-    return inputTextFromContent(entry.content ?? entry.text, {
-      attachments: refs.attachments,
-      nextId: () => ++refs.imageCount,
-    })
-  }
+  const undoRewind = ctl.undoRewind
 
   async function confirmDeleteCurrentSession() {
-    const session = refs.session
-    if (!session) {
-      setShowDeleteConfirm(false)
-      return false
-    }
-    try {
-      await session.flush()
-      await deleteSession(session.file)
-    } catch (err) {
-      setShowDeleteConfirm(false)
-      flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
-      return false
-    }
-    refs.session = null
-    refs.allEvents = []
-    refs.persisted = 0
-    refs.rewindUndo = null
-    setQueued([])
-    setExpedited([])
-    setSent([])
-    setModel(defaultModel())
-    setEffort(defaultEffort())
-    setHistWindow(HISTORY_WINDOW)
+    const deleted = await ctl.deleteCurrentSession()
     setShowDeleteConfirm(false)
-    reDerive()
-    flash('session deleted')
-    return true
+    return deleted
   }
 
   const anyPanel = () =>
@@ -1799,12 +859,11 @@ export function App({ boot }) {
   const dimmingPanel = () => anyPanel() && !showThemePanel()
 
   function cancelAgent(agent) {
-    agents.cancel(agent.id)
+    ctl.cancelAgent(agent.id)
   }
 
   function dismissAgent(agent) {
-    if (!agents.dismiss(agent.id)) return
-    persist(makeEvent('agent_dismiss', { agentId: agent.id }))
+    if (!ctl.dismissAgent(agent.id)) return
     if (viewedAgentId() === agent.id) setViewedAgentId(null)
   }
 
@@ -1813,8 +872,7 @@ export function App({ boot }) {
       interrupt()
       return
     }
-    persist(makeEvent('deliberation_dismiss', { deliberationId: item.deliberationId }))
-    setAgentsVersion((v) => v + 1)
+    ctl.dismissDeliberation(item.deliberationId)
     if (viewedAgentId() === item.id) setViewedAgentId(null)
   }
 
@@ -1834,17 +892,8 @@ export function App({ boot }) {
     boot.shells.kill(shell.id, 'user')
   }
 
-  const effortApplies = () => !!model().effort
-
-  function setSessionEffort(next, { asDefault = false } = {}) {
-    persist(makeEvent('effort', { to: next }))
-    setEffort(next)
-    if (asDefault) {
-      setDefaultEffort(next)
-      writeConfig({ defaultEffort: next }).catch(() => {})
-    }
-    flash(`effort: ${next ?? 'default'}${asDefault ? ' · saved as default' : ''}`)
-  }
+  const effortApplies = ctl.effortApplies
+  const setSessionEffort = ctl.setEffort
 
   const fm = useFocus({ initial: 'input' })
   const steerListFocus = useFocus({ initial: null, cycle: 'none', active: false })
@@ -1857,12 +906,9 @@ export function App({ boot }) {
   conversationSearch.registerFocus()
   let conversationSearchMatches = []
   agentsVersion()
-  const deliberationRows = deliberationsFromEvents(refs.allEvents)
-  const agentRows = [...agents.list(), ...deliberationRows].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
+  const agentRows = ctl.activity()
   shellsVersion()
-  const shellRows = boot.shells.list()
-    .filter((shell) => shell.sessionId === refs.session?.id)
-    .sort((a, b) => Number(b.id) - Number(a.id))
+  const shellRows = ctl.shellRows()
   if (questionRequest()) {
     fm.item('question')
     if (!fm.is('question')) fm.focus('question')
@@ -2027,9 +1073,7 @@ export function App({ boot }) {
     if (event.ctrl && event.key === 'c') {
       const now = Date.now()
       if (now - refs.quitAt < 1500) {
-        await refs.session?.flush()
-        boot.shells.killAll()
-        mcp.terminateAll()
+        await ctl.shutdown()
         process.exit(0)
       } else {
         refs.quitAt = now
@@ -2102,7 +1146,7 @@ export function App({ boot }) {
       event.stopPropagation()
       return
     }
-    if (event.ctrl && event.key === 'z' && refs.rewindUndo && !busy() && view() === 'chat') {
+    if (event.ctrl && event.key === 'z' && state.rewindUndo && !busy() && view() === 'chat') {
       undoRewind()
       event.stopPropagation()
     }
@@ -2137,11 +1181,8 @@ export function App({ boot }) {
   function pickFile(f) {
     const v = input()
     const at = v.lastIndexOf('@')
-    const mediaType = mediaTypeFor(f)
-    const full = join(boot.cwd, f)
-    if (mediaType && existsSync(full)) {
-      const placeholder = `[Image #${++refs.imageCount}]`
-      refs.attachments.set(placeholder, { path: full, mediaType })
+    const placeholder = ctl.attachProjectFile(f)
+    if (placeholder) {
       setInput(v.slice(0, at) + placeholder + ' ')
     } else {
       setInput(v.slice(0, at + 1) + f + ' ')
@@ -2267,9 +1308,9 @@ export function App({ boot }) {
         scopeIndex={resumeScope()}
         loading={resumeLoading()}
         focused
-        currentId={refs.session?.id}
+        currentId={state.session?.id}
         onPick={(meta) => {
-          if (meta.header.id === refs.session?.id) return setShowResumePanel(false)
+          if (meta.header.id === state.session?.id) return setShowResumePanel(false)
           resumeSession(meta)
         }}
         onDelete={deleteSessionMeta}
@@ -2432,16 +1473,12 @@ export function App({ boot }) {
           request={questionRequest()}
           focused={fm.is('question') && !anyPanel()}
           onSubmit={(answers) => {
-            const request = questionRequest()
-            setQuestionRequest(null)
             refs.focusComposerAfterQuestion = true
-            request.resolve({ answers })
+            ctl.answerQuestion(answers)
           }}
           onCancel={() => {
-            const request = questionRequest()
-            setQuestionRequest(null)
             refs.focusComposerAfterQuestion = true
-            request.resolve({ cancelled: true })
+            ctl.cancelQuestion()
           }}
         />
       )}
@@ -2482,9 +1519,9 @@ export function App({ boot }) {
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
-        {(refs.session?.header.forkedFrom || derived().title) && (
+        {(state.session?.header.forkedFrom || derived().title) && (
           <box style={{ position: 'absolute', top: 0, right: 0, flexDirection: 'row' }}>
-            {refs.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
+            {state.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
             {derived().title && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>}
           </box>
         )}
@@ -2496,8 +1533,8 @@ export function App({ boot }) {
           value={input()}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
-              attachments: refs.attachments,
-              nextId: () => ++refs.imageCount,
+              attachments: state.attachments,
+              nextId: () => ++state.imageCount,
             })
             setInput(converted.text)
             setCmdIndex(0)
@@ -2541,11 +1578,7 @@ export function App({ boot }) {
             if (e.key === 'paste' && e.text) {
               const paths = extractImagePaths(e.text)
               if (paths.length > 0) {
-                const placeholders = paths.map((path) => {
-                  const placeholder = `[Image #${++refs.imageCount}]`
-                  refs.attachments.set(placeholder, { path, mediaType: mediaTypeFor(path) })
-                  return placeholder
-                })
+                const placeholders = paths.map((path) => ctl.attachImage(path))
                 const at = e.cursor ?? e.value.length
                 setInput(e.value.slice(0, at) + placeholders.join(' ') + e.value.slice(at))
                 return true
@@ -2555,7 +1588,7 @@ export function App({ boot }) {
             if (e.key === 'backspace' && e.cursor > 0) {
               const match = e.value.slice(0, e.cursor).match(/\[Image #\d+\]$/)
               if (match) {
-                refs.attachments.delete(match[0])
+                ctl.detachImage(match[0])
                 setInput(e.value.slice(0, e.cursor - match[0].length) + e.value.slice(e.cursor))
                 return true
               }
@@ -2576,14 +1609,11 @@ export function App({ boot }) {
             }
             if (e.ctrl || e.meta || showCommands || showFiles) return false
             if (e.key === 'up' && e.value === '' && (expedited().length > 0 || queued().length > 0)) {
-              setInput([...expedited(), ...queued()].join('\n'))
-              setExpedited([])
-              setQueued([])
+              setInput(ctl.recallPending())
               return true
             }
             if (e.key === 'right' && e.value === '' && queued().length > 0 && busy() && !compacting()) {
-              setExpedited((messages) => [...messages, ...queued()])
-              setQueued([])
+              ctl.expediteQueued()
               return true
             }
             const browsing = histIdx() >= 0
@@ -2688,20 +1718,10 @@ export function App({ boot }) {
           defaultName={defaultModel().name}
           focused={showModelPanel()}
           onPick={(m) => {
-            if (m.available === false) return flash(`set ${m.keyHint} in your environment to use ${m.name}`)
-            persist(makeEvent('model_switch', { from: model().name, to: m.name }))
-            setModel(m)
-            setShowModelPanel(false)
-            flash(`model set to ${m.name}`)
+            if (ctl.switchModel(m)) setShowModelPanel(false)
           }}
           onPickDefault={(m) => {
-            if (m.available === false) return flash(`set ${m.keyHint} in your environment to use ${m.name}`)
-            persist(makeEvent('model_switch', { from: model().name, to: m.name }))
-            setModel(m)
-            setDefaultModel(m)
-            writeConfig({ defaultModel: m.name }).catch(() => {})
-            setShowModelPanel(false)
-            flash(`model set to ${m.name} · saved as default`)
+            if (ctl.switchModel(m, { asDefault: true })) setShowModelPanel(false)
           }}
           onClose={() => setShowModelPanel(false)}
         />
@@ -2837,12 +1857,7 @@ export function App({ boot }) {
               return flash(`again to cancel wake-up ${w.id} (${w.note.split('\n')[0].slice(0, 40)})`)
             }
             refs.wakeupCancelArm = null
-            boot.wakeups.cancel(w.id)
-            flash(`cancelled wake-up ${w.id}`)
-            noteSystem(
-              `[system notification] the user cancelled scheduled wake-up ${w.id} (note was: ${w.note.replace(/\n/g, ' ')}). This was deliberate; do not reschedule it unless asked.`,
-              { wake: false },
-            )
+            ctl.cancelWakeup(w)
           }}
           onClose={() => setShowWakeupsPanel(false)}
         />

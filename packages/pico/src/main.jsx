@@ -13,6 +13,7 @@ import { resolveDredge } from 'picocode-core/tools/web.js'
 import { createShellManager } from 'picocode-core/shells.js'
 import { createWakeupManager } from 'picocode-core/wakeups.js'
 import { createGitService } from 'picocode-core/git.js'
+import { createController } from 'picocode-core/controller.js'
 import { App } from './ui/app.jsx'
 import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
 
@@ -167,6 +168,7 @@ const boot = {
 git.retarget(boot.root)
 git.setEnabled(boot.gitFooter)
 
-const app = mount(() => <App boot={boot} />, { title: `pico · ${boot.root.split('/').pop()}`, theme })
+const controller = createController({ boot })
+const app = mount(() => <App boot={boot} controller={controller} />, { title: `pico · ${boot.root.split('/').pop()}`, theme })
 boot.setTheme = app.setTheme
 boot.mcp.connectAll()
