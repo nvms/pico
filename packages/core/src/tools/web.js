@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 const DEFAULT_SLICE_CHARS = 24000
 const MAX_SLICE_CHARS = 100000
 
@@ -34,7 +35,7 @@ export function createWebTools({ dredge, recorder, signal }) {
         'Search the web. Google-style operators work: site:, filetype:pdf, quoted phrases. Returns ranked results; pass a result url to web_fetch to read it.',
       schema: {
         q: { type: 'string', description: 'the search query' },
-        description: { type: 'string', description: 'briefly explain what this search is intended to find, shown to the human watching' },
+        description: describeParam,
       },
       execute: async ({ q }) => {
         recorder.extra({ title: q })
@@ -58,6 +59,7 @@ export function createWebTools({ dredge, recorder, signal }) {
       description:
         'Fetch a url and read it as clean markdown (html, pdf, docx, and textual formats like json). Long documents arrive in slices: the result says which slice you have (e.g. "slice 1 of 12") and next_cursor continues from there. Every slice you fetch permanently occupies conversation context, so only walk cursors for content you actually need, and raise maxChars only when the task genuinely needs a bigger window.',
       schema: {
+        description: describeParam,
         url: { type: 'string', description: 'the url to fetch' },
         cursor: { type: 'string', description: 'pagination cursor from a previous web_fetch of the same url', optional: true },
         maxChars: { type: 'number', description: `slice size in characters, default ${DEFAULT_SLICE_CHARS}, max ${MAX_SLICE_CHARS}`, optional: true },

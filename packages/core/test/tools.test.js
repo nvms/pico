@@ -26,11 +26,11 @@ async function fixture() {
   return { cwd, byName, rawByName, recorder }
 }
 
-test('file and shell tools require purpose descriptions', async () => {
+test('file and shell tools require present-tense descriptions', async () => {
   const { byName } = await fixture()
   for (const name of ['read', 'write', 'edit', 'bash', 'glob', 'grep']) {
     assert.equal(byName[name].schema.description.optional, undefined)
-    assert.match(byName[name].schema.description.description, /purpose|why/)
+    assert.match(byName[name].schema.description.description, /present tense/)
   }
 })
 

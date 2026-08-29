@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { execFile } from 'node:child_process'
 import { relative, resolve } from 'node:path'
 
@@ -16,7 +17,7 @@ export function createGrep({ cwd, recorder }) {
     name: 'grep',
     description: 'Search file contents with a regex using ripgrep. mode "content" returns matching lines, "files" returns matching file paths, "count" returns per-file match counts.',
     schema: {
-      description: { type: 'string', description: 'briefly explain why this tool call is needed, shown to the human watching' },
+      description: describeParam,
       pattern: { type: 'string', description: 'regex pattern' },
       path: { type: 'string', description: 'file or directory to search, defaults to the working directory', optional: true },
       mode: { type: 'string', enum: ['content', 'files', 'count'], optional: true },

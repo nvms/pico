@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { makeReversibleEdit } from '../reversible-edit.js'
@@ -54,7 +55,7 @@ export function createEdit({ cwd, recorder, tracker }) {
     name: 'edit',
     description: 'Replace oldText with newText in a file. oldText must appear exactly once unless replaceAll is set.',
     schema: {
-      description: { type: 'string', description: 'briefly explain why this tool call is needed, shown to the human watching' },
+      description: describeParam,
       path: { type: 'string', description: 'file path, relative to the working directory or absolute' },
       oldText: { type: 'string', description: 'exact text to replace, must be unique in the file' },
       newText: { type: 'string', description: 'replacement text' },

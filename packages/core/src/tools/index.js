@@ -1,4 +1,4 @@
-import { createRecorder, recorded } from './recorder.js'
+import { createRecorder, describeParam, recorded } from './recorder.js'
 import { createRead } from './read.js'
 import { createWrite } from './write.js'
 import { createEdit } from './edit.js'
@@ -32,6 +32,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'shell_output',
         description: 'Read recent output from a background shell started with bash background: true. Use only when intermediate output is needed to diagnose a suspected problem or make a decision before the shell exits. Do not use for routine progress polling; completion is delivered automatically, so if no independent work remains, end your turn and wait.',
         schema: {
+          description: describeParam,
           id: { type: 'string', description: 'the shell id' },
           tail: { type: 'number', description: 'how many trailing lines to return, default 100', optional: true },
         },
@@ -47,6 +48,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'shell_kill',
         description: 'Stop a background shell by id.',
         schema: {
+          description: describeParam,
           id: { type: 'string', description: 'the shell id' },
         },
         execute: ({ id }) => shells.kill(id, 'model'),
@@ -60,7 +62,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'schedule_wakeup',
         description: 'Schedule a one-time wake-up: after the delay you receive a system notification carrying your note and can act on it. For a recurring loop, schedule the next wake-up at the end of each one. Do not use this to poll a background shell; its exit already notifies you. Wake-ups are lost if pico exits.',
         schema: {
-          description: { type: 'string', description: 'briefly explain why this wake-up is needed, shown to the human watching' },
+          description: describeParam,
           delaySeconds: { type: 'number', description: 'seconds from now, minimum 5' },
           note: { type: 'string', description: 'what to do when you wake up; written to your future self' },
         },
@@ -73,6 +75,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'cancel_wakeup',
         description: 'Cancel a pending wake-up by id.',
         schema: {
+          description: describeParam,
           id: { type: 'string', description: 'the wake-up id' },
         },
         execute: ({ id }) => wakeups.cancel(id),
@@ -80,7 +83,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       {
         name: 'list_wakeups',
         description: 'List your pending scheduled wake-ups: id, when each fires, and its note.',
-        schema: {},
+        schema: { description: describeParam },
         execute: () => ({
           wakeups: wakeups.list().map((w) => ({
             id: w.id,
@@ -98,6 +101,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       name: 'ask_user',
       description: 'Ask the user one or more focused questions when their answers are genuinely needed to continue. Supports free text, one choice, or multiple choices. Do not ask questions you can answer from available context.',
       schema: {
+        description: describeParam,
         questions: {
           type: 'array',
           description: 'questions to present, in order',
@@ -146,6 +150,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'agent_plan',
         description: 'Declare the background worker budget for the current assistant turn before starting any workers. The main agent is excluded. Set count to the number of workers you intend to start this turn; collecting a worker does not restore budget. Interpret any user-requested count semantically; otherwise use the configured default.',
         schema: {
+          description: describeParam,
           count: { type: 'integer', description: `background workers permitted this turn, excluding the main agent (1-${maxAgentStarts || 100})` },
           reason: { type: 'string', description: 'brief explanation of how the count follows the user request or research scope' },
         },
@@ -162,7 +167,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         description: 'Start one background worker, consuming one unit of the current turn\'s agent_plan budget. Workers do not receive the parent conversation, only the supplied prompt and their available project context and tools. Make the prompt self-contained by including all conversation-specific terms, goals, constraints, and decisions the worker cannot discover itself. Collected or completed workers do not restore budget within that turn. Continue only independent work until you collect its result with agent_collect.',
         schema: {
           prompt: { type: 'string', description: 'complete, self-contained task and desired output, including necessary context from the parent conversation' },
-          description: { type: 'string', description: 'short label shown to the user' },
+          description: describeParam,
           tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured worker tools', optional: true },
         },
         execute: ({ prompt, description, tools }) => {
@@ -176,13 +181,13 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       {
         name: 'agent_list',
         description: 'List background agents and their current status.',
-        schema: {},
+        schema: { description: describeParam },
         execute: () => ({ agents: agents.list().map(({ id, description, model, status }) => ({ id, description, model, status })) }),
       },
       {
         name: 'agent_collect',
         description: 'Collect background agent results. Waits for any selected agents that are still running.',
-        schema: { ids: { type: 'array', items: { type: 'string' }, description: 'agent ids whose results to collect' } },
+        schema: { description: describeParam, ids: { type: 'array', items: { type: 'string' }, description: 'agent ids whose results to collect' } },
         execute: async ({ ids }) => {
           const requested = (ids || []).map(String)
           const collected = await agents.collect(requested)
@@ -203,7 +208,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       {
         name: 'agent_cancel',
         description: 'Cancel a queued or running background agent.',
-        schema: { id: { type: 'string', description: 'agent id' } },
+        schema: { description: describeParam, id: { type: 'string', description: 'agent id' } },
         execute: ({ id }) => ({ cancelled: agents.cancel(id) }),
       },
     )
@@ -214,6 +219,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
       name: 'deliberate',
       description: 'Evaluate competing approaches, challenge a proposal, or reach a consequential decision under genuine uncertainty through a bounded, evidence-seeking exchange between two full tool-using agents. When the user requests deliberation, call this tool immediately with a self-contained brief: do not research first or approximate deliberation with multiple ordinary agents. Its participants own all supporting research. Use ordinary agents when independent work can be divided and collected. Do not deliberate routine implementation or questions answerable through direct research.',
       schema: {
+        description: describeParam,
         brief: { type: 'string', description: 'self-contained decision, relevant context, constraints, and desired outcome' },
         rounds: { type: 'integer', description: 'number of proposer-reviewer exchanges (1-5, default 3)', optional: true },
       },
@@ -242,6 +248,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         name: 'recall',
         description: 'Load the full content of a saved memory by name. Your memory index is in the system prompt.',
         schema: {
+          description: describeParam,
           name: { type: 'string', description: 'the memory name from the index' },
         },
         execute: async ({ name }) => {
@@ -261,6 +268,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
         .map((s) => `- ${s.name}: ${s.description}`)
         .join('\n')}`,
       schema: {
+        description: describeParam,
         name: { type: 'string', description: 'skill name' },
       },
       execute: async ({ name }) => {

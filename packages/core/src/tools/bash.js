@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { spawn } from 'node:child_process'
 import { stripAnsi, createSgrTracker } from '../ansi.js'
 
@@ -67,7 +68,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
       command: { type: 'string', description: 'the command to run' },
       timeout: { type: 'number', description: 'optional foreground timeout in milliseconds; commands still running after 150 seconds are backgrounded instead', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
-      description: { type: 'string', description: 'a few words explaining the purpose of this command, shown to the human watching' },
+      description: describeParam,
     },
     execute: ({ command, timeout, background, description }) => {
       if (background && shells) {

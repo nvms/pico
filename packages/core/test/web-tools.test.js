@@ -20,11 +20,12 @@ const recorder = { extra: () => {} }
 const dredge = { url: 'http://dredge.test', apiKey: 'secret' }
 const jsonResponse = (body) => ({ json: async () => body, status: 200 })
 
-test('web_search requires a purpose description but web_fetch does not', () => {
+test('web_search and web_fetch require present-tense descriptions', () => {
   const [search, fetchTool] = createWebTools({ dredge, recorder })
-  assert.equal(search.schema.description.optional, undefined)
-  assert.match(search.schema.description.description, /search is intended to find/)
-  assert.equal(fetchTool.schema.description, undefined)
+  for (const tool of [search, fetchTool]) {
+    assert.equal(tool.schema.description.optional, undefined)
+    assert.match(tool.schema.description.description, /present tense/)
+  }
 })
 
 test('web_search shapes results and sends auth', async () => {

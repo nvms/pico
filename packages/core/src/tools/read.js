@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
@@ -17,7 +18,7 @@ export function createRead({ cwd, recorder, tracker }) {
     name: 'read',
     description: 'Read a file. Returns line-numbered content. Use offset/limit for large files.',
     schema: {
-      description: { type: 'string', description: 'briefly explain why this tool call is needed, shown to the human watching' },
+      description: describeParam,
       path: { type: 'string', description: 'file path, relative to the working directory or absolute' },
       offset: { type: 'number', description: '1-indexed line to start from', optional: true },
       limit: { type: 'number', description: 'max lines to return', optional: true },

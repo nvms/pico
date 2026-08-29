@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { execFile } from 'node:child_process'
 import fg from 'fast-glob'
 
@@ -18,7 +19,7 @@ export function createGlob({ cwd, recorder }) {
     name: 'glob',
     description: 'Find files matching a glob pattern, relative to the working directory. Respects .gitignore; use bash to look inside ignored paths.',
     schema: {
-      description: { type: 'string', description: 'briefly explain why this tool call is needed, shown to the human watching' },
+      description: describeParam,
       pattern: { type: 'string', description: 'glob pattern, e.g. src/**/*.js' },
       maxResults: { type: 'number', description: 'cap on returned paths, default 200', optional: true },
     },

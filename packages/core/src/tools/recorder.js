@@ -7,6 +7,13 @@ function collapseHomePath(value) {
   return value
 }
 
+// every built-in tool takes this parameter; it is the line the human sees
+// in the transcript while the call runs
+export const describeParam = {
+  type: 'string',
+  description: 'what this call is doing, in present tense, a few words shown to the human watching, e.g. "Creating the test file" or "Collecting the worker results"',
+}
+
 export function defaultTitle(name, args = {}) {
   const candidate = args.path || args.command || args.pattern || args.url || args.name
   if (typeof candidate === 'string' && candidate) return collapseHomePath(candidate)

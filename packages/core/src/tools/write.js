@@ -1,3 +1,4 @@
+import { describeParam } from './recorder.js'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { makeWriteEdit } from '../reversible-edit.js'
@@ -8,7 +9,7 @@ export function createWrite({ cwd, recorder, tracker }) {
     name: 'write',
     description: 'Write content to a file, creating it and any parent directories if needed. Overwrites existing content.',
     schema: {
-      description: { type: 'string', description: 'briefly explain why this tool call is needed, shown to the human watching' },
+      description: describeParam,
       path: { type: 'string', description: 'file path, relative to the working directory or absolute' },
       content: { type: 'string', description: 'the full file content to write' },
     },
