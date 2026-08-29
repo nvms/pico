@@ -99,7 +99,7 @@ export function placeholderizeImagePaths(text, { attachments, nextId, exists = e
       out += part.text
     } else {
       const placeholder = `[Image #${nextId()}]`
-      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType })
+      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType || mediaTypeFor(part.source.path) })
       out += placeholder
     }
   }
@@ -114,7 +114,7 @@ export function inputTextFromContent(content, { attachments, nextId }) {
       out += part.text
     } else if (part.type === 'image' && part.source?.path) {
       const placeholder = `[Image #${nextId()}]`
-      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType })
+      attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType || mediaTypeFor(part.source.path) })
       out += placeholder
     } else {
       out += '[image]'

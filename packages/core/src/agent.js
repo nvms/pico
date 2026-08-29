@@ -1,13 +1,16 @@
 import { readFile } from 'node:fs/promises'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
+import { mediaTypeFor } from './attachments.js'
 
 async function hydratePart(part) {
   if (part.type !== 'image' || part.source?.kind !== 'path') return part
+  const mediaType = part.source.mediaType || mediaTypeFor(part.source.path)
+  if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
   try {
     const data = await readFile(part.source.path)
     return {
       type: 'image',
-      source: { kind: 'base64', mediaType: part.source.mediaType, data: data.toString('base64') },
+      source: { kind: 'base64', mediaType, data: data.toString('base64') },
     }
   } catch {
     return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
