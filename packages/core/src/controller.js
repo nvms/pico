@@ -108,6 +108,7 @@ export function createController({ boot }) {
     defaultEffort: boot.initialEffort,
     busy: false,
     compacting: false,
+    compactOutcome: null,
     compactStatus: null,
     turnPhase: 'idle',
     startedAt: 0,
@@ -385,7 +386,7 @@ export function createController({ boot }) {
 
     const controller = new AbortController()
     abort = controller
-    set({ busy: true, compacting: true, compactStatus: null, startedAt: Date.now() })
+    set({ busy: true, compacting: true, compactStatus: null, compactOutcome: null, startedAt: Date.now() })
 
     const { auth, ok } = await codexAuth()
     if (!ok) {
@@ -414,8 +415,10 @@ export function createController({ boot }) {
       if (summarySections(summary) < 5) throw new Error('malformed summary, conversation left untouched')
       persist(makeEvent('compact', { summary, keepFrom, sessionFile: state.session?.file || null }))
       reDerive()
+      set({ compactOutcome: 'done' })
       flash('compacted · recent messages kept verbatim')
     } catch (err) {
+      set({ compactOutcome: controller.signal.aborted ? 'cancelled' : 'failed' })
       if (controller.signal.aborted) flash('compaction cancelled')
       else flash(`compact failed: ${errorText(err, 100)}`)
     } finally {
