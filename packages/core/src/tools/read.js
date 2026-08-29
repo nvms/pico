@@ -1,9 +1,26 @@
 import { describeParam } from './recorder.js'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { extractText } from 'unpdf'
 
 const MAX_LINES = 2000
 const MAX_LINE_LENGTH = 2000
+
+const isPdf = (buffer) => buffer.subarray(0, 5).toString('latin1') === '%PDF-'
+
+// a pdf reads as its extracted text, one page after another, so the same
+// offset and limit window applies
+async function pdfLines(buffer) {
+  const { text, totalPages } = await extractText(new Uint8Array(buffer), { mergePages: false })
+  const pages = Array.isArray(text) ? text : [text]
+  const lines = []
+  pages.forEach((page, i) => {
+    if (i) lines.push('')
+    lines.push(`[page ${i + 1} of ${totalPages}]`)
+    lines.push(...String(page).split('\n'))
+  })
+  return lines
+}
 
 function isBinary(buffer) {
   const len = Math.min(buffer.length, 8000)
@@ -27,20 +44,21 @@ export function createRead({ cwd, recorder, tracker }) {
       const full = resolve(cwd, path)
       recorder.extra({ title: path })
       const buf = await readFile(full)
-      if (isBinary(buf)) throw new Error(`${path} is a binary file`)
-      const lines = buf.toString('utf-8').split('\n')
+      const lines = isPdf(buf) ? await pdfLines(buf) : null
+      if (!lines && isBinary(buf)) throw new Error(`${path} is a binary file`)
+      const source = lines ?? buf.toString('utf-8').split('\n')
 
       const start = Math.max(0, offset - 1)
       const count = Math.min(limit, MAX_LINES)
-      const sliced = lines.slice(start, start + count)
+      const sliced = source.slice(start, start + count)
       const numbered = sliced
         .map((line, i) => `${start + i + 1}\t${line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + '…' : line}`)
         .join('\n')
 
       recorder.extra({ fullOutput: sliced.join('\n') })
-      const result = { content: numbered, totalLines: lines.length }
-      if (start + count < lines.length) {
-        result.note = `showing lines ${start + 1}-${start + sliced.length} of ${lines.length}`
+      const result = { content: numbered, totalLines: source.length }
+      if (start + count < source.length) {
+        result.note = `showing lines ${start + 1}-${start + sliced.length} of ${source.length}`
       }
       const context = tracker.check(full)
       if (context.length) result.context_from_agents_md = context

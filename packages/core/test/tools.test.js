@@ -55,6 +55,26 @@ test('read returns numbered lines and records full output', async () => {
   assert.match(recorder.entries[0].fullOutput, /const a = 1/)
 })
 
+const MINIMAL_PDF = [
+  '%PDF-1.4',
+  '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+  '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+  '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj',
+  '4 0 obj << /Length 44 >> stream',
+  'BT /F1 12 Tf 10 50 Td (hello from a pdf) Tj ET',
+  'endstream endobj',
+  '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+  'trailer << /Root 1 0 R >>',
+].join('\n')
+
+test('read extracts text from a pdf with page markers', async () => {
+  const { cwd, byName } = await fixture()
+  await writeFile(join(cwd, 'doc.pdf'), MINIMAL_PDF)
+  const result = await byName.read.execute({ path: 'doc.pdf' })
+  assert.match(result.content, /1\t\[page 1 of 1\]/)
+  assert.match(result.content, /hello from a pdf/)
+})
+
 test('read respects offset and limit', async () => {
   const { byName } = await fixture()
   const result = await byName.read.execute({ path: 'hello.js', offset: 2, limit: 1 })
