@@ -44,7 +44,7 @@ const COMMANDS = [
   { name: 'steer', desc: 'Edit or add conversation messages without sending' },
   { name: 'history', desc: 'Search prompts you previously sent' },
   { name: 'rename', desc: 'Name this session; omit the name to restore its automatic title' },
-  { name: 'color', desc: 'Color this session: /color <name or #hex>' },
+  { name: 'color', desc: 'Color this session: /color <name or #hex>, /color none to clear' },
   { name: 'theme', desc: 'Pick a color theme; /theme <name> applies one directly' },
   { name: 'config', desc: 'Configure pico display and behavior' },
   { name: 'mcp', desc: 'Manage MCP servers: add, toggle, reconnect' },

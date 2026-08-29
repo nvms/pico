@@ -773,14 +773,16 @@ export function createController({ boot }) {
     let value
     if (!input) {
       value = values[(values.indexOf(state.derived.color) + 1) % values.length]
+    } else if (input.toLowerCase() === 'none') {
+      value = null
     } else {
       value = SESSION_COLORS[input.toLowerCase()] || (/^#[0-9a-fA-F]{6}$/.test(input) ? input : null)
-      if (!value) return flash(`usage: /color to cycle, or /color <${names.join('|')}|#hex>`)
+      if (!value) return flash(`usage: /color to cycle, /color none to clear, or /color <${names.join('|')}|#hex>`)
     }
     persist(makeEvent('color', { value }))
     ensureSession()
     reDerive()
-    flash(`session color: ${names[values.indexOf(value)] || value}`)
+    flash(value ? `session color: ${names[values.indexOf(value)] || value}` : 'session color cleared')
   }
 
   function clear() {
