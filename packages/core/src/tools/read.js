@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { execFile } from 'node:child_process'
 import { extractText } from 'unpdf'
+import { mediaTypeFor } from '../attachments.js'
 
 const MAX_LINES = 2000
 const MAX_LINE_LENGTH = 2000
@@ -26,6 +27,26 @@ function pdftotext(full) {
 async function unpdfPages(buffer) {
   const { text } = await extractText(new Uint8Array(buffer), { mergePages: false })
   return (Array.isArray(text) ? text : [text]).map((page) => String(page).split('\n'))
+}
+
+// the embedded images per page, from poppler when installed, so the model
+// knows what view can show it
+function pdfImages(full) {
+  return new Promise((resolvePromise) => {
+    execFile('pdfimages', ['-list', full], { maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return resolvePromise(null)
+      const counts = new Map()
+      for (const line of stdout.split('\n')) {
+        const m = line.match(/^\s*(\d+)\s+\d+\s+image\s+(\d+)\s+(\d+)/)
+        if (!m) continue
+        const page = Number(m[1])
+        const list = counts.get(page) ?? []
+        list.push({ index: list.length, width: Number(m[2]), height: Number(m[3]) })
+        counts.set(page, list)
+      }
+      resolvePromise([...counts].map(([page, images]) => ({ page, images })))
+    })
+  })
 }
 
 async function pdfLines(full, buffer) {
@@ -62,6 +83,7 @@ export function createRead({ cwd, recorder, tracker }) {
       recorder.extra({ title: path })
       const buf = await readFile(full)
       const lines = isPdf(buf) ? await pdfLines(full, buf) : null
+      if (!lines && mediaTypeFor(full)) return { note: `${path} is an image; use view to look at it` }
       if (!lines && isBinary(buf)) throw new Error(`${path} is a binary file`)
       const source = lines ?? buf.toString('utf-8').split('\n')
 
@@ -76,6 +98,10 @@ export function createRead({ cwd, recorder, tracker }) {
       const result = { content: numbered, totalLines: source.length }
       if (start + count < source.length) {
         result.note = `showing lines ${start + 1}-${start + sliced.length} of ${source.length}`
+      }
+      if (lines) {
+        const images = await pdfImages(full)
+        if (images?.length) result.images = { note: 'use view with the path and page (and image index) to see one', pages: images }
       }
       const context = tracker.check(full)
       if (context.length) result.context_from_agents_md = context

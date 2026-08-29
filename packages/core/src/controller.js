@@ -363,8 +363,10 @@ export function createController({ boot }) {
   }
 
   async function executeTurn(text) {
-    const { content } = finalizeUserContent(text, state.attachments)
-    persist(makeEvent('message', { message: { role: 'user', content } }))
+    const { content, used } = finalizeUserContent(text, state.attachments)
+    const viewed = used.length > 0 && used.every((placeholder) => deliveredImages.has(placeholder))
+    for (const placeholder of used) deliveredImages.delete(placeholder)
+    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
     ensureSession()
     reDerive()
     await runAgentTurn()
@@ -577,6 +579,7 @@ export function createController({ boot }) {
       requireAgentPlan: !!researchAgentLimit,
       allowNames: researchAgentLimit ? AGENT_TOOLS : undefined,
       onToolUpdate,
+      viewer: state.model.vision === false ? null : { deliver: deliverImage },
     })
 
     sendAfterToolTriggered = false
@@ -805,6 +808,17 @@ export function createController({ boot }) {
     const placeholder = `[Image #${++state.imageCount}]`
     state.attachments.set(placeholder, { path, mediaType })
     return placeholder
+  }
+
+  // an image the model asked to see rides in as an expedited user message,
+  // which the tool-completion path sends right after the current call
+  const deliveredImages = new Set()
+  function deliverImage(path, label) {
+    const placeholder = attachImage(path)
+    if (!placeholder) return false
+    deliveredImages.add(placeholder)
+    set({ expedited: [...state.expedited, `${label}\n${placeholder}`] })
+    return true
   }
 
   function attachFile(path) {

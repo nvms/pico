@@ -9,6 +9,7 @@ import { createShellManager } from '../src/shells.js'
 import { createBash } from '../src/tools/bash.js'
 import { createRecorder, recorded } from '../src/tools/recorder.js'
 import { createEdit } from '../src/tools/edit.js'
+import { createView } from '../src/tools/view.js'
 import { reapplyEdits, revertEdits } from '../src/rewind.js'
 
 async function fixture() {
@@ -369,4 +370,26 @@ test('edit still reports missing and ambiguous strings', async () => {
   await assert.rejects(edit.execute({ path: 'b.txt', oldText: 'alpha', newText: 'x' }), /appears multiple times/)
   await assert.rejects(edit.execute({ path: 'b.txt', oldText: 'omega', newText: 'x' }), /not found/)
   await assert.rejects(edit.execute({ path: 'b.txt', oldText: '   ', newText: 'x' }), /not found/)
+})
+
+test('view hands an image to the viewer and reports delivery', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'pico-view-'))
+  await writeFile(join(cwd, 'shot.png'), Buffer.from('89504e470d0a1a0a', 'hex'))
+  const delivered = []
+  const recorder = createRecorder()
+  const view = createView({ cwd, sessionId: 't', recorder, viewer: { deliver: (file, label) => (delivered.push({ file, label }), true) } })
+  const result = await view.execute({ path: 'shot.png', description: 'Looking at the screenshot' })
+  assert.equal(result.ok, true)
+  assert.deepEqual(delivered, [{ file: join(cwd, 'shot.png'), label: '[view: shot.png]' }])
+  await assert.rejects(view.execute({ path: 'missing.png', description: 'x' }), /does not exist/)
+  await assert.rejects(view.execute({ path: 'doc.pdf', description: 'x' }), /does not exist/)
+})
+
+test('the toolset offers view only when a viewer is supplied', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'pico-view-'))
+  const tracker = createContextTracker({ stopDir: cwd, loaded: new Set() })
+  const without = createToolset({ cwd, tracker }).tools.map((t) => t.name)
+  const withViewer = createToolset({ cwd, tracker, viewer: { deliver: () => true } }).tools.map((t) => t.name)
+  assert.equal(without.includes('view'), false)
+  assert.equal(withViewer.includes('view'), true)
 })

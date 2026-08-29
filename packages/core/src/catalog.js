@@ -63,6 +63,7 @@ export function extractModels(providers, providerIds) {
         desc: m.description || m.name || id,
         price: m.cost && m.cost.input != null ? { in: m.cost.input, out: m.cost.output } : null,
         effort: !!m.reasoning,
+        vision: !m.modalities || m.modalities.input?.includes('image') === true,
         // the measured fill number is input tokens, so prefer the input limit
         // as the denominator where the provider distinguishes it
         context: m.limit?.input || m.limit?.context || null,
@@ -81,6 +82,7 @@ export function adhocModel(name, providerIds) {
     desc: 'not in catalog',
     price: null,
     effort: false,
+    vision: true,
     context: null,
   }
 }

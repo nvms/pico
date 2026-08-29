@@ -6,8 +6,9 @@ import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createWebTools } from './web.js'
+import { createView } from './view.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
   const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -21,6 +22,8 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     createGlob(deps),
     createGrep(deps),
   ]
+
+  if (viewer) local.push(createView({ ...deps, viewer }))
 
   if (dredge) {
     local.push(...createWebTools({ dredge, recorder, signal }))

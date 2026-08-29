@@ -103,7 +103,7 @@ function foldMessage(state, event) {
           .map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? `[file: ${p.path}]` : `[image: ${String(p.source?.path || '').split('/').pop() || 'attached'}]`))
           .join('')
       : String(message.content)
-    state.transcript.push({ ...base, kind: 'user', text, content: message.content })
+    state.transcript.push({ ...base, kind: 'user', text, content: message.content, ...(event.data.origin ? { origin: event.data.origin } : {}) })
     return
   }
   if (message.role === 'assistant') {
