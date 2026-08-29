@@ -3,7 +3,7 @@ import { readFileSync, statSync, watch } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 const DEBOUNCE_MS = 500
-const POLL_MS = 15000
+const POLL_MS = 5000
 const GIT_TIMEOUT_MS = 5000
 
 function findGitDir(startDir) {
@@ -107,7 +107,9 @@ export function createGitService({ onChange = () => {} } = {}) {
     }
     const started = epoch
     const branch = readBranch(gitDir)
-    const proc = spawn('git', ['--no-optional-locks', 'diff', 'HEAD', '--shortstat'], {
+    // one shell round trip: the tracked diff stat, then a marker, then the
+    // porcelain status so untracked files count too
+    const proc = spawn('sh', ['-c', 'git --no-optional-locks diff HEAD --shortstat; echo __status__; git --no-optional-locks status --porcelain --untracked-files=all'], {
       cwd: root,
       stdio: ['ignore', 'pipe', 'ignore'],
     })
@@ -125,8 +127,10 @@ export function createGitService({ onChange = () => {} } = {}) {
       clearTimeout(timeout)
       if (child === proc) child = null
       if (epoch !== started) return
-      const stats = code === 0 ? parseShortstat(output) : { added: 0, removed: 0 }
-      const next = branch ? { branch, ...stats } : null
+      const [diff = '', status = ''] = output.split('__status__')
+      const stats = code === 0 ? parseShortstat(diff) : { added: 0, removed: 0 }
+      const untracked = code === 0 ? status.split('\n').filter((line) => line.startsWith('??')).length : 0
+      const next = branch ? { branch, ...stats, untracked } : null
       if (JSON.stringify(next) !== JSON.stringify(current)) {
         current = next
         onChange()
