@@ -1005,6 +1005,23 @@ export function createController({ boot }) {
     send(text)
   }
 
+  // the worker and deliberation models are app-wide settings: they change
+  // for every session in this process and persist to the config file
+  async function setResearchModel(name) {
+    if (name && !modelAvailable(name)) return flash(`${name} is not available`)
+    boot.researchModel = name || null
+    if (!boot.deliberationModel || boot.deliberationModel === name) boot.deliberationModel = name || null
+    await writeConfig({ models: { researchWorker: name || null } })
+    changed()
+  }
+
+  async function setDeliberationModel(name) {
+    if (name && !modelAvailable(name)) return flash(`${name} is not available`)
+    boot.deliberationModel = name || null
+    await writeConfig({ models: { deliberation: name || null } })
+    changed()
+  }
+
   function sendInit(args) {
     send(initPrompt(args))
   }
@@ -1266,6 +1283,8 @@ export function createController({ boot }) {
     sendSkill,
     sendCommand,
     sendInit,
+    setResearchModel,
+    setDeliberationModel,
     previewSteer,
     applySteer,
     rewind,
