@@ -24,6 +24,7 @@ export function createRecorder(onChange) {
       this.pending = {
         callId: this.currentCall?.id ?? null,
         name,
+        args,
         title: defaultTitle(name, args),
         description: args.description,
         status: 'done',
