@@ -1,6 +1,7 @@
 import { describeParam } from './recorder.js'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { execFile } from 'node:child_process'
 import { extractText } from 'unpdf'
 
 const MAX_LINES = 2000
@@ -9,15 +10,31 @@ const MAX_LINE_LENGTH = 2000
 const isPdf = (buffer) => buffer.subarray(0, 5).toString('latin1') === '%PDF-'
 
 // a pdf reads as its extracted text, one page after another, so the same
-// offset and limit window applies
-async function pdfLines(buffer) {
-  const { text, totalPages } = await extractText(new Uint8Array(buffer), { mergePages: false })
-  const pages = Array.isArray(text) ? text : [text]
+// offset and limit window applies. poppler's pdftotext keeps the page
+// layout (labels beside their values, columns in order) so it is preferred
+// when installed; unpdf is the bundled fallback
+function pdftotext(full) {
+  return new Promise((resolve) => {
+    execFile('pdftotext', ['-layout', full, '-'], { maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return resolve(null)
+      const pages = stdout.replace(/\f$/, '').split('\f')
+      resolve(pages.map((page) => page.replace(/\s+$/, '').split('\n')))
+    })
+  })
+}
+
+async function unpdfPages(buffer) {
+  const { text } = await extractText(new Uint8Array(buffer), { mergePages: false })
+  return (Array.isArray(text) ? text : [text]).map((page) => String(page).split('\n'))
+}
+
+async function pdfLines(full, buffer) {
+  const pages = (await pdftotext(full)) ?? (await unpdfPages(buffer))
   const lines = []
   pages.forEach((page, i) => {
     if (i) lines.push('')
-    lines.push(`[page ${i + 1} of ${totalPages}]`)
-    lines.push(...String(page).split('\n'))
+    lines.push(`[page ${i + 1} of ${pages.length}]`)
+    lines.push(...page)
   })
   return lines
 }
@@ -44,7 +61,7 @@ export function createRead({ cwd, recorder, tracker }) {
       const full = resolve(cwd, path)
       recorder.extra({ title: path })
       const buf = await readFile(full)
-      const lines = isPdf(buf) ? await pdfLines(buf) : null
+      const lines = isPdf(buf) ? await pdfLines(full, buf) : null
       if (!lines && isBinary(buf)) throw new Error(`${path} is a binary file`)
       const source = lines ?? buf.toString('utf-8').split('\n')
 
