@@ -68,19 +68,22 @@ export function splitTextByImagePaths(text, exists = existsSync) {
   return parts
 }
 
+export const fileLabel = (path) => `[file: ${path}]`
+
+// [Image #n] and [File #n] placeholders in the composed text stand for
+// attachments; they become image and file parts of the user message
 export function buildUserContent(text, attachments) {
   const parts = []
   let last = 0
   const used = []
-  for (const match of text.matchAll(/\[Image #\d+\]/g)) {
+  for (const match of text.matchAll(/\[(?:Image|File) #\d+\]/g)) {
     const attachment = attachments.get(match[0])
     if (!attachment) continue
     const before = text.slice(last, match.index)
     if (before) parts.push({ type: 'text', text: before })
-    parts.push({
-      type: 'image',
-      source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType },
-    })
+    parts.push(attachment.kind === 'file'
+      ? { type: 'file', path: attachment.path }
+      : { type: 'image', source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType } })
     used.push(match[0])
     last = match.index + match[0].length
   }
@@ -115,6 +118,10 @@ export function inputTextFromContent(content, { attachments, nextId }) {
     } else if (part.type === 'image' && part.source?.path) {
       const placeholder = `[Image #${nextId()}]`
       attachments.set(placeholder, { path: part.source.path, mediaType: part.source.mediaType || mediaTypeFor(part.source.path) })
+      out += placeholder
+    } else if (part.type === 'file' && part.path) {
+      const placeholder = `[File #${nextId()}]`
+      attachments.set(placeholder, { path: part.path, kind: 'file' })
       out += placeholder
     } else {
       out += '[image]'

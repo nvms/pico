@@ -138,3 +138,18 @@ test('compaction history hydrates images and excludes system messages', async ()
   assert.equal(history[0].content[0].source.kind, 'base64')
   assert.deepEqual(history[1], { role: 'user', content: 'summarize' })
 })
+
+test('file placeholders become file parts and restore as placeholders', () => {
+  const attachments = new Map([['[File #1]', { path: '/tmp/My Notes/plan.pdf', kind: 'file' }]])
+  const { content } = buildUserContent('read [File #1] please', attachments)
+  assert.deepEqual(content, [
+    { type: 'text', text: 'read ' },
+    { type: 'file', path: '/tmp/My Notes/plan.pdf' },
+    { type: 'text', text: ' please' },
+  ])
+  const restored = new Map()
+  let n = 0
+  const text = inputTextFromContent(content, { attachments: restored, nextId: () => ++n })
+  assert.equal(text, 'read [File #1] please')
+  assert.deepEqual(restored.get('[File #1]'), { path: '/tmp/My Notes/plan.pdf', kind: 'file' })
+})

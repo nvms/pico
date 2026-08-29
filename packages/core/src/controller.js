@@ -807,10 +807,19 @@ export function createController({ boot }) {
     return placeholder
   }
 
+  function attachFile(path) {
+    if (!existsSync(path)) return null
+    const placeholder = `[File #${++state.imageCount}]`
+    state.attachments.set(placeholder, { path, kind: 'file' })
+    return placeholder
+  }
+
+  // a project-relative pick: images attach as images, anything else as a
+  // file reference
   function attachProjectFile(file) {
     const full = join(boot.cwd, file)
-    if (!mediaTypeFor(file) || !existsSync(full)) return null
-    return attachImage(full)
+    if (!existsSync(full)) return null
+    return mediaTypeFor(file) ? attachImage(full) : attachFile(full)
   }
 
   function detachImage(placeholder) {
@@ -1246,6 +1255,7 @@ export function createController({ boot }) {
     undoRewind,
     recallText,
     attachImage,
+    attachFile,
     attachProjectFile,
     detachImage,
     costSummary,
