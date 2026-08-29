@@ -48,6 +48,7 @@ export function createGitService({ onChange = () => {} } = {}) {
   let gitDir = null
   let epoch = 0
   let watcher = null
+  let treeWatcher = null
   let poll = null
   let debounce = null
   let child = null
@@ -58,6 +59,8 @@ export function createGitService({ onChange = () => {} } = {}) {
     epoch += 1
     watcher?.close()
     watcher = null
+    treeWatcher?.close()
+    treeWatcher = null
     if (poll) clearInterval(poll)
     poll = null
     if (debounce) clearTimeout(debounce)
@@ -84,6 +87,20 @@ export function createGitService({ onChange = () => {} } = {}) {
       watcher.on('error', () => {})
     } catch {
       watcher = null
+    }
+    // the working tree too, so an edit shows up right away rather than at
+    // the next poll. recursive watching rides on FSEvents on macOS; the
+    // refresh is debounced so a burst of writes costs one git call
+    try {
+      treeWatcher = watch(root, { recursive: true }, (_event, file) => {
+        if (epoch !== started) return
+        const name = String(file ?? '')
+        if (name === '.git' || name.startsWith('.git/') || name.includes('node_modules')) return
+        refresh()
+      })
+      treeWatcher.on('error', () => {})
+    } catch {
+      treeWatcher = null
     }
     poll = setInterval(run, POLL_MS)
     poll.unref?.()
