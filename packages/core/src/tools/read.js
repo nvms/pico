@@ -50,7 +50,7 @@ function isBinary(buffer) {
 export function createRead({ cwd, recorder, tracker }) {
   return {
     name: 'read',
-    description: 'Read a file. Returns line-numbered content. Use offset/limit for large files.',
+    description: 'Read a file. Returns line-numbered content; pdf files return their extracted text with page markers. Use offset/limit for large files.',
     schema: {
       description: describeParam,
       path: { type: 'string', description: 'file path, relative to the working directory or absolute' },
