@@ -42,3 +42,13 @@ test('system_note events derive like shell notes', () => {
   assert.match(state.providerHistory.at(-1).content, /do the thing/)
   assert.equal(state.transcript.at(-1).kind, 'notice')
 })
+
+test('a listed wake-up carries when it was scheduled, so a reader can show progress', () => {
+  const manager = createWakeupManager()
+  const before = Date.now()
+  const { id } = manager.schedule(60, 'check the build')
+  const [entry] = manager.list()
+  assert.ok(entry.scheduledAt >= before && entry.scheduledAt <= Date.now())
+  assert.equal(entry.at - entry.scheduledAt, 60000)
+  manager.cancel(id)
+})

@@ -6,13 +6,14 @@ export function createWakeupManager({ onFire = () => {}, onChange = () => {} } =
     schedule(delaySeconds, note) {
       const seconds = Math.max(5, Math.round(delaySeconds))
       const id = String(nextId++)
-      const at = Date.now() + seconds * 1000
+      const scheduledAt = Date.now()
+      const at = scheduledAt + seconds * 1000
       const timer = setTimeout(() => {
         wakeups.delete(id)
         onChange()
         onFire({ id, note, at })
       }, seconds * 1000)
-      wakeups.set(id, { id, note, at, timer })
+      wakeups.set(id, { id, note, at, scheduledAt, timer })
       onChange()
       return { id, at, seconds }
     },
@@ -26,7 +27,7 @@ export function createWakeupManager({ onFire = () => {}, onChange = () => {} } =
     },
     list() {
       return [...wakeups.values()]
-        .map(({ id, note, at }) => ({ id, note, at }))
+        .map(({ id, note, at, scheduledAt }) => ({ id, note, at, scheduledAt }))
         .sort((a, b) => a.at - b.at)
     },
     pending() {
