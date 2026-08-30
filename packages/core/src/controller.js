@@ -28,7 +28,7 @@ import { connectOpenAI, openaiCredentials, disconnectOpenAI } from './openai-aut
 import { agentScratchDir, ensureDir } from './paths.js'
 import { loadCodexModels } from './codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
-import { finalizeUserContent, inputTextFromContent, mediaTypeFor } from './attachments.js'
+import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor } from './attachments.js'
 
 export const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -364,8 +364,11 @@ export function createController({ boot }) {
   }
 
   async function executeTurn(text) {
-    const { content, used } = finalizeUserContent(text, state.attachments)
-    const viewed = used.length > 0 && used.every((placeholder) => deliveredImages.has(placeholder))
+    // an image the model asked to view arrives with its path in the label;
+    // that text must not be scanned for image paths or it attaches twice
+    const built = buildUserContent(text, state.attachments)
+    const viewed = built.used.length > 0 && built.used.every((placeholder) => deliveredImages.has(placeholder))
+    const { content, used } = viewed ? built : finalizeUserContent(text, state.attachments)
     for (const placeholder of used) deliveredImages.delete(placeholder)
     persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
     ensureSession()
@@ -999,8 +1002,8 @@ export function createController({ boot }) {
     send(`Follow these skill instructions now.\n\n${body}`)
   }
 
-  async function sendCommand(name, args) {
-    const text = await boot.commands.load(name, args)
+  async function sendCommand(name, args, namedValues) {
+    const text = await boot.commands.load(name, args, namedValues)
     if (!text) return flash(`could not load command ${name}`)
     send(text)
   }

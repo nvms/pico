@@ -121,8 +121,20 @@ Review $ARGUMENTS for security problems. Focus on input validation and secrets.
 \`\`\`
 
 \`$ARGUMENTS\` is replaced with whatever follows the command; without the placeholder,
-arguments are appended after the body. Commands are rescanned every turn, so a new
-command appears in the slash menu from the next message.`
+arguments are appended after the body. For compact typed form fields, put named
+placeholders directly in the Markdown body:
+
+- \`{{file:path:File to review}}\` — path/file picker, named \`file\`
+- \`{{focus:text:Review focus}}\` — text input, named \`focus\`
+- \`{{mode:choice(review,fix):Mode}}\` — choice picker whose selected literal is inserted
+
+The final label is optional and inferred from the name (for example, \`{{focus:text}}\`
+is labelled "Focus"). Names start with a letter and may contain letters, digits, \`_\`,
+and \`-\`. Keep choice values short and comma-separated. A placeholder may be repeated.
+Named fields and \`$ARGUMENTS\` may coexist for backwards compatibility.
+
+Commands are rescanned every turn, so a new command appears in the slash menu from the
+next message.`
 
 export async function createSkillIndex(root) {
   const builtin = [
