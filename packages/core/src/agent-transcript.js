@@ -33,25 +33,40 @@ function settleTool(tools, event) {
   item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
 }
 
+// a deliberation reads as turns: each turn owns the tool runs its
+// participant made before speaking. every recorded event carries the
+// speaker's role and round, so a turn opens on its first tool call and
+// closes when its text arrives; a turn with tools and no text is running
 function deliberationTranscript(agent) {
   const items = [{ kind: 'user', text: agent.prompt }]
   const tools = new Map()
+  const turns = new Map()
+  const turnFor = (role, round) => {
+    const key = `${role}:${round}`
+    if (!turns.has(key)) {
+      const turn = { kind: 'deliberation-turn', role, round, text: null, tools: [], active: agent.status === 'running' }
+      turns.set(key, turn)
+      items.push(turn)
+    }
+    return turns.get(key)
+  }
   for (const entry of agent.timeline) {
     if (entry.kind === 'turn') {
-      const turn = entry.value
-      items.push({ kind: 'deliberation-turn', role: turn.role, round: turn.round, text: turn.text })
+      const turn = turnFor(entry.value.role, entry.value.round)
+      turn.text = entry.value.text
+      turn.active = false
       continue
     }
     const event = entry.value
     if (event.type === 'tool_executing') {
       const item = toolItem(event.call || {}, event.at)
       tools.set(item.callId, item)
-      items.push(item)
+      turnFor(event.role, event.round).tools.push(item)
     }
     if (event.type === 'tool_complete' || event.type === 'tool_error') settleTool(tools, event)
   }
   if (agent.result) {
-    items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, interrupted: agent.status === 'cancelled' })
+    items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, tools: [], interrupted: agent.status === 'cancelled' })
   } else if (agent.error) {
     items.push({ kind: 'assistant', text: agent.error, interrupted: true })
   }
