@@ -28,6 +28,7 @@ import { connectOpenAI, openaiCredentials, disconnectOpenAI } from './openai-aut
 import { agentScratchDir, ensureDir } from './paths.js'
 import { loadCodexModels } from './codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
+import { MAX_DELIBERATION_ROUNDS } from './deliberation.js'
 import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor } from './attachments.js'
 
 export const EFFORT_LEVELS = [
@@ -73,8 +74,9 @@ function parallelPrompt(task, agentLimit) {
   return `Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`
 }
 
-function deliberatePrompt(decision) {
-  return `Deliberate on the following decision: ${decision}\n\nImmediately call deliberate with a self-contained brief. Do not research first, start ordinary agents, or approximate the deliberation yourself. The deliberation participants own all supporting research.`
+function deliberatePrompt(decision, rounds) {
+  const withRounds = rounds ? ` and rounds set to ${rounds}` : ''
+  return `Deliberate on the following decision: ${decision}\n\nImmediately call deliberate with a self-contained brief${withRounds}. Do not research first, start ordinary agents, or approximate the deliberation yourself. The deliberation participants own all supporting research.`
 }
 
 function workerSystemPrompt(scratchpad) {
@@ -985,13 +987,16 @@ export function createController({ boot }) {
     return true
   }
 
-  function sendDeliberate(decision) {
+  // rounds, when given, is passed along to the tool call; the tool itself
+  // clamps to its 1..5 range
+  function sendDeliberate(decision, rounds) {
     if (!decision) {
       flash('usage: /deliberate <decision>')
       return true
     }
     if (!modelAvailable(boot.deliberationModel)) return false
-    send(deliberatePrompt(decision))
+    const n = Number(rounds)
+    send(deliberatePrompt(decision, Number.isInteger(n) && n >= 1 && n <= MAX_DELIBERATION_ROUNDS ? n : null))
     return true
   }
 
