@@ -65,8 +65,16 @@ function deliberationTranscript(agent) {
     }
     if (event.type === 'tool_complete' || event.type === 'tool_error') settleTool(tools, event)
   }
+  // whoever is speaking right now shows their words as they arrive
+  const live = agent.live
+  if (live?.text && live.role !== 'synthesis') {
+    const turn = turnFor(live.role, live.round)
+    if (turn.text == null) turn.text = live.text
+  }
   if (agent.result) {
     items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, tools: [], interrupted: agent.status === 'cancelled' })
+  } else if (live?.text && live.role === 'synthesis') {
+    items.push({ kind: 'deliberation-turn', role: 'synthesis', text: live.text, tools: [], active: true })
   } else if (agent.error) {
     items.push({ kind: 'assistant', text: agent.error, interrupted: true })
   }

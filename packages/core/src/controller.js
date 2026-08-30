@@ -225,6 +225,10 @@ export function createController({ boot }) {
     },
   })
 
+  // a running deliberation's current speaker streams into this buffer; it
+  // is never persisted, the turn event carries the settled text
+  const liveDeliberations = new Map()
+
   const deliberations = {
     run: async ({ brief, rounds, signal }) => {
       const options = validateDeliberation({ brief, rounds })
@@ -240,6 +244,18 @@ export function createController({ boot }) {
       if (!sessionId) throw new Error('deliberation requires an active session')
       persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: modelName }))
       bumpActivity()
+      const live = { role: null, round: null, text: '' }
+      liveDeliberations.set(id, live)
+      const speak = (role, round) => (event) => {
+        if (event.type === 'content') {
+          if (live.role !== role || live.round !== round) Object.assign(live, { role, round, text: '' })
+          live.text += event.content
+          bumpActivity()
+        } else if (event.type === 'tool_calls_ready' && live.text) {
+          live.text = ''
+          bumpActivity()
+        }
+      }
 
       const persistDeliberation = (event) => {
         persist(event)
@@ -281,14 +297,18 @@ export function createController({ boot }) {
           history,
           role,
           onStream: (event) => {
+            speak(role, round)(event)
             if (['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)) {
               persistDeliberation(makeEvent('deliberation_event', { deliberationId: id, role, round, event }))
             }
           },
         }),
-        runSynthesis: ({ history }) => runWorker({ history, role: 'synthesizer', tools: false }),
-        onEvent: (event) => persistDeliberation(makeEvent('deliberation_turn', { deliberationId: id, ...event })),
-      })
+        runSynthesis: ({ history }) => runWorker({ history, role: 'synthesizer', tools: false, onStream: speak('synthesis', null) }),
+        onEvent: (event) => {
+          Object.assign(live, { role: null, round: null, text: '' })
+          persistDeliberation(makeEvent('deliberation_turn', { deliberationId: id, ...event }))
+        },
+      }).finally(() => liveDeliberations.delete(id))
       persistDeliberation(makeEvent('deliberation_result', { deliberationId: id, result: result.result, usage: result.usage, interrupted: result.interrupted, error: result.error }))
       if (result.error) throw new Error(result.error)
       return {
@@ -1218,7 +1238,11 @@ export function createController({ boot }) {
   }
 
   function activity() {
-    const rows = [...agents.list(), ...deliberationsFromEvents(state.events)]
+    const withLive = (item) => {
+      const live = liveDeliberations.get(item.deliberationId)
+      return live?.role ? { ...item, live: { ...live } } : item
+    }
+    const rows = [...agents.list(), ...deliberationsFromEvents(state.events).map(withLive)]
     return rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
   }
 
