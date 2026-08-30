@@ -101,7 +101,7 @@ function foldMessage(state, event) {
   if (message.role === 'user') {
     const text = Array.isArray(message.content)
       ? message.content
-          .map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? `[file: ${p.path}]` : `[image: ${String(p.source?.path || '').split('/').pop() || 'attached'}]`))
+          .map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? `[file: ${p.path}]` : p.type === 'selection' ? `[selection: ${p.path}:${p.fromLine}-${p.toLine}]` : `[image: ${String(p.source?.path || '').split('/').pop() || 'attached'}]`))
           .join('')
       : String(message.content)
     state.transcript.push({ ...base, kind: 'user', text, content: message.content, ...(event.data.origin ? { origin: event.data.origin } : {}) })

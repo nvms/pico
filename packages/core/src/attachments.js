@@ -71,9 +71,10 @@ export function splitTextByImagePaths(text, exists = existsSync) {
 }
 
 export const fileLabel = (path) => `[file: ${path}]`
+export const selectionLabel = (part) => `[selection: ${part.path}:${part.fromLine}-${part.toLine}]\n${part.text}\n[/selection]`
 
 // [Image #n] and [File #n] placeholders in the composed text stand for
-// attachments; they become image and file parts of the user message
+// attachments; they become image, file, or selection parts of the user message
 export function buildUserContent(text, attachments) {
   const parts = []
   let last = 0
@@ -83,9 +84,11 @@ export function buildUserContent(text, attachments) {
     if (!attachment) continue
     const before = text.slice(last, match.index)
     if (before) parts.push({ type: 'text', text: before })
-    parts.push(attachment.kind === 'file'
-      ? { type: 'file', path: attachment.path }
-      : { type: 'image', source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType } })
+    parts.push(attachment.kind === 'selection'
+      ? { type: 'selection', path: attachment.path, text: attachment.text, fromLine: attachment.fromLine, toLine: attachment.toLine, ...(Number.isInteger(attachment.fromColumn) ? { fromColumn: attachment.fromColumn } : {}), ...(Number.isInteger(attachment.toColumn) ? { toColumn: attachment.toColumn } : {}) }
+      : attachment.kind === 'file'
+        ? { type: 'file', path: attachment.path }
+        : { type: 'image', source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType } })
     used.push(match[0])
     last = match.index + match[0].length
   }
@@ -124,6 +127,10 @@ export function inputTextFromContent(content, { attachments, nextId }) {
     } else if (part.type === 'file' && part.path) {
       const placeholder = `[File #${nextId()}]`
       attachments.set(placeholder, { path: part.path, kind: 'file' })
+      out += placeholder
+    } else if (part.type === 'selection' && part.path) {
+      const placeholder = `[File #${nextId()}]`
+      attachments.set(placeholder, { path: part.path, text: part.text, fromLine: part.fromLine, toLine: part.toLine, ...(Number.isInteger(part.fromColumn) ? { fromColumn: part.fromColumn } : {}), ...(Number.isInteger(part.toColumn) ? { toColumn: part.toColumn } : {}), kind: 'selection' })
       out += placeholder
     } else {
       out += '[image]'

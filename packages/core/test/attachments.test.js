@@ -36,6 +36,23 @@ test('buildUserContent interleaves text and images in order', () => {
   assert.deepEqual(used, ['[Image #1]', '[Image #2]'])
 })
 
+test('selection placeholders preserve their position and restore', async () => {
+  const attachments = new Map([
+    ['[File #1]', { kind: 'selection', path: '/tmp/app.js', text: 'const answer = 42', fromLine: 7, toLine: 7 }],
+  ])
+  const built = buildUserContent('change [File #1] without moving it', attachments)
+  assert.deepEqual(built.content.map((part) => part.type), ['text', 'selection', 'text'])
+  assert.deepEqual(built.content[1], { type: 'selection', path: '/tmp/app.js', text: 'const answer = 42', fromLine: 7, toLine: 7 })
+
+  const restored = new Map()
+  const text = inputTextFromContent(built.content, { attachments: restored, nextId: () => 2 })
+  assert.equal(text, 'change [File #2] without moving it')
+  assert.deepEqual(restored.get('[File #2]'), attachments.get('[File #1]'))
+
+  const hydrated = await hydrateImages([{ role: 'user', content: built.content }])
+  assert.match(hydrated[0].content[1].text, /^\[selection: \/tmp\/app\.js:7-7\]\nconst answer = 42/)
+})
+
 test('buildUserContent leaves plain text and stale placeholders alone', () => {
   const { content } = buildUserContent('no images here', new Map())
   assert.equal(content, 'no images here')

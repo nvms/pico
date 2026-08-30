@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
-import { fileLabel, mediaTypeFor } from './attachments.js'
+import { fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
 
 // file parts reach the model as a labelled path; it reads them itself
 async function hydratePart(part) {
   if (part.type === 'file') return { type: 'text', text: fileLabel(part.path) }
+  if (part.type === 'selection') return { type: 'text', text: selectionLabel(part) }
   if (part.type !== 'image' || part.source?.kind !== 'path') return part
   const mediaType = part.source.mediaType || mediaTypeFor(part.source.path)
   if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }

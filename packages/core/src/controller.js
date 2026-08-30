@@ -857,6 +857,13 @@ export function createController({ boot }) {
     return placeholder
   }
 
+  function attachSelection({ path, text, fromLine, toLine, fromColumn, toColumn }) {
+    if (!existsSync(path) || !text || !Number.isInteger(fromLine) || !Number.isInteger(toLine)) return null
+    const placeholder = `[File #${++state.imageCount}]`
+    state.attachments.set(placeholder, { path, text, fromLine, toLine, fromColumn, toColumn, kind: 'selection' })
+    return placeholder
+  }
+
   // a project-relative pick: images attach as images, anything else as a
   // file reference
   function attachProjectFile(file) {
@@ -1325,6 +1332,7 @@ export function createController({ boot }) {
     recallText,
     attachImage,
     attachFile,
+    attachSelection,
     attachProjectFile,
     detachImage,
     costSummary,
