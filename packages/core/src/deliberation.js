@@ -11,8 +11,13 @@ export function validateDeliberation({ brief, rounds = DEFAULT_DELIBERATION_ROUN
   return { brief: brief.trim(), rounds }
 }
 
+const ROLE_BRIEFS = {
+  proposer: 'You are the proposer: take a position on the decision and argue for it with evidence, laying out the reasoning and the tradeoffs you accept.',
+  reviewer: 'You are the reviewer: scrutinize the proposal, test its evidence and premises, and put forward the strongest alternative where one exists.',
+}
+
 function participantPrompt(brief, role, rounds) {
-  return `You are the ${role} in a ${rounds}-round deliberation about the following decision:\n\n${brief}\n\nResearch before making claims. Use the available project and web tools whenever they can replace assumption with evidence. Cite URLs and project paths in your response. Challenge weak premises and address the peer's strongest points. Do not seek agreement for its own sake or defend a fixed position. Change your position only when evidence warrants it, and preserve material disagreement and uncertainty. Do not modify project files. Return a concise message addressed to the other participant.`
+  return `${ROLE_BRIEFS[role]} This is a ${rounds}-round deliberation about the following decision:\n\n${brief}\n\nResearch before making claims. Use the available project and web tools whenever they can replace assumption with evidence. Cite URLs and project paths in your response. Challenge weak premises and address the peer's strongest points. Do not seek agreement for its own sake or defend a fixed position. Change your position only when evidence warrants it, and preserve material disagreement and uncertainty. Do not modify project files. Write your own argument and reasoning; never instruct the other participant what to say or conclude. Be concise.`
 }
 
 function peerMessage(role, text, round, rounds) {
