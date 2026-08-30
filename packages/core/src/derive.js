@@ -203,7 +203,7 @@ export function deriveState(events) {
         break
       case 'turn_transcript':
         for (const item of event.data.items || []) {
-          const restored = { ...item, eventId: event.id }
+          const restored = { ...item, eventId: event.id, at: item.at ?? event.at ?? null }
           state.transcript.push(restored)
           if (restored.kind === 'tool' && restored.callId) state.toolItems.set(restored.callId, restored)
         }
