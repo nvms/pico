@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { appendSessionEvent, createSession, forkSession, loadSession, listSessions, openSession, deleteSession, deleteProjectData, onSessionWriteError } from '../src/session.js'
+import { appendSessionEvent, createEphemeralSession, createSession, forkSession, loadSession, listSessions, openSession, deleteSession, deleteProjectData, onSessionWriteError } from '../src/session.js'
 import { makeEvent, makeHeader } from '../src/events.js'
 import { agentScratchDir, sessionsDir } from '../src/paths.js'
 
@@ -347,4 +347,24 @@ test('a failed header write remains visible after a later successful append', as
   session.append(makeEvent('title', { text: 'headerless' }))
   await assert.rejects(() => session.flush())
   await assert.rejects(() => loadSession(session.file), /not a pico session file/)
+})
+
+test('an ephemeral session writes nothing to disk and forks stay ephemeral', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createEphemeralSession({ cwd: root, root })
+  const events = [makeEvent('message', { message: { role: 'user', content: 'gone soon' } })]
+  for (const event of events) session.append(event)
+  await session.flush()
+  assert.equal(session.file, null)
+  assert.equal(session.ephemeral, true)
+  assert.equal(session.header.root, root)
+  await assert.rejects(access(sessionsDir(root)))
+  assert.deepEqual(await listSessions({ scope: 'project', root }), [])
+
+  const fork = await forkSession({ source: session, cwd: root, root, events, label: 'still temporary' })
+  assert.equal(fork.session.ephemeral, true)
+  assert.equal(fork.session.header.forkedFrom, session.id)
+  assert.deepEqual(await listSessions({ scope: 'project', root }), [])
+  delete process.env.PICO_HOME
 })

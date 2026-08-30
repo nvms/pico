@@ -90,9 +90,16 @@ export function createSession({ cwd, root, forkedFrom }) {
   return session
 }
 
+// an ephemeral session keeps its events in memory only: no file, no index
+// entry, nothing to resume once it is closed
+export function createEphemeralSession({ cwd, root, forkedFrom }) {
+  const header = makeHeader({ cwd, root, forkedFrom })
+  return { id: header.id, file: null, header, ephemeral: true, append() {}, async flush() {} }
+}
+
 export async function forkSession({ source, cwd, root, events, label }) {
   await source?.flush()
-  const session = createSession({ cwd, root, forkedFrom: source?.id })
+  const session = source?.ephemeral ? createEphemeralSession({ cwd, root, forkedFrom: source.id }) : createSession({ cwd, root, forkedFrom: source?.id })
   for (const event of events) session.append(event)
   const title = makeEvent('title', { text: label })
   session.append(title)

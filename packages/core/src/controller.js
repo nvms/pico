@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { makeEvent } from './events.js'
-import { createSession, forkSession, openSession, loadSession, listSessions, deleteSession, appendSessionEvent, onSessionWriteError } from './session.js'
+import { createSession, createEphemeralSession, forkSession, openSession, loadSession, listSessions, deleteSession, appendSessionEvent, onSessionWriteError } from './session.js'
 import { createContextTracker } from './context.js'
 import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
@@ -154,7 +154,7 @@ export function createController({ boot }) {
   }
 
   function ensureSession() {
-    if (!state.session) state.session = createSession({ cwd: boot.cwd, root: boot.root })
+    if (!state.session) state.session = (boot.ephemeral ? createEphemeralSession : createSession)({ cwd: boot.cwd, root: boot.root })
     while (state.persisted < state.events.length) {
       state.session.append(state.events[state.persisted])
       state.persisted++
@@ -738,7 +738,7 @@ export function createController({ boot }) {
     }
     try {
       await session.flush()
-      await deleteSession(session.file)
+      if (session.file) await deleteSession(session.file)
     } catch (err) {
       flash(`delete failed: ${errorText(err, 80)}`)
       return false
