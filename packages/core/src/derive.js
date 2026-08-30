@@ -88,6 +88,7 @@ function foldMessage(state, event) {
   const base = {
     messageId: event.id,
     eventId: event.id,
+    at: event.at ?? null,
     role: message.role,
     locked: event._sourceIndex < state.latestCompactIndex,
     steered: !!event._steered,
