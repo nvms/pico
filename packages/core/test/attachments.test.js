@@ -153,3 +153,29 @@ test('file placeholders become file parts and restore as placeholders', () => {
   assert.equal(text, 'read [File #1] please')
   assert.deepEqual(restored.get('[File #1]'), { path: '/tmp/My Notes/plan.pdf', kind: 'file' })
 })
+
+test('stashImages copies each image into the directory and points the part at the copy', async () => {
+  const { mkdtemp, writeFile, readFile, rm } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { stashImages } = await import('../src/attachments.js')
+  const src = await mkdtemp(join(tmpdir(), 'pico-img-'))
+  const dir = join(await mkdtemp(join(tmpdir(), 'pico-att-')), 'session')
+  const original = join(src, 'shot.png')
+  await writeFile(original, 'png bytes')
+  const content = [
+    { type: 'text', text: 'look' },
+    { type: 'image', source: { kind: 'path', path: original, mediaType: 'image/png' } },
+  ]
+  const stashed = await stashImages(content, dir)
+  assert.equal(stashed[0], content[0])
+  assert.notEqual(stashed[1].source.path, original)
+  assert.ok(stashed[1].source.path.startsWith(dir))
+  assert.ok(stashed[1].source.path.endsWith('-shot.png'))
+  assert.equal(await readFile(stashed[1].source.path, 'utf-8'), 'png bytes')
+  await rm(original)
+  assert.equal(await readFile(stashed[1].source.path, 'utf-8'), 'png bytes')
+  assert.deepEqual(await stashImages(stashed, dir), stashed)
+  const missing = [{ type: 'image', source: { kind: 'path', path: join(src, 'gone.png'), mediaType: 'image/png' } }]
+  assert.deepEqual(await stashImages(missing, dir), missing)
+})

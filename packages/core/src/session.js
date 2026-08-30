@@ -145,6 +145,7 @@ export async function deleteSession(file) {
   })
   await removeFromSessionIndex(file)
   await rm(join(project, 'scratchpads', sessionId), { recursive: true, force: true })
+  await rm(join(project, 'attachments', sessionId), { recursive: true, force: true })
 }
 
 export function deleteProjectData(root) {

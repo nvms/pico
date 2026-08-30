@@ -25,11 +25,11 @@ import { findModel, estimateCost } from './models.js'
 import { adhocModel } from './catalog.js'
 import { writeConfig } from './config.js'
 import { connectOpenAI, openaiCredentials, disconnectOpenAI } from './openai-auth.js'
-import { agentScratchDir, ensureDir } from './paths.js'
+import { agentScratchDir, ensureDir, sessionAttachmentsDir } from './paths.js'
 import { loadCodexModels } from './codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
 import { MAX_DELIBERATION_ROUNDS } from './deliberation.js'
-import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor } from './attachments.js'
+import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor, stashImages } from './attachments.js'
 
 export const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -370,10 +370,11 @@ export function createController({ boot }) {
     // that text must not be scanned for image paths or it attaches twice
     const built = buildUserContent(text, state.attachments)
     const viewed = built.used.length > 0 && built.used.every((placeholder) => deliveredImages.has(placeholder))
-    const { content, used } = viewed ? built : finalizeUserContent(text, state.attachments)
+    const { content: built2, used } = viewed ? built : finalizeUserContent(text, state.attachments)
     for (const placeholder of used) deliveredImages.delete(placeholder)
-    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
     ensureSession()
+    const content = state.session.file ? await stashImages(built2, sessionAttachmentsDir(boot.root, state.session.id)) : built2
+    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
     reDerive()
     await runAgentTurn()
   }

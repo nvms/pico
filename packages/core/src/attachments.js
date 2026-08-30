@@ -1,5 +1,7 @@
 import { existsSync } from 'node:fs'
-import { basename } from 'node:path'
+import { copyFile, mkdir, stat } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { basename, join } from 'node:path'
 
 const MEDIA_TYPES = {
   png: 'image/png',
@@ -145,4 +147,29 @@ export function finalizeUserContent(text, attachments, exists = existsSync) {
   }
   if (expanded.length === 1 && expanded[0].type === 'text') return { content: expanded[0].text, used }
   return { content: expanded, used }
+}
+
+// images ride into a session by path, and the path is what the log keeps,
+// so each one is copied into the session's own attachments directory
+// before the message is written and the part points at the copy. later
+// turns and later readers then never depend on the original still being
+// where it was
+async function stashImage(part, dir) {
+  const path = part.source?.path
+  if (!path || part.source.kind !== 'path' || path.startsWith(dir)) return part
+  try {
+    const { size, mtimeMs } = await stat(path)
+    const key = createHash('sha1').update(`${path}\n${size}\n${Math.floor(mtimeMs)}`).digest('hex').slice(0, 10)
+    const copy = join(dir, `${key}-${basename(path)}`)
+    await mkdir(dir, { recursive: true })
+    if (!existsSync(copy)) await copyFile(path, copy)
+    return { ...part, source: { ...part.source, path: copy } }
+  } catch {
+    return part
+  }
+}
+
+export async function stashImages(content, dir) {
+  if (!Array.isArray(content)) return content
+  return Promise.all(content.map((part) => (part.type === 'image' ? stashImage(part, dir) : part)))
 }

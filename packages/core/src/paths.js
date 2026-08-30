@@ -33,6 +33,10 @@ export function sessionScratchDir(root, sessionId) {
   return join(projectDir(root), 'scratchpads', sessionId)
 }
 
+export function sessionAttachmentsDir(root, sessionId) {
+  return join(projectDir(root), 'attachments', sessionId)
+}
+
 export function agentScratchDir(root, sessionId, agentId) {
   return join(sessionScratchDir(root, sessionId), `agent-${agentId}`)
 }
