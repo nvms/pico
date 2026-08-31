@@ -154,7 +154,12 @@ export function createController({ boot }) {
   }
 
   function ensureSession() {
-    if (!state.session) state.session = (boot.ephemeral ? createEphemeralSession : createSession)({ cwd: boot.cwd, root: boot.root })
+    if (!state.session) {
+      state.session = (boot.ephemeral ? createEphemeralSession : createSession)({ cwd: boot.cwd, root: boot.root })
+      // the file exists from this moment; anyone tracking open sessions
+      // by file needs to hear about it
+      emit('session', state.session)
+    }
     while (state.persisted < state.events.length) {
       state.session.append(state.events[state.persisted])
       state.persisted++
