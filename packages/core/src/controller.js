@@ -651,7 +651,7 @@ export function createController({ boot }) {
       if (!loadedBefore.has(path)) persist(makeEvent('context_file', { path }))
     }
     if (result.usage) persist(makeEvent('usage', { model: state.model.name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
-    if (result.interrupted) persist(makeEvent('interrupt', {}))
+    if (result.interrupted && !sendAfterToolTriggered) persist(makeEvent('interrupt', {}))
 
     abort = null
     state.overlay = []
@@ -680,8 +680,7 @@ export function createController({ boot }) {
       set({ expedited: [], queued: [] })
       // an interrupt is the user taking the wheel: nothing pending may
       // auto-send, expedited or not; it all returns to the composer
-      if (result.interrupted) {
-        sendAfterToolTriggered = false
+      if (result.interrupted && !sendAfterToolTriggered) {
         emit('input', [...expeditedMessages, ...pendingMessages].join('\n'))
       } else {
         const next = sendAfterToolTriggered ? expeditedMessages : [...expeditedMessages, ...pendingMessages]
