@@ -673,7 +673,10 @@ export function createController({ boot }) {
     const pendingMessages = state.queued
     if (expeditedMessages.length > 0 || pendingMessages.length > 0) {
       set({ expedited: [], queued: [] })
-      if (result.interrupted && !sendAfterToolTriggered) {
+      // an interrupt is the user taking the wheel: nothing pending may
+      // auto-send, expedited or not; it all returns to the composer
+      if (result.interrupted) {
+        sendAfterToolTriggered = false
         emit('input', [...expeditedMessages, ...pendingMessages].join('\n'))
       } else {
         const next = sendAfterToolTriggered ? expeditedMessages : [...expeditedMessages, ...pendingMessages]
