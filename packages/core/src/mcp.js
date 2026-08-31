@@ -255,7 +255,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         status: s.status,
         error: s.error,
         toolCount: s.connection?.tools.length || 0,
-        tools: (s.connection?.tools || []).map((t) => ({ name: t.name, description: t.description || '', inputSchema: t.inputSchema ?? null })),
+        tools: (s.connection?.tools || []).map((t) => ({ name: t.name, description: t.description || '', schema: t.schema ?? null })),
       }))
     },
     tools() {
