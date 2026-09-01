@@ -241,13 +241,19 @@ export function createController({ boot }) {
       rounds = options.rounds
       const existingIds = deliberationsFromEvents(state.events).map((item) => Number(item.deliberationId)).filter(Number.isFinite)
       const id = String(Math.max(0, ...existingIds) + 1)
-      const modelName = boot.deliberationModel
-      const worker = boot.models.find((m) => m.name === modelName)
-      if (!worker || worker.available === false) throw new Error(`deliberation model unavailable: ${modelName}`)
-      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
+      const roleModel = (role) => (role === 'proposer' ? boot.proposerModel : role === 'reviewer' ? boot.reviewerModel : null) || boot.deliberationModel || boot.proposerModel || boot.reviewerModel
+      const roleWorkers = {}
+      const roleAuths = {}
+      for (const part of ['proposer', 'reviewer', 'synthesizer']) {
+        const name = roleModel(part)
+        const found = boot.models.find((m) => m.name === name)
+        if (!found || found.available === false) throw new Error(`deliberation model unavailable: ${name}`)
+        roleWorkers[part] = found
+        roleAuths[part] = found.provider === 'codex' ? await openaiCredentials() : null
+      }
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('deliberation requires an active session')
-      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: modelName }))
+      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: roleModel('synthesizer'), models: { proposer: roleModel('proposer'), reviewer: roleModel('reviewer') } }))
       bumpActivity()
       const live = { role: null, round: null, text: '' }
       liveDeliberations.set(id, live)
@@ -285,9 +291,9 @@ export function createController({ boot }) {
           history,
           tools: toolset.tools,
           recorder: toolset.recorder,
-          modelName,
-          effort: worker.effort ? 'low' : null,
-          auth,
+          modelName: roleWorkers[role].name,
+          effort: roleWorkers[role].effort ? 'low' : null,
+          auth: roleAuths[role],
           system: participantSystemPrompt(scratchpad),
           signal,
           onStream,
@@ -602,7 +608,7 @@ export function createController({ boot }) {
       wakeups: boot.wakeups,
       memory: boot.memory,
       agents: boot.researchModel ? agents : null,
-      deliberations: boot.deliberationModel ? deliberations : null,
+      deliberations: boot.deliberationModel || (boot.proposerModel && boot.reviewerModel) ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
       askUser,
       dredge: boot.dredge,
@@ -1029,7 +1035,8 @@ export function createController({ boot }) {
       flash('usage: /deliberate <decision>')
       return true
     }
-    if (!modelAvailable(boot.deliberationModel)) return false
+    if (!modelAvailable(boot.proposerModel || boot.deliberationModel)) return false
+    if (!modelAvailable(boot.reviewerModel || boot.deliberationModel)) return false
     const n = Number(rounds)
     send(deliberatePrompt(decision, Number.isInteger(n) && n >= 1 && n <= MAX_DELIBERATION_ROUNDS ? n : null))
     return true
@@ -1062,6 +1069,28 @@ export function createController({ boot }) {
     if (name && !modelAvailable(name)) return flash(`${name} is not available`)
     boot.deliberationModel = name || null
     await writeConfig({ models: { deliberation: name || null } })
+    changed()
+  }
+
+  async function setProposerModel(name) {
+    if (name && !modelAvailable(name)) return flash(`${name} is not available`)
+    boot.proposerModel = name || null
+    await writeConfig({ models: { proposer: name || null } })
+    changed()
+  }
+
+  async function setReviewerModel(name) {
+    if (name && !modelAvailable(name)) return flash(`${name} is not available`)
+    boot.reviewerModel = name || null
+    await writeConfig({ models: { reviewer: name || null } })
+    changed()
+  }
+
+  async function setDefaultModel(name) {
+    const pick = boot.models.find((m) => m.name === name)
+    if (!pick || pick.available === false) return flash(`${name || 'model'} is not available`)
+    state.defaultModel = pick
+    await writeConfig({ defaultModel: pick.name })
     changed()
   }
 
@@ -1332,6 +1361,9 @@ export function createController({ boot }) {
     sendInit,
     setResearchModel,
     setDeliberationModel,
+    setProposerModel,
+    setReviewerModel,
+    setDefaultModel,
     previewSteer,
     applySteer,
     rewind,
