@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "@prsm/ai": "^1.6.1",
+    "@prsm/ai": "^1.7.1",
     "diff": "^7.0.0",
     "fast-glob": "^3.3.0",
     "proper-lockfile": "^4.1.2",
