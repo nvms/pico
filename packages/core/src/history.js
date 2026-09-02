@@ -1,11 +1,11 @@
 import { appendFile, readFile, readdir } from 'node:fs/promises'
-import { join } from 'node:path'
-import { picoHome, projectDir, projectHistoryFile, ensureDir } from './paths.js'
+import { dirname, join } from 'node:path'
+import { picoHome, projectHistoryFile, ensureDir } from './paths.js'
 
 const MAX_PROMPTS_PER_SCOPE = 1000
 
 export async function appendPrompt(root, text) {
-  ensureDir(projectDir(root))
+  ensureDir(dirname(projectHistoryFile(root)))
   await appendFile(projectHistoryFile(root), JSON.stringify({ text, at: Date.now() }) + '\n')
 }
 

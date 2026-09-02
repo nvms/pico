@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { connectMCP } from '@prsm/ai'
 import { globalMcpFile, projectMcpFile, projectDir, ensureDir, picoHome } from './paths.js'
+import { dirname } from 'node:path'
 
 function tokenize(str) {
   const tokens = []
@@ -93,7 +94,7 @@ export async function readProjectConfig(root) {
 }
 
 export async function writeProjectConfig(root, config) {
-  ensureDir(projectDir(root))
+  ensureDir(dirname(projectMcpFile(root)))
   await writeFile(projectMcpFile(root), JSON.stringify(config, null, 2) + '\n')
 }
 

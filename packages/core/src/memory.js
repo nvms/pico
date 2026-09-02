@@ -1,6 +1,6 @@
 import { readFile, readdir, writeFile, mkdir, unlink, rename, access } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { picoHome, projectDir } from './paths.js'
+import { picoHome, sharedProjectDir } from './paths.js'
 import { parseFrontmatter } from './skills.js'
 
 export function globalMemoryDir() {
@@ -8,7 +8,7 @@ export function globalMemoryDir() {
 }
 
 export function projectMemoryDir(root) {
-  return join(projectDir(root), 'memory')
+  return join(sharedProjectDir(root), 'memory')
 }
 
 export function slugify(name) {
