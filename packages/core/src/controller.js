@@ -1398,6 +1398,7 @@ export function createController({ boot }) {
     attachFile,
     attachSelection,
     attachCommit,
+    viewImage: deliverImage,
     attachProjectFile,
     detachImage,
     costSummary,
