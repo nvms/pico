@@ -361,8 +361,12 @@ export function createController({ boot }) {
     )
   })
 
-  function noteSystem(text, { wake, agentId, sessionId = state.session?.id, sessionFile = state.session?.file } = {}) {
-    pendingSystemNotes.push({ text, wake, agentId, sessionId, sessionFile })
+  // a note for a session that has not started yet waits for its first
+  // message; `ensure` starts the session now so the note is persisted and
+  // in view before the first turn, not after it
+  function noteSystem(text, { wake, agentId, ensure = false, sessionId = state.session?.id, sessionFile = state.session?.file } = {}) {
+    if (ensure && !state.session && !state.busy) ensureSession()
+    pendingSystemNotes.push({ text, wake, agentId, sessionId: sessionId ?? state.session?.id, sessionFile: sessionFile ?? state.session?.file })
     flushSystemNotes()
   }
 
