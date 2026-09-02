@@ -175,7 +175,7 @@ export function createController({ boot }) {
   async function codexAuth() {
     if (state.model.provider !== 'codex') return { auth: null, ok: true }
     const auth = await openaiCredentials().catch(() => null)
-    if (!auth) flash('codex models need a ChatGPT sign-in: run /connect')
+    if (!auth) flash('error: codex models need a ChatGPT sign-in')
     return { auth, ok: !!auth }
   }
 
