@@ -22,6 +22,7 @@ export function createShellManager({ onChange = () => {}, onExit = () => {} } = 
       id: shell.id,
       command: shell.command,
       description: shell.description,
+      pid: shell.child?.pid ?? null,
       sessionId: shell.sessionId,
       sessionFile: shell.sessionFile,
       cwd: shell.cwd,

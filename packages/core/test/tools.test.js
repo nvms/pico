@@ -393,3 +393,14 @@ test('the toolset offers view only when a viewer is supplied', async () => {
   assert.equal(without.includes('view'), false)
   assert.equal(withViewer.includes('view'), true)
 })
+
+test('host tools join the toolset ahead of user and mcp tools', async () => {
+  const cwd = await mkdtemp(join(tmpdir(), 'pico-host-'))
+  const tracker = createContextTracker({ stopDir: cwd, loaded: new Set() })
+  const host = { name: 'sibling_processes', description: 'what else is running', schema: {}, execute: () => ({ rows: [] }) }
+  const user = { name: 'sibling_processes', description: 'user copy', schema: {}, execute: () => ({ user: true }) }
+  const { tools } = createToolset({ cwd, tracker, hostTools: [host], userTools: [user] })
+  const found = tools.find((t) => t.name === 'sibling_processes')
+  assert.equal(found.description, 'what else is running')
+  assert.deepEqual(await found.execute({}), { rows: [] })
+})

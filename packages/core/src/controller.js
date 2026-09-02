@@ -205,7 +205,7 @@ export function createController({ boot }) {
       const requestedTools = agent.tools?.length ? agent.tools.filter((name) => WORKER_TOOLS.includes(name)) : WORKER_TOOLS
       const { tools, recorder } = createToolset({
         cwd: boot.cwd,
-        env: { PICO_SCRATCHPAD: scratchpad },
+        env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
         // a private tracker seeded from the main one: a worker may read an
         // AGENTS.md the main agent has not seen, and consuming it from the
         // shared set would mean the main agent never receives it
@@ -279,7 +279,7 @@ export function createController({ boot }) {
         const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
         const toolset = createToolset({
           cwd: boot.cwd,
-          env: { PICO_SCRATCHPAD: scratchpad },
+          env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
           tracker: createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(boot.tracker.loaded) }),
           shells: boot.shells,
           sessionId,
@@ -609,6 +609,8 @@ export function createController({ boot }) {
     const freshSkills = boot.skills
     const { tools, recorder } = createToolset({
       cwd: boot.cwd,
+      env: boot.env,
+      hostTools: boot.hostTools ?? [],
       tracker,
       skills: freshSkills,
       shells: boot.shells,
@@ -1194,6 +1196,8 @@ export function createController({ boot }) {
   function baseToolset(extra = {}) {
     return createToolset({
       cwd: boot.cwd,
+      env: boot.env,
+      hostTools: boot.hostTools ?? [],
       tracker: boot.tracker,
       skills: boot.skills,
       shells: boot.shells,
