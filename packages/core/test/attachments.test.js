@@ -196,3 +196,42 @@ test('stashImages copies each image into the directory and points the part at th
   const missing = [{ type: 'image', source: { kind: 'path', path: join(src, 'gone.png'), mediaType: 'image/png' } }]
   assert.deepEqual(await stashImages(missing, dir), missing)
 })
+
+test('commit placeholders become commit parts and restore as attachments', async () => {
+  const { buildUserContent, inputTextFromContent, commitLabel } = await import('../src/attachments.js')
+  const attachments = new Map([['[File #1]', { kind: 'commit', hash: 'd59e0a5c0ffee', subject: 'keep the merge glyph', root: '/tmp/repo' }]])
+  const built = buildUserContent('look at [File #1] please', attachments)
+  assert.deepEqual(built.content, [
+    { type: 'text', text: 'look at ' },
+    { type: 'commit', hash: 'd59e0a5c0ffee', subject: 'keep the merge glyph', root: '/tmp/repo' },
+    { type: 'text', text: ' please' },
+  ])
+  assert.equal(commitLabel(built.content[1]), '[commit: d59e0a5 "keep the merge glyph"]')
+  const restored = new Map()
+  let n = 0
+  const text = inputTextFromContent(built.content, { attachments: restored, nextId: () => ++n })
+  assert.equal(text, 'look at [File #1] please')
+  assert.deepEqual(restored.get('[File #1]'), { hash: 'd59e0a5c0ffee', subject: 'keep the merge glyph', root: '/tmp/repo', kind: 'commit' })
+})
+
+test('a commit part hydrates into the commit itself for the model', async () => {
+  const { hydrateCommit } = await import('../src/agent.js')
+  const { execFileSync } = await import('node:child_process')
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = await mkdtemp(join(tmpdir(), 'pico-commit-'))
+  const run = (args) => execFileSync('git', ['-c', 'user.name=Ada', '-c', 'user.email=ada@x.io', ...args], { cwd: dir }).toString().trim()
+  run(['init', '-q', '-b', 'main'])
+  await writeFile(join(dir, 'a.txt'), 'hello\n')
+  run(['add', 'a.txt'])
+  run(['commit', '-qm', 'add greeting'])
+  const hash = run(['rev-parse', 'HEAD'])
+  const part = await hydrateCommit({ type: 'commit', hash, subject: 'add greeting', root: dir })
+  assert.match(part.text, /^\[commit: [0-9a-f]{7} "add greeting"\]\n/)
+  assert.match(part.text, /Author: Ada <ada@x.io>/)
+  assert.match(part.text, /\+hello/)
+  assert.match(part.text, /\[\/commit\]$/)
+  const missing = await hydrateCommit({ type: 'commit', hash: 'ffffffff', subject: '', root: dir })
+  assert.match(missing.text, /commit unavailable/)
+})

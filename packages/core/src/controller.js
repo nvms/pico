@@ -879,6 +879,15 @@ export function createController({ boot }) {
     return placeholder
   }
 
+  // a commit of the session's repository; the model receives the commit
+  // itself when the message is sent
+  function attachCommit({ hash, subject = '' }) {
+    if (!/^[0-9a-f]{7,40}$/i.test(String(hash ?? ''))) return null
+    const placeholder = `[File #${++state.imageCount}]`
+    state.attachments.set(placeholder, { hash, subject: String(subject), root: boot.root, kind: 'commit' })
+    return placeholder
+  }
+
   // a project-relative pick: images attach as images, anything else as a
   // file reference
   function attachProjectFile(file) {
@@ -1374,6 +1383,7 @@ export function createController({ boot }) {
     attachImage,
     attachFile,
     attachSelection,
+    attachCommit,
     attachProjectFile,
     detachImage,
     costSummary,

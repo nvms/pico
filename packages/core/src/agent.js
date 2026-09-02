@@ -1,11 +1,31 @@
 import { readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
-import { fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
+import { commitLabel, fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
+
+const exec = promisify(execFile)
+const COMMIT_PATCH_LIMIT = 60 * 1024
+
+// a commit part carries the commit itself: its header, stat, and patch,
+// cut off past the limit, so the model reads what happened without a
+// git call of its own
+export async function hydrateCommit(part) {
+  const head = commitLabel(part)
+  try {
+    const { stdout } = await exec('git', ['--no-optional-locks', 'show', '--stat', '--patch', '--format=%H%nAuthor: %an <%ae>%nDate: %ad%n%n%B', part.hash], { cwd: part.root, maxBuffer: COMMIT_PATCH_LIMIT * 4 })
+    const body = stdout.length > COMMIT_PATCH_LIMIT ? `${stdout.slice(0, COMMIT_PATCH_LIMIT)}\n[patch truncated at ${COMMIT_PATCH_LIMIT} bytes]` : stdout
+    return { type: 'text', text: `${head}\n${body.trimEnd()}\n[/commit]` }
+  } catch {
+    return { type: 'text', text: `${head}\n[commit unavailable]\n[/commit]` }
+  }
+}
 
 // file parts reach the model as a labelled path; it reads them itself
 async function hydratePart(part) {
   if (part.type === 'file') return { type: 'text', text: fileLabel(part.path) }
   if (part.type === 'selection') return { type: 'text', text: selectionLabel(part) }
+  if (part.type === 'commit') return hydrateCommit(part)
   if (part.type !== 'image' || part.source?.kind !== 'path') return part
   const mediaType = part.source.mediaType || mediaTypeFor(part.source.path)
   if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
