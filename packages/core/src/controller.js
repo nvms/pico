@@ -30,6 +30,7 @@ import { loadCodexModels } from './codex-models.js'
 import { fuzzyScore } from './fuzzy.js'
 import { MAX_DELIBERATION_ROUNDS } from './deliberation.js'
 import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor, stashImages } from './attachments.js'
+import { settlePending } from './pending.js'
 
 export const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
@@ -118,6 +119,7 @@ export function createController({ boot }) {
     streaming: null,
     queued: [],
     expedited: [],
+    views: [],
     sent: [],
     question: null,
     rewindUndo: null,
@@ -396,16 +398,18 @@ export function createController({ boot }) {
     state.streaming = null
   }
 
-  async function executeTurn(text) {
-    // an image the model asked to view arrives with its path in the label;
-    // that text must not be scanned for image paths or it attaches twice
-    const built = buildUserContent(text, state.attachments)
-    const viewed = built.used.length > 0 && built.used.every((placeholder) => deliveredImages.has(placeholder))
-    const { content: built2, used } = viewed ? built : finalizeUserContent(text, state.attachments)
-    for (const placeholder of used) deliveredImages.delete(placeholder)
+  async function persistUserMessage(text, { viewed = false } = {}) {
+    // a view label carries the image's path; only user text is scanned
+    // for paths, or the viewed image would attach twice
+    const { content: built } = viewed ? buildUserContent(text, state.attachments) : finalizeUserContent(text, state.attachments)
     ensureSession()
-    const content = state.session.file ? await stashImages(built2, sessionAttachmentsDir(boot.root, state.session.id)) : built2
+    const content = state.session.file ? await stashImages(built, sessionAttachmentsDir(boot.root, state.session.id)) : built
     persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
+  }
+
+  async function executeTurn(text, { views = [] } = {}) {
+    for (const view of views) await persistUserMessage(view, { viewed: true })
+    if (text) await persistUserMessage(text)
     reDerive()
     await runAgentTurn()
   }
@@ -463,11 +467,12 @@ export function createController({ boot }) {
       set({ compacting: false, compactStatus: null, busy: false })
     }
 
-    if (state.expedited.length > 0 || state.queued.length > 0) {
-      const next = takePending()
-      if (controller.signal.aborted) emit('input', next.join('\n'))
+    if (state.expedited.length > 0 || state.queued.length > 0 || state.views.length > 0) {
+      const settled = settlePending({ ...state, interrupted: controller.signal.aborted })
+      set({ expedited: [], queued: settled.queued, views: [] })
+      if (settled.recall.length > 0) emit('input', settled.recall.join('\n'))
       else {
-        executeTurn(next.join('\n'))
+        executeTurn(settled.messages.join('\n'), { views: settled.views })
         return
       }
     }
@@ -571,7 +576,7 @@ export function createController({ boot }) {
               : item,
           ),
         )
-        if (state.expedited.length > 0) {
+        if (state.expedited.length > 0 || state.views.length > 0) {
           sendAfterToolTriggered = true
           controller.abort()
         }
@@ -680,18 +685,15 @@ export function createController({ boot }) {
       )
     }
 
-    const expeditedMessages = state.expedited
-    const pendingMessages = state.queued
-    if (expeditedMessages.length > 0 || pendingMessages.length > 0) {
-      set({ expedited: [], queued: [] })
+    if (state.expedited.length > 0 || state.queued.length > 0 || state.views.length > 0) {
       // an interrupt is the user taking the wheel: nothing pending may
-      // auto-send, expedited or not; it all returns to the composer
-      if (result.interrupted && !sendAfterToolTriggered) {
-        emit('input', [...expeditedMessages, ...pendingMessages].join('\n'))
-      } else {
-        const next = sendAfterToolTriggered ? expeditedMessages : [...expeditedMessages, ...pendingMessages]
-        if (sendAfterToolTriggered && pendingMessages.length > 0) set({ queued: pendingMessages })
-        executeTurn(next.join('\n'))
+      // auto-send, expedited or not; it all returns to the composer, and
+      // an image the model asked for is dropped with the turn
+      const settled = settlePending({ ...state, afterTool: sendAfterToolTriggered, interrupted: result.interrupted })
+      set({ expedited: [], queued: settled.queued, views: [] })
+      if (settled.recall.length > 0) emit('input', settled.recall.join('\n'))
+      else {
+        executeTurn(settled.messages.join('\n'), { views: settled.views })
         return
       }
     }
@@ -749,6 +751,7 @@ export function createController({ boot }) {
     state.rewindUndo = null
     state.queued = []
     state.expedited = []
+    state.views = []
     state.sent = []
     state.model = model ?? state.defaultModel
     state.effort = effort === undefined ? state.defaultEffort : effort
@@ -795,6 +798,7 @@ export function createController({ boot }) {
     state.rewindUndo = null
     state.queued = []
     state.expedited = []
+    state.views = []
     state.sent = []
     agents.restore(forked.events)
     reDerive()
@@ -854,12 +858,10 @@ export function createController({ boot }) {
 
   // an image the model asked to see rides in as an expedited user message,
   // which the tool-completion path sends right after the current call
-  const deliveredImages = new Set()
   function deliverImage(path, label) {
     const placeholder = attachImage(path)
     if (!placeholder) return false
-    deliveredImages.add(placeholder)
-    set({ expedited: [...state.expedited, `${label}\n${placeholder}`] })
+    set({ views: [...state.views, `${label}\n${placeholder}`] })
     return true
   }
 
@@ -949,7 +951,7 @@ export function createController({ boot }) {
       boot.git.retarget(next.root)
       next.mcp.connectAll()
       emit('mcp', next.mcp.list())
-      set({ queued: [], expedited: [] })
+      set({ queued: [], expedited: [], views: [] })
       emit('project', boot)
       await resume(meta)
       flash(`switched to ${next.displayCwd}`)
