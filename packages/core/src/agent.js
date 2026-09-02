@@ -5,17 +5,28 @@ import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai
 import { commitLabel, fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
 
 const exec = promisify(execFile)
-const COMMIT_PATCH_LIMIT = 60 * 1024
+// a whole patch rides along only while it is small; a bigger commit
+// arrives as its header and stat, and the model pulls the files it cares
+// about with git show. 8KB is a couple of thousand tokens
+const COMMIT_PATCH_LIMIT = 8 * 1024
+const COMMIT_STAT_FILES = 80
+const GIT_SHOW = ['--no-optional-locks', 'show', '--format=%H%nAuthor: %an <%ae>%nDate: %ad%n%n%B']
 
-// a commit part carries the commit itself: its header, stat, and patch,
-// cut off past the limit, so the model reads what happened without a
-// git call of its own
+function trimStat(stat) {
+  const lines = stat.trimEnd().split('\n')
+  if (lines.length <= COMMIT_STAT_FILES + 1) return stat.trimEnd()
+  return [...lines.slice(0, COMMIT_STAT_FILES), `... ${lines.length - COMMIT_STAT_FILES - 1} more files`, lines.at(-1)].join('\n')
+}
+
 export async function hydrateCommit(part) {
   const head = commitLabel(part)
+  const options = { cwd: part.root, maxBuffer: 64 * 1024 * 1024 }
   try {
-    const { stdout } = await exec('git', ['--no-optional-locks', 'show', '--stat', '--patch', '--format=%H%nAuthor: %an <%ae>%nDate: %ad%n%n%B', part.hash], { cwd: part.root, maxBuffer: COMMIT_PATCH_LIMIT * 4 })
-    const body = stdout.length > COMMIT_PATCH_LIMIT ? `${stdout.slice(0, COMMIT_PATCH_LIMIT)}\n[patch truncated at ${COMMIT_PATCH_LIMIT} bytes]` : stdout
-    return { type: 'text', text: `${head}\n${body.trimEnd()}\n[/commit]` }
+    const { stdout: full } = await exec('git', [...GIT_SHOW, '--stat', '--patch', part.hash], options)
+    if (full.length <= COMMIT_PATCH_LIMIT) return { type: 'text', text: `${head}\n${full.trimEnd()}\n[/commit]` }
+    const { stdout: stat } = await exec('git', [...GIT_SHOW, '--stat', part.hash], options)
+    const note = `[patch omitted: ${Math.round(full.length / 1024)}KB; run git show ${part.hash.slice(0, 7)} -- <path> for the files you need]`
+    return { type: 'text', text: `${head}\n${trimStat(stat)}\n${note}\n[/commit]` }
   } catch {
     return { type: 'text', text: `${head}\n[commit unavailable]\n[/commit]` }
   }
