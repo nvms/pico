@@ -750,6 +750,11 @@ export function createController({ boot }) {
     set({ expedited: [...state.expedited, ...state.queued], queued: [] })
   }
 
+  // the reverse: what was to go after the next tool waits for the turn again
+  function holdExpedited() {
+    set({ queued: [...state.expedited, ...state.queued], expedited: [] })
+  }
+
   function resetConversation({ model, effort } = {}) {
     state.session = null
     state.events = []
@@ -1356,6 +1361,7 @@ export function createController({ boot }) {
     cancelQuestion,
     recallPending,
     expediteQueued,
+    holdExpedited,
     hold,
     noteSystem,
     newSession,
