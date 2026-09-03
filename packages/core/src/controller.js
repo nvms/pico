@@ -900,10 +900,10 @@ export function createController({ boot }) {
   }
 
   // an element picked in a browser page; the message carries its markup
-  function attachElement({ url, selector, tag, text = '', html = '', rect = null, component = null }) {
+  function attachElement({ url, selector, tag, text = '', html = '', rect = null, component = null, styles = null, rules = [] }) {
     if (!selector || !tag) return null
     const placeholder = `[File #${++state.imageCount}]`
-    state.attachments.set(placeholder, { url: String(url ?? ''), selector: String(selector), tag: String(tag), text: String(text).slice(0, 400), html: String(html).slice(0, 4000), rect, component: component ? String(component) : null, kind: 'element' })
+    state.attachments.set(placeholder, { url: String(url ?? ''), selector: String(selector), tag: String(tag), text: String(text).slice(0, 400), html: String(html).slice(0, 4000), rect, component: component ? String(component) : null, styles: styles && typeof styles === 'object' ? styles : null, rules: Array.isArray(rules) ? rules.slice(0, 20).map(String) : [], kind: 'element' })
     return placeholder
   }
 

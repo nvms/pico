@@ -75,7 +75,11 @@ export const selectionLabel = (part) => `[selection: ${part.path}:${part.fromLin
 export const commitLabel = (part) => `[commit: ${part.hash.slice(0, 7)} ${JSON.stringify(part.subject ?? '')}]`
 // a page element the user picked in a browser: where it is, what it is,
 // and its markup, so the model can find it in the source
-export const elementLabel = (part) => `[element: <${part.tag}> ${part.selector} on ${part.url}${part.component ? ` in component ${part.component}` : ''}]\n${part.html}\n[/element]`
+export function elementLabel(part) {
+  const styles = part.styles && Object.keys(part.styles).length ? `\ncomputed style: ${Object.entries(part.styles).map(([k, v]) => `${k}: ${v}`).join('; ')}` : ''
+  const rules = part.rules?.length ? `\nmatched css rules:\n${part.rules.join('\n')}` : ''
+  return `[element: <${part.tag}> ${part.selector} on ${part.url}${part.component ? ` in component ${part.component}` : ''}]\n${part.html}${styles}${rules}\n[/element]`
+}
 
 // [Image #n] and [File #n] placeholders in the composed text stand for
 // attachments; they become image, file, or selection parts of the user message
@@ -93,7 +97,7 @@ export function buildUserContent(text, attachments) {
       : attachment.kind === 'commit'
         ? { type: 'commit', hash: attachment.hash, subject: attachment.subject, root: attachment.root }
       : attachment.kind === 'element'
-        ? { type: 'element', url: attachment.url, selector: attachment.selector, tag: attachment.tag, text: attachment.text, html: attachment.html, rect: attachment.rect, component: attachment.component ?? null }
+        ? { type: 'element', url: attachment.url, selector: attachment.selector, tag: attachment.tag, text: attachment.text, html: attachment.html, rect: attachment.rect, component: attachment.component ?? null, styles: attachment.styles ?? null, rules: attachment.rules ?? [] }
       : attachment.kind === 'file'
         ? { type: 'file', path: attachment.path }
         : { type: 'image', source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType } })
@@ -138,7 +142,7 @@ export function inputTextFromContent(content, { attachments, nextId }) {
       out += placeholder
     } else if (part.type === 'element' && part.selector) {
       const placeholder = `[File #${nextId()}]`
-      attachments.set(placeholder, { url: part.url, selector: part.selector, tag: part.tag, text: part.text, html: part.html, rect: part.rect, component: part.component ?? null, kind: 'element' })
+      attachments.set(placeholder, { url: part.url, selector: part.selector, tag: part.tag, text: part.text, html: part.html, rect: part.rect, component: part.component ?? null, styles: part.styles ?? null, rules: part.rules ?? [], kind: 'element' })
       out += placeholder
     } else if (part.type === 'commit' && part.hash) {
       const placeholder = `[File #${nextId()}]`

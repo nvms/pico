@@ -250,6 +250,7 @@ test('element placeholders become element parts the model reads as markup', asyn
   assert.equal(built.content[1].type, 'element')
   assert.equal(built.content[1].selector, 'form > button.save')
   assert.equal(elementLabel(built.content[1]), '[element: <button> form > button.save on http://localhost:5174/settings in component SettingsView]\n<button class="save">Save</button>\n[/element]')
+  assert.match(elementLabel({ ...built.content[1], styles: { color: 'red' }, rules: ['.save { color: red; }'] }), /computed style: color: red\nmatched css rules:\n\.save \{ color: red; \}\n\[\/element\]$/)
   const restored = new Map()
   let n = 0
   assert.equal(inputTextFromContent(built.content, { attachments: restored, nextId: () => ++n }), 'why is [File #1] grey?')
