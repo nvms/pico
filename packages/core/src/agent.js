@@ -43,6 +43,9 @@ async function hydratePart(part) {
   if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
   try {
     const data = await readFile(part.source.path)
+    // an empty file is not an image; sent as one it fails every request
+    // that carries this history from then on
+    if (!data.length) return { type: 'text', text: `[image unavailable: ${part.source.path} is empty]` }
     return {
       type: 'image',
       source: { kind: 'base64', mediaType, data: data.toString('base64') },

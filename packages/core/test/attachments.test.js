@@ -256,3 +256,17 @@ test('element placeholders become element parts the model reads as markup', asyn
   assert.equal(inputTextFromContent(built.content, { attachments: restored, nextId: () => ++n }), 'why is [File #1] grey?')
   assert.equal(restored.get('[File #1]').kind, 'element')
 })
+
+test('an empty image file hydrates as text, never as an image', async () => {
+  const { hydrateImages } = await import('../src/agent.js')
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = await mkdtemp(join(tmpdir(), 'pico-empty-'))
+  const file = join(dir, 'blank.png')
+  await writeFile(file, '')
+  const [message] = await hydrateImages([{ role: 'user', content: [{ type: 'image', source: { kind: 'path', path: file, mediaType: 'image/png' } }] }])
+  const [part] = message.content
+  assert.equal(part.type, 'text')
+  assert.match(part.text, /is empty/)
+})
