@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
-import { commitLabel, fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
+import { commitLabel, elementLabel, fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
 
 const exec = promisify(execFile)
 // a whole patch rides along only while it is small; a bigger commit
@@ -37,6 +37,7 @@ async function hydratePart(part) {
   if (part.type === 'file') return { type: 'text', text: fileLabel(part.path) }
   if (part.type === 'selection') return { type: 'text', text: selectionLabel(part) }
   if (part.type === 'commit') return hydrateCommit(part)
+  if (part.type === 'element') return { type: 'text', text: elementLabel(part) }
   if (part.type !== 'image' || part.source?.kind !== 'path') return part
   const mediaType = part.source.mediaType || mediaTypeFor(part.source.path)
   if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }

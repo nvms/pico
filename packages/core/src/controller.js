@@ -899,6 +899,14 @@ export function createController({ boot }) {
     return placeholder
   }
 
+  // an element picked in a browser page; the message carries its markup
+  function attachElement({ url, selector, tag, text = '', html = '', rect = null, component = null }) {
+    if (!selector || !tag) return null
+    const placeholder = `[File #${++state.imageCount}]`
+    state.attachments.set(placeholder, { url: String(url ?? ''), selector: String(selector), tag: String(tag), text: String(text).slice(0, 400), html: String(html).slice(0, 4000), rect, component: component ? String(component) : null, kind: 'element' })
+    return placeholder
+  }
+
   // a project-relative pick: images attach as images, anything else as a
   // file reference
   function attachProjectFile(file) {
@@ -1398,6 +1406,7 @@ export function createController({ boot }) {
     attachFile,
     attachSelection,
     attachCommit,
+    attachElement,
     viewImage: deliverImage,
     attachProjectFile,
     detachImage,

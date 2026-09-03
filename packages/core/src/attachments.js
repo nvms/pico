@@ -73,6 +73,9 @@ export function splitTextByImagePaths(text, exists = existsSync) {
 export const fileLabel = (path) => `[file: ${path}]`
 export const selectionLabel = (part) => `[selection: ${part.path}:${part.fromLine}-${part.toLine}]\n${part.text}\n[/selection]`
 export const commitLabel = (part) => `[commit: ${part.hash.slice(0, 7)} ${JSON.stringify(part.subject ?? '')}]`
+// a page element the user picked in a browser: where it is, what it is,
+// and its markup, so the model can find it in the source
+export const elementLabel = (part) => `[element: <${part.tag}> ${part.selector} on ${part.url}${part.component ? ` in component ${part.component}` : ''}]\n${part.html}\n[/element]`
 
 // [Image #n] and [File #n] placeholders in the composed text stand for
 // attachments; they become image, file, or selection parts of the user message
@@ -89,6 +92,8 @@ export function buildUserContent(text, attachments) {
       ? { type: 'selection', path: attachment.path, text: attachment.text, fromLine: attachment.fromLine, toLine: attachment.toLine, ...(Number.isInteger(attachment.fromColumn) ? { fromColumn: attachment.fromColumn } : {}), ...(Number.isInteger(attachment.toColumn) ? { toColumn: attachment.toColumn } : {}) }
       : attachment.kind === 'commit'
         ? { type: 'commit', hash: attachment.hash, subject: attachment.subject, root: attachment.root }
+      : attachment.kind === 'element'
+        ? { type: 'element', url: attachment.url, selector: attachment.selector, tag: attachment.tag, text: attachment.text, html: attachment.html, rect: attachment.rect, component: attachment.component ?? null }
       : attachment.kind === 'file'
         ? { type: 'file', path: attachment.path }
         : { type: 'image', source: { kind: 'path', path: attachment.path, mediaType: attachment.mediaType } })
@@ -130,6 +135,10 @@ export function inputTextFromContent(content, { attachments, nextId }) {
     } else if (part.type === 'file' && part.path) {
       const placeholder = `[File #${nextId()}]`
       attachments.set(placeholder, { path: part.path, kind: 'file' })
+      out += placeholder
+    } else if (part.type === 'element' && part.selector) {
+      const placeholder = `[File #${nextId()}]`
+      attachments.set(placeholder, { url: part.url, selector: part.selector, tag: part.tag, text: part.text, html: part.html, rect: part.rect, component: part.component ?? null, kind: 'element' })
       out += placeholder
     } else if (part.type === 'commit' && part.hash) {
       const placeholder = `[File #${nextId()}]`

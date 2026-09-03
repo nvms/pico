@@ -242,3 +242,16 @@ test('a commit part hydrates into the commit itself for the model', async () => 
   const missing = await hydrateCommit({ type: 'commit', hash: 'ffffffff', subject: '', root: dir })
   assert.match(missing.text, /commit unavailable/)
 })
+
+test('element placeholders become element parts the model reads as markup', async () => {
+  const { buildUserContent, inputTextFromContent, elementLabel } = await import('../src/attachments.js')
+  const attachment = { kind: 'element', url: 'http://localhost:5174/settings', selector: 'form > button.save', tag: 'button', text: 'Save', html: '<button class="save">Save</button>', rect: { x: 1, y: 2, width: 3, height: 4 }, component: 'SettingsView' }
+  const built = buildUserContent('why is [File #1] grey?', new Map([['[File #1]', attachment]]))
+  assert.equal(built.content[1].type, 'element')
+  assert.equal(built.content[1].selector, 'form > button.save')
+  assert.equal(elementLabel(built.content[1]), '[element: <button> form > button.save on http://localhost:5174/settings in component SettingsView]\n<button class="save">Save</button>\n[/element]')
+  const restored = new Map()
+  let n = 0
+  assert.equal(inputTextFromContent(built.content, { attachments: restored, nextId: () => ++n }), 'why is [File #1] grey?')
+  assert.equal(restored.get('[File #1]').kind, 'element')
+})
