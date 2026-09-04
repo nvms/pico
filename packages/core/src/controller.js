@@ -496,7 +496,7 @@ export function createController({ boot }) {
   }
 
   async function refreshProjectIndexes() {
-    boot.skills = await createSkillIndex(boot.root).catch(() => boot.skills) ?? boot.skills
+    boot.skills = await createSkillIndex(boot.root, { host: boot.hostSkills ?? [] }).catch(() => boot.skills) ?? boot.skills
     boot.commands = await createCommandIndex(boot.root).catch(() => boot.commands) ?? boot.commands
     const scan = await scanUserTools({ cwd: boot.cwd, root: boot.root }).catch(() => ({ tools: [], errors: [] }))
     for (const failure of scan.errors) {

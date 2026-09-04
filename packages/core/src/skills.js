@@ -136,7 +136,10 @@ Named fields and \`$ARGUMENTS\` may coexist for backwards compatibility.
 Commands are rescanned every turn, so a new command appears in the slash menu from the
 next message.`
 
-export async function createSkillIndex(root) {
+// host skills come from whatever embeds core (a desktop app shipping its
+// own built-ins); they sit between core's built-ins and the user's dirs,
+// so a project skill of the same name still wins
+export async function createSkillIndex(root, { host = [] } = {}) {
   const builtin = [
     {
       name: 'new-tool',
@@ -160,7 +163,7 @@ export async function createSkillIndex(root) {
   const global = await scanDir(globalSkillsDir(), 'global')
   const project = await scanDir(projectSkillsDir(root), 'project')
   const byName = new Map()
-  for (const skill of [...builtin, ...global, ...project]) byName.set(skill.name, skill)
+  for (const skill of [...builtin, ...host, ...global, ...project]) byName.set(skill.name, skill)
   const skills = [...byName.values()]
 
   return {
