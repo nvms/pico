@@ -245,6 +245,35 @@ test('bash automatically backgrounds a long-running foreground command', async (
   shells.kill(result.shellId)
 })
 
+for (const timeout of [10, 20, 100]) {
+  test(`bash hands off without terminating at timeout ${timeout}`, async () => {
+    let notify
+    const exited = new Promise((resolve) => { notify = resolve })
+    const shells = createShellManager({ onExit: notify })
+    const recorder = createRecorder()
+    recorder.begin('bash', {})
+    const controller = new AbortController()
+    const bash = createBash({ cwd: import.meta.dirname, recorder, shells, signal: controller.signal, autoBackgroundMs: 20 })
+    const result = await bash.execute({ command: 'sleep 0.2; printf done', timeout })
+
+    assert.equal(result.status, 'running')
+    assert.match(result.note, /shell_output/)
+    assert.equal(shells.list()[0].id, result.shellId)
+    controller.abort()
+    const row = await exited
+    assert.equal(row.exitCode, 0)
+    assert.equal(row.lastLine, 'done')
+  })
+}
+
+test('bash retains explicit termination without background-shell support', async () => {
+  const recorder = createRecorder()
+  const bash = createBash({ cwd: import.meta.dirname, recorder })
+  const result = await bash.execute({ command: 'sleep 1', timeout: 10 })
+  assert.equal(result.timedOut, true)
+  assert.notEqual(result.exitCode, 0)
+})
+
 test('bash receives additional environment variables', async () => {
   const cwd = await mkdtemp(join(tmpdir(), 'pico-tools-'))
   const tracker = createContextTracker({ stopDir: cwd, loaded: new Set() })

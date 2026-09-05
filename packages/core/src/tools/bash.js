@@ -66,7 +66,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
     description: 'Run a shell command in the working directory. Each call is a fresh shell: cd does not persist to later calls, so chain directory changes within one command (cd /x && ls) or use absolute paths. Returns stdout, stderr, and exit code. Foreground commands still running after 150 seconds are automatically backgrounded. Run known long-lived commands with background true. Background shells notify you when they exit. If no independent work remains, end your turn and wait for that notification instead of polling. Use shell_output only when intermediate output is needed to diagnose a problem or make a decision before exit. Stop shells with shell_kill.',
     schema: {
       command: { type: 'string', description: 'the command to run' },
-      timeout: { type: 'number', description: 'optional foreground timeout in milliseconds; commands still running after 150 seconds are backgrounded instead', optional: true },
+      timeout: { type: 'number', description: 'foreground wait in milliseconds before backgrounding (maximum 150 seconds); without background-shell support, terminates at this timeout', optional: true },
       background: { type: 'boolean', description: 'run in the background and return a shell id immediately', optional: true },
       description: describeParam,
     },
@@ -116,7 +116,7 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
         child.stdout.on('data', collectStdout)
         child.stderr.on('data', collectStderr)
 
-        const timeoutTimer = timeout
+        const timeoutTimer = timeout && !shells
           ? setTimeout(() => {
               timedOut = true
               terminate()
@@ -133,9 +133,9 @@ export function createBash({ cwd, env, recorder, signal, shells, sessionId, sess
               resolve({
                 shellId: id,
                 status: 'running',
-                note: `automatically backgrounded after ${autoBackgroundMs}ms; the shell will notify you when it exits; if no independent work remains, end your turn and wait instead of polling`,
+                note: `automatically backgrounded after ${timeout > 0 ? Math.min(timeout, autoBackgroundMs) : autoBackgroundMs}ms; use shell_output with id ${id} only when intermediate output is needed to diagnose a problem or make a decision; the shell will notify you when it exits; if no independent work remains, end your turn and wait instead of polling`,
               })
-            }, autoBackgroundMs)
+            }, timeout > 0 ? Math.min(timeout, autoBackgroundMs) : autoBackgroundMs)
           : null
         backgroundTimer?.unref?.()
         timeoutTimer?.unref?.()
