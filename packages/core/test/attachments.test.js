@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
@@ -120,7 +121,7 @@ test('inputTextFromContent rebuilds placeholders from persisted content', () => 
 test('hydrateImages converts path parts to base64 and degrades gracefully', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pico-img-'))
   const img = join(dir, 'x.png')
-  await writeFile(img, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+  await writeFile(img, await sharp({ create: { width: 2, height: 2, channels: 3, background: 'white' } }).png().toBuffer())
 
   const history = [
     { role: 'user', content: 'plain' },
@@ -136,7 +137,7 @@ test('hydrateImages converts path parts to base64 and degrades gracefully', asyn
   const hydrated = await hydrateImages(history)
   assert.equal(hydrated[0].content, 'plain')
   assert.equal(hydrated[1].content[1].source.kind, 'base64')
-  assert.equal(hydrated[1].content[1].source.data, Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64'))
+  assert.equal((await sharp(Buffer.from(hydrated[1].content[1].source.data, 'base64')).metadata()).width, 2)
   assert.match(hydrated[1].content[2].text, /image unavailable/)
   assert.equal(mediaTypeFor('a.JPG'), 'image/jpeg')
 })
@@ -144,7 +145,7 @@ test('hydrateImages converts path parts to base64 and degrades gracefully', asyn
 test('compaction history hydrates images and excludes system messages', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'pico-compact-img-'))
   const img = join(dir, 'x.png')
-  await writeFile(img, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+  await writeFile(img, await sharp({ create: { width: 2, height: 2, channels: 3, background: 'white' } }).png().toBuffer())
 
   const history = await compactionHistory([
     { role: 'system', content: 'system' },

@@ -1,8 +1,8 @@
-import { readFile } from 'node:fs/promises'
+import { prepareImages } from './images.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { compose, scope, model, noToolsCalled, Inherit, getText } from '@prsm/ai'
-import { commitLabel, elementLabel, fileLabel, mediaTypeFor, selectionLabel } from './attachments.js'
+import { commitLabel, elementLabel, fileLabel, selectionLabel } from './attachments.js'
 
 const exec = promisify(execFile)
 // a whole patch rides along only while it is small; a bigger commit
@@ -38,31 +38,16 @@ async function hydratePart(part) {
   if (part.type === 'selection') return { type: 'text', text: selectionLabel(part) }
   if (part.type === 'commit') return hydrateCommit(part)
   if (part.type === 'element') return { type: 'text', text: elementLabel(part) }
-  if (part.type !== 'image' || part.source?.kind !== 'path') return part
-  const mediaType = part.source.mediaType || mediaTypeFor(part.source.path)
-  if (!mediaType) return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
-  try {
-    const data = await readFile(part.source.path)
-    // an empty file is not an image; sent as one it fails every request
-    // that carries this history from then on
-    if (!data.length) return { type: 'text', text: `[image unavailable: ${part.source.path} is empty]` }
-    return {
-      type: 'image',
-      source: { kind: 'base64', mediaType, data: data.toString('base64') },
-    }
-  } catch {
-    return { type: 'text', text: `[image unavailable: ${part.source.path}]` }
-  }
+  return part
 }
 
-export function hydrateImages(history) {
-  return Promise.all(
-    history.map(async (message) =>
-      Array.isArray(message.content)
-        ? { ...message, content: await Promise.all(message.content.map(hydratePart)) }
-        : message,
-    ),
-  )
+export async function hydrateImages(history) {
+  const hydrated = await Promise.all(history.map(async (message) =>
+    Array.isArray(message.content)
+      ? { ...message, content: await Promise.all(message.content.map(hydratePart)) }
+      : message,
+  ))
+  return prepareImages(hydrated)
 }
 
 // reasoning models with large contexts can sit minutes before the first
@@ -172,13 +157,17 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
   const step = compose(
     scope(
       { inherit: Inherit.Conversation, system, tools, until: noToolsCalled(), stream },
-      (ctx) =>
-        model({
+      async (ctx) => {
+        const out = await model({
           model: modelName,
           ...(effort && { effort }),
           ...(auth?.apiKey && { apiKey: auth.apiKey }),
           ...(auth?.headers && { headers: auth.headers }),
-        })({ ...ctx, abortSignal: internal.signal }),
+        })({ ...ctx, history: await hydrateImages(ctx.history), abortSignal: internal.signal })
+        // Prepared bytes and omission notices belong only to the request, not
+        // the conversation returned by the provider or subsequent tool rounds.
+        return { ...out, history: [...ctx.history, ...out.history.slice(ctx.history.length)] }
+      },
     ),
   )
 
@@ -190,7 +179,7 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
 
   arm()
   try {
-    const out = await step({ history: await hydrateImages(history), tools: [] })
+    const out = await step({ history, tools: [] })
     const interrupted = !!signal?.aborted || stalled
     if (interrupted) {
       return { messages: partialMessages(), usage: usageSeen, lastPromptTokens, interrupted, stalled }
