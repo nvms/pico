@@ -143,7 +143,7 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
       // a tool may legitimately run for minutes (test suites, slow fetches)
       // and emits nothing while it does; the watchdog guards the provider
       // stream, so pause it until the tool finishes. tools carry their own
-      // timeouts (bash 120s default, web tools via dredge)
+      // timeouts (bash 120s default)
       clearTimeout(watchdog)
       recorder.currentCall = event.call
       onStream?.(event)

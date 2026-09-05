@@ -9,7 +9,6 @@ import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js
 import { readConfig } from 'picocode-core/config.js'
 import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
 import { buildProjectBoot } from 'picocode-core/boot.js'
-import { resolveDredge } from 'picocode-core/tools/web.js'
 import { createShellManager } from 'picocode-core/shells.js'
 import { createWakeupManager } from 'picocode-core/wakeups.js'
 import { createGitService } from 'picocode-core/git.js'
@@ -145,7 +144,6 @@ const boot = {
     : 10,
   detectedTheme,
   themePref: themeOverride || 'auto',
-  dredge: resolveDredge(config),
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
   autoCompact: config.autoCompact !== false,
   clouds: config.animation?.clouds === true,

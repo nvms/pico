@@ -5,10 +5,9 @@ import { createEdit } from './edit.js'
 import { createBash } from './bash.js'
 import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
-import { createWebTools } from './web.js'
 import { createView } from './view.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, dredge, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
+export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
   const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -24,10 +23,6 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
   ]
 
   if (viewer) local.push(createView({ ...deps, viewer }))
-
-  if (dredge) {
-    local.push(...createWebTools({ dredge, recorder, signal }))
-  }
 
   if (shells) {
     local.push(
@@ -283,7 +278,7 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     })
   }
 
-  const describedToolNames = new Set(['read', 'write', 'edit', 'bash', 'glob', 'grep', 'web_search', 'schedule_wakeup'])
+  const describedToolNames = new Set(['read', 'write', 'edit', 'bash', 'glob', 'grep', 'schedule_wakeup'])
   const describedTools = new Set(local.filter((tool) => describedToolNames.has(tool.name)).map((tool) => tool.name))
   const byName = new Map()
   for (const tool of [...local, ...hostTools, ...userTools, ...mcpTools]) {

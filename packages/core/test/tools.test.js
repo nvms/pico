@@ -433,3 +433,27 @@ test('host tools join the toolset ahead of user and mcp tools', async () => {
   assert.equal(found.description, 'what else is running')
   assert.deepEqual(await found.execute({}), { rows: [] })
 })
+
+test('web tools are supplied exclusively by external tools', async () => {
+  const cwd = import.meta.dirname
+  const names = ['web_search', 'web_fetch']
+  assert.ok(createToolset({ cwd }).tools.every((tool) => !names.includes(tool.name)))
+
+  const calls = []
+  const mcpTools = names.map((name) => ({
+    name,
+    description: `Remote ${name}`,
+    schema: { input: { type: 'string' } },
+    execute: async (args) => { calls.push({ name, args }); return { remote: name } },
+  }))
+  const { tools } = createToolset({ cwd, mcpTools })
+  for (const remote of mcpTools) {
+    const matches = tools.filter((tool) => tool.name === remote.name)
+    assert.equal(matches.length, 1)
+    assert.equal(matches[0].schema, remote.schema)
+    assert.equal(matches[0].description, remote.description)
+    assert.deepEqual(await matches[0].execute({ input: 'query' }), { remote: remote.name })
+  }
+  assert.deepEqual(calls, names.map((name) => ({ name, args: { input: 'query' } })))
+  assert.deepEqual(createToolset({ cwd, mcpTools, allowNames: ['web_fetch'] }).tools.map((tool) => tool.name), ['web_fetch'])
+})

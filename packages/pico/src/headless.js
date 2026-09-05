@@ -12,7 +12,6 @@ import { sessionsDir } from 'picocode-core/paths.js'
 import { makeEvent } from 'picocode-core/events.js'
 import { deriveState } from 'picocode-core/derive.js'
 import { createToolset } from 'picocode-core/tools/index.js'
-import { resolveDredge } from 'picocode-core/tools/web.js'
 import { runTurn } from 'picocode-core/agent.js'
 import { buildSystemPrompt } from 'picocode-core/system-prompt.js'
 import { memoryIndex } from 'picocode-core/memory.js'
@@ -108,7 +107,6 @@ export async function runHeadless(opts) {
     skills: boot.skills,
     shells,
     memory: boot.memory,
-    dredge: resolveDredge(config),
     mcpTools: boot.mcp.tools(),
     userTools: [],
     maxToolCalls: opts.maxToolCalls ?? 50,

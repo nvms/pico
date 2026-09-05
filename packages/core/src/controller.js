@@ -53,7 +53,7 @@ export const SESSION_COLORS = {
   gray: '#9ca3af',
 }
 
-const WORKER_TOOLS = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill', 'web_search', 'web_fetch']
+const WORKER_TOOLS = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill']
 const AGENT_TOOLS = ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel']
 const CONTEXT_COLORS = ['#67b7ff', '#c792ea', '#f7c66a', '#f78c6c', '#6be795']
 
@@ -202,7 +202,9 @@ export function createController({ boot }) {
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('worker requires an active session')
       const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
-      const requestedTools = agent.tools?.length ? agent.tools.filter((name) => WORKER_TOOLS.includes(name)) : WORKER_TOOLS
+      const mcpTools = boot.mcp.tools()
+      const availableNames = [...WORKER_TOOLS, ...mcpTools.map((tool) => tool.name)]
+      const requestedTools = agent.tools?.length ? agent.tools.filter((name) => availableNames.includes(name)) : availableNames
       const { tools, recorder } = createToolset({
         cwd: boot.cwd,
         env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
@@ -213,10 +215,10 @@ export function createController({ boot }) {
         shells: boot.shells,
         sessionId,
         sessionFile: state.session?.file,
-        dredge: boot.dredge,
         signal,
         maxToolCalls: 30,
         allowNames: requestedTools,
+        mcpTools,
       })
       return runTurn({
         history: [{ role: 'user', content: agent.prompt }],
@@ -277,6 +279,7 @@ export function createController({ boot }) {
 
       const runWorker = async ({ history, role, tools: enabled = true, onStream }) => {
         const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
+        const mcpTools = enabled ? boot.mcp.tools() : []
         const toolset = createToolset({
           cwd: boot.cwd,
           env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
@@ -284,10 +287,10 @@ export function createController({ boot }) {
           shells: boot.shells,
           sessionId,
           sessionFile: state.session?.file,
-          dredge: boot.dredge,
           signal,
           maxToolCalls: 30,
-          allowNames: enabled ? WORKER_TOOLS : [],
+          allowNames: enabled ? [...WORKER_TOOLS, ...mcpTools.map((tool) => tool.name)] : [],
+          mcpTools,
         })
         return runTurn({
           history,
@@ -622,7 +625,6 @@ export function createController({ boot }) {
       deliberations: boot.deliberationModel || (boot.proposerModel && boot.reviewerModel) ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
       askUser,
-      dredge: boot.dredge,
       mcpTools: boot.mcp.tools(),
       userTools: userToolScan.tools,
       signal: controller.signal,
@@ -1216,7 +1218,6 @@ export function createController({ boot }) {
       shells: boot.shells,
       wakeups: boot.wakeups,
       memory: boot.memory,
-      dredge: boot.dredge,
       ...extra,
     })
   }
