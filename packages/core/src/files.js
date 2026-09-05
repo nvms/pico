@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import fg from 'fast-glob'
+import { globby } from 'globby'
 
 const MAX_FILES = 5000
 const TTL = 5000
@@ -23,10 +23,11 @@ export function listFiles(cwd) {
   const request = (async () => {
     let files = await ripgrepFiles(cwd)
     if (!files) {
-      files = await fg('**/*', {
+      files = await globby('**/*', {
         cwd,
         onlyFiles: true,
         dot: true,
+        gitignore: true,
         ignore: ['**/node_modules/**', '**/.git/**'],
       }).catch(() => [])
     }

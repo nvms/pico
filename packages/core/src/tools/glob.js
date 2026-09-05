@@ -1,6 +1,6 @@
 import { describeParam } from './recorder.js'
 import { execFile } from 'node:child_process'
-import fg from 'fast-glob'
+import { globby } from 'globby'
 
 const MAX_RESULTS = 200
 
@@ -27,9 +27,10 @@ export function createGlob({ cwd, recorder }) {
       recorder.extra({ title: pattern })
       let files = await ripgrepGlob(pattern, cwd)
       if (files === null) {
-        files = await fg(pattern, {
+        files = await globby(pattern, {
           cwd,
           dot: true,
+        gitignore: true,
           ignore: ['**/node_modules/**', '**/.git/**'],
         })
       }
