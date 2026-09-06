@@ -28,23 +28,23 @@ h1 { margin: 0; font-size: clamp(32px, 4vw, 54px); font-weight: 450; line-height
 .platform { font-size: 11px; color: var(--muted); }
 .preview { display: block; }
 .preview img { display: block; width: 100%; height: auto; }
-.features { position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 36px; margin: 0 0 36px; padding: 0; list-style: none; }
-.features li { position: relative; width: max-content; max-width: 100%; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 8px 0; cursor: default; }
+.features { position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(3, max-content); justify-content: space-evenly; gap: 4px 36px; margin: 0 0 36px; padding: 0; list-style: none; }
+.features li { position: relative; width: max-content; max-width: 100%; justify-self: center; text-align: center; display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 8px 0; cursor: default; }
 .features::before { content: ""; position: absolute; left: 0; top: 0; width: var(--pill-width, 0px); height: var(--pill-height, 0px); transform: translate(var(--pill-x, 0px), var(--pill-y, 0px)); z-index: -1; pointer-events: none; border-radius: 999px; background: currentColor; opacity: 0; transition: transform 320ms cubic-bezier(.22, 1, .36, 1), width 320ms cubic-bezier(.22, 1, .36, 1), height 320ms ease, opacity 240ms ease; }
 .features-tracking::before { opacity: .045; }
 .features-positioning::before { transition: none; }
 .features svg { flex-shrink: 0; width: 30px; height: 30px; stroke-width: 3; color: var(--muted); transition: transform 240ms ease, color 240ms ease; }
 .features span { font-size: 14px; color: var(--muted); line-height: 1.4; transition: transform 240ms ease, color 240ms ease; }
 @media (hover: hover) {
-  .features li:hover svg, .features li:hover span { transform: translateY(-3px); color: inherit; }
-  .features li:hover span { transition-delay: 70ms; }
+  .features li:hover svg, .features li:hover span { transform: translateY(-3px); color: var(--feature-hover, #000); }
+  .features li:hover span { transition-delay: 100ms; }
 }
 @media (max-width: 720px) { .features { grid-template-columns: repeat(2, 1fr); gap: 4px 20px; } }
 @media (max-width: 480px) { .features { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .features svg, .features span { transition: none; } .features li:hover svg, .features li:hover span { transform: none; } }
 main { padding-bottom: 40px; }
 @media (prefers-color-scheme: dark) {
-  :root { color: #ebebeb; background: #080808; --muted: #969696; --line: #242424; --preview: #111; --button: #ebebeb; --button-text: #242424; }
+  :root { --feature-hover: #fff; color: #ebebeb; background: #080808; --muted: #969696; --line: #242424; --preview: #111; --button: #ebebeb; --button-text: #242424; }
 }
 @media (max-width: 720px) {
   .page { width: calc(100% - 40px); }
