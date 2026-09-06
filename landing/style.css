@@ -28,6 +28,7 @@ h1 { margin: 0; font-size: clamp(32px, 4vw, 54px); font-weight: 450; line-height
 .platform { font-size: 11px; color: var(--muted); }
 .preview { display: block; }
 .preview img { display: block; width: 100%; height: auto; }
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px 32px; margin: 36px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 14px; line-height: 1.5; }
 main { padding-bottom: 40px; }
 @media (prefers-color-scheme: dark) {
   :root { color: #ebebeb; background: #080808; --muted: #969696; --line: #242424; --preview: #111; --button: #ebebeb; --button-text: #242424; }
