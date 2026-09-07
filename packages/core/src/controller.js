@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { makeEvent } from './events.js'
 import { createSession, createEphemeralSession, forkSession, openSession, loadSession, listSessions, deleteSession, appendSessionEvent, onSessionWriteError } from './session.js'
-import { createContextTracker } from './context.js'
+import { createAgentContext } from './agent-context.js'
 import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
@@ -53,7 +53,6 @@ export const SESSION_COLORS = {
   gray: '#9ca3af',
 }
 
-const WORKER_TOOLS = ['read', 'write', 'edit', 'bash', 'glob', 'grep', 'shell_output', 'shell_kill']
 const AGENT_TOOLS = ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel']
 const CONTEXT_COLORS = ['#67b7ff', '#c792ea', '#f7c66a', '#f78c6c', '#6be795']
 
@@ -202,23 +201,16 @@ export function createController({ boot }) {
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('worker requires an active session')
       const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
-      const mcpTools = boot.mcp.tools()
-      const availableNames = [...WORKER_TOOLS, ...mcpTools.map((tool) => tool.name)]
-      const requestedTools = agent.tools?.length ? agent.tools.filter((name) => availableNames.includes(name)) : availableNames
+      const scan = await refreshProjectIndexes()
+      const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: workerSystemPrompt(scratchpad) })
       const { tools, recorder } = createToolset({
-        cwd: boot.cwd,
+        ...context.tools,
         env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
-        // a private tracker seeded from the main one: a worker may read an
-        // AGENTS.md the main agent has not seen, and consuming it from the
-        // shared set would mean the main agent never receives it
-        tracker: createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(boot.tracker.loaded) }),
-        shells: boot.shells,
         sessionId,
         sessionFile: state.session?.file,
         signal,
         maxToolCalls: 30,
-        allowNames: requestedTools,
-        mcpTools,
+        allowNames: agent.tools?.length ? agent.tools : undefined,
       })
       return runTurn({
         history: [{ role: 'user', content: agent.prompt }],
@@ -227,7 +219,7 @@ export function createController({ boot }) {
         modelName: worker.name,
         effort: worker.effort ? 'low' : null,
         auth,
-        system: workerSystemPrompt(scratchpad),
+        system: context.system,
         signal,
         onStream,
       })
@@ -279,18 +271,16 @@ export function createController({ boot }) {
 
       const runWorker = async ({ history, role, tools: enabled = true, onStream }) => {
         const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
-        const mcpTools = enabled ? boot.mcp.tools() : []
+        const scan = await refreshProjectIndexes()
+        const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: participantSystemPrompt(scratchpad) })
         const toolset = createToolset({
-          cwd: boot.cwd,
+          ...context.tools,
           env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
-          tracker: createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(boot.tracker.loaded) }),
-          shells: boot.shells,
           sessionId,
           sessionFile: state.session?.file,
           signal,
           maxToolCalls: 30,
-          allowNames: enabled ? [...WORKER_TOOLS, ...mcpTools.map((tool) => tool.name)] : [],
-          mcpTools,
+          allowNames: enabled ? undefined : [],
         })
         return runTurn({
           history,
@@ -299,7 +289,7 @@ export function createController({ boot }) {
           modelName: roleWorkers[role].name,
           effort: roleWorkers[role].effort ? 'low' : null,
           auth: roleAuths[role],
-          system: participantSystemPrompt(scratchpad),
+          system: context.system,
           signal,
           onStream,
         })
@@ -609,24 +599,16 @@ export function createController({ boot }) {
     const { tracker } = boot
     const loadedBefore = new Set(tracker.loaded)
     const userToolScan = await refreshProjectIndexes()
-    const freshSkills = boot.skills
+    const context = await createAgentContext(boot, { userTools: userToolScan.tools })
     const { tools, recorder } = createToolset({
-      cwd: boot.cwd,
-      env: boot.env,
-      hostTools: boot.hostTools ?? [],
-      tracker,
-      skills: freshSkills,
-      shells: boot.shells,
+      ...context.tools,
       sessionId: state.session?.id,
       sessionFile: state.session?.file,
       wakeups: boot.wakeups,
-      memory: boot.memory,
       agents: boot.researchModel ? agents : null,
       deliberations: boot.deliberationModel || (boot.proposerModel && boot.reviewerModel) ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
       askUser,
-      mcpTools: boot.mcp.tools(),
-      userTools: userToolScan.tools,
       signal: controller.signal,
       maxAgentStarts: researchAgentLimit ? 100 : undefined,
       requireAgentPlan: !!researchAgentLimit,
@@ -645,12 +627,7 @@ export function createController({ boot }) {
         modelName: state.model.name,
         effort: effortApplies() ? state.effort ?? 'auto' : null,
         auth,
-        system: buildSystemPrompt({
-          cwd: boot.cwd,
-          contextFiles: boot.startupContext.files,
-          skills: freshSkills.list(),
-          memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
-        }),
+        system: context.system,
         signal: controller.signal,
         onStream: streamHandler(recorder, controller),
       })
