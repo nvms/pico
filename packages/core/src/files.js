@@ -16,8 +16,9 @@ function ripgrepFiles(cwd) {
   })
 }
 
-export function listFiles(cwd) {
-  if (cached.cwd === cwd && Date.now() - cached.at < TTL) return Promise.resolve(cached.files)
+export async function listFiles(cwd, { fresh = false } = {}) {
+  if (fresh && pending.has(cwd)) await pending.get(cwd)
+  if (!fresh && cached.cwd === cwd && Date.now() - cached.at < TTL) return cached.files
   if (pending.has(cwd)) return pending.get(cwd)
 
   const request = (async () => {

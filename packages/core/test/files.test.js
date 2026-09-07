@@ -26,3 +26,17 @@ test('file discovery respects nested ignore rules without ripgrep', async (t) =>
   assert.deepEqual((await glob.execute({ pattern: '**/*.js' })).files.sort(), ['index.js', 'nested/open.js'])
   assert.deepEqual((await glob.execute({ pattern: '**/*.missing' })).files, [])
 })
+test('fresh discovery bypasses cached files and waits for an earlier scan', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'pico-fresh-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await writeFile(join(root, 'first.txt'), '')
+  await listFiles(root)
+  await rm(join(root, 'first.txt'))
+  await writeFile(join(root, 'second.txt'), '')
+  assert.deepEqual(await listFiles(root), ['first.txt'])
+  assert.deepEqual(await listFiles(root, { fresh: true }), ['second.txt'])
+  const earlier = listFiles(root, { fresh: true })
+  const fresh = listFiles(root, { fresh: true })
+  await earlier
+  assert.deepEqual(await fresh, ['second.txt'])
+})
