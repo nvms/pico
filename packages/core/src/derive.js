@@ -183,6 +183,14 @@ export function deriveState(events) {
     toolTrimVersions: new Map(),
   }
 
+  const references = toolResultArchive(events).references
+  const historyTokens = () => Math.ceil(JSON.stringify(applyToolTrims(
+    elideStaleToolResults(state.providerHistory), state.trimmedToolIds,
+    state.toolTrimVersions, state.toolItems, references,
+  )).length / 4)
+  let measuredBaseline = null
+  let contextEdited = false
+
   for (const event of effectiveEvents) {
     if (event.type === 'usage') {
       if (!dropped.has(event.id)) {
@@ -194,6 +202,8 @@ export function deriveState(events) {
         if (event.data.lastPrompt !== undefined) {
           state.lastPromptTokens = event.data.lastPrompt
           state.lastPromptModel = event.data.model
+          measuredBaseline = { tokens: event.data.lastPrompt, history: historyTokens() }
+          contextEdited = false
         }
       }
       continue
@@ -238,6 +248,8 @@ export function deriveState(events) {
         if (!canceledUndoTargets.has(event.id)) foldRewind(state, event)
         break
       case 'compact': {
+        measuredBaseline = null
+        contextEdited = false
         const { summary, keepFrom, sessionFile } = event.data
         if (keepFrom !== undefined || sessionFile) {
           const idx = keepFrom ? state.historyEventIds.indexOf(keepFrom) : -1
@@ -260,6 +272,7 @@ export function deriveState(events) {
         break
       }
       case 'tool_trim':
+        contextEdited = true
         for (const callId of event.data.callIds || []) {
           state.trimmedToolIds.add(callId)
           state.toolTrimVersions.set(callId, event.data.version?.algorithm || 'tool-trim-v1')
@@ -267,10 +280,13 @@ export function deriveState(events) {
         state.lastPromptTokens = 0
         break
       case 'tool_restore':
+        contextEdited = true
         for (const callId of event.data.callIds || []) state.trimmedToolIds.delete(callId)
         state.lastPromptTokens = 0
         break
       case 'clear':
+        measuredBaseline = null
+        contextEdited = false
         state.transcript = []
         state.providerHistory = []
         state.historyEventIds = []
@@ -303,6 +319,9 @@ export function deriveState(events) {
     }
   }
 
+  state.estimatedPromptTokens = contextEdited && measuredBaseline
+    ? Math.max(0, measuredBaseline.tokens + historyTokens() - measuredBaseline.history)
+    : null
   const effectiveHistory = elideStaleToolResults(state.providerHistory)
   state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds, state.toolTrimVersions, state.toolItems, toolResultArchive(events).references)
   annotateToolContext(state, state.providerHistory, state.trimmedToolIds)
