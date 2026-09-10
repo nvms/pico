@@ -110,3 +110,18 @@ test('escaped arguments remain bounded and preserve their description', () => {
   assert.ok(args.length <= 8000)
   assert.equal(JSON.parse(args).description, 'write file')
 })
+
+test('compact eligibility requires an actual reduction in estimated context', () => {
+  assert.equal(deriveState(eventsFor({ description: 'check status' }, 'ok')).transcript[0].contextCanTrim, false)
+  const base = eventsFor({ content: 'x'.repeat(30000) }, 'y'.repeat(30000))
+  assert.equal(deriveState(base).transcript[0].contextCanTrim, true)
+  assert.equal(deriveState([...base, makeEvent('tool_trim', { callIds: ['c1'] })]).transcript[0].contextCanTrim, false)
+  assert.equal(deriveState([...base, makeEvent('compact', { summary: 'done' })]).transcript[0].contextCanTrim, false)
+})
+
+test('already elided results do not offer redundant compaction', () => {
+  const events = [...eventsFor({}, 'x'.repeat(30000)),
+    makeEvent('message', { message: { role: 'user', content: 'next' } }),
+    makeEvent('message', { message: { role: 'user', content: 'again' } })]
+  assert.equal(deriveState(events).transcript[0].contextCanTrim, false)
+})

@@ -834,7 +834,11 @@ export function createController({ boot }) {
     const completed = completedToolCalls(state.derived.providerHistory)
     const unavailable = ids.filter((id) => !completed.has(id))
     if (unavailable.length) return flash(`error: tool calls are not completed in current context: ${unavailable.join(', ')}`)
-    persist(makeEvent(type, { callIds: ids, version: TOOL_TRIM_VERSION }))
+    const eligible = type === 'tool_trim'
+      ? ids.filter((id) => state.derived.toolItems.get(id)?.contextCanTrim)
+      : ids.filter((id) => state.derived.toolItems.get(id)?.contextTrimmed)
+    if (!eligible.length) return false
+    persist(makeEvent(type, { callIds: eligible, version: TOOL_TRIM_VERSION }))
     ensureSession()
     reDerive()
     return true

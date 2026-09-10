@@ -118,15 +118,19 @@ function resultText(content) {
   return JSON.stringify(content ?? '')
 }
 
+function entryTokens(args, result) {
+  return Math.ceil((String(args ?? '').length + resultText(result).length) / 4)
+}
+
 export function annotateToolContext(state, effectiveHistory, trimmedIds) {
   const completed = completedToolCalls(effectiveHistory)
   for (const item of state.toolItems.values()) {
     const entry = completed.get(item.callId)
     item.contextAvailable = !!entry
     item.contextTrimmed = !!entry && trimmedIds.has(item.callId)
-    item.contextTokens = entry
-      ? Math.ceil((String(entry.call.function.arguments ?? '').length + resultText(entry.result.content).length) / 4)
-      : 0
+    item.contextTokens = entry ? entryTokens(entry.call.function.arguments, entry.result.content) : 0
+    item.contextCanTrim = !!entry && !item.contextTrimmed &&
+      entryTokens(trimArguments(entry.call.function.arguments), trimResult(entry.result.content)) < item.contextTokens
   }
 }
 
