@@ -11,6 +11,7 @@ import { createAgentManager } from './agents.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
+import { completedToolCalls, TOOL_TRIM_VERSION } from './tool-trimming.js'
 import { createToolset } from './tools/index.js'
 import { defaultTitle } from './tools/recorder.js'
 import { scanUserTools } from './user-tools.js'
@@ -824,6 +825,29 @@ export function createController({ boot }) {
     flash(value ? `session color: ${names[values.indexOf(value)] || value}` : 'session color cleared')
   }
 
+  function changeToolTrims(type, callIds) {
+    if (state.busy || state.compacting) return flash('error: finish or interrupt the current turn first')
+    if (!Array.isArray(callIds) || !callIds.length || callIds.some((id) => typeof id !== 'string' || !id)) {
+      return flash('error: tool call IDs must be a non-empty array of strings')
+    }
+    const ids = [...new Set(callIds)]
+    const completed = completedToolCalls(state.derived.providerHistory)
+    const unavailable = ids.filter((id) => !completed.has(id))
+    if (unavailable.length) return flash(`error: tool calls are not completed in current context: ${unavailable.join(', ')}`)
+    persist(makeEvent(type, { callIds: ids, version: TOOL_TRIM_VERSION }))
+    ensureSession()
+    reDerive()
+    return true
+  }
+
+  function trimTools(callIds) {
+    return changeToolTrims('tool_trim', callIds)
+  }
+
+  function restoreTools(callIds) {
+    return changeToolTrims('tool_restore', callIds)
+  }
+
   function clear() {
     if (state.busy) return flash('finish or interrupt the current turn first')
     persist(makeEvent('clear', {}))
@@ -1343,6 +1367,8 @@ export function createController({ boot }) {
     send,
     interrupt,
     compact,
+    trimTools,
+    restoreTools,
     answerQuestion,
     cancelQuestion,
     recallPending,
