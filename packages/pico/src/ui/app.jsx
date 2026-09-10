@@ -227,6 +227,7 @@ export function App({ boot, controller: ctl }) {
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
   const [selectingDeliberationModel, setSelectingDeliberationModel] = createSignal(false)
+  const [participantModelTarget, setParticipantModelTarget] = createSignal(null)
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [pendingDeliberation, setPendingDeliberation] = createSignal(null)
   const [agentsVersion, setAgentsVersion] = createSignal(state.activityVersion)
@@ -1335,10 +1336,16 @@ export function App({ boot, controller: ctl }) {
   if (showConfigPanel()) {
     return (
       <ConfigPanel
-        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, deliberationModel: boot.deliberationModel, researchAgentLimit: researchAgentLimit() }}
+        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, deliberationModel: boot.deliberationModel, participantAModel: boot.participantAModel, participantBModel: boot.participantBModel, researchAgentLimit: researchAgentLimit() }}
         focused
         onPickResearchModel={() => {
           setSelectingDeliberationModel(false)
+          setResearchModelReturn('config')
+          setShowConfigPanel(false)
+          setShowResearchModelPanel(true)
+        }}
+        onPickParticipantModel={(target) => {
+          setParticipantModelTarget(target)
           setResearchModelReturn('config')
           setShowConfigPanel(false)
           setShowResearchModelPanel(true)
@@ -1730,13 +1737,16 @@ export function App({ boot, controller: ctl }) {
       {showResearchModelPanel() && (
         <ModelPanel
           models={models.filter((m) => m.available !== false)}
-          current={selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
+          current={participantModelTarget() ? boot[`${participantModelTarget()}Model`] : selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
           defaultName={null}
-          title={selectingDeliberationModel() ? 'Choose deliberation model' : 'Choose parallel worker model'}
+          title={participantModelTarget() ? `Choose Participant ${participantModelTarget() === 'participantA' ? 'A' : 'B'} model` : selectingDeliberationModel() ? 'Choose synthesis model' : 'Choose parallel worker model'}
           hint="enter: save model · esc: cancel"
           focused={showResearchModelPanel()}
           onPick={(m) => {
-            if (selectingDeliberationModel()) {
+            if (participantModelTarget()) {
+              const method = participantModelTarget() === 'participantA' ? 'setParticipantAModel' : 'setParticipantBModel'
+              ctl[method](m.name)
+            } else if (selectingDeliberationModel()) {
               boot.deliberationModel = m.name
               writeConfig({ models: { deliberation: m.name } }).catch(() => {})
               flash(`deliberation: ${m.name}`)
@@ -1745,6 +1755,7 @@ export function App({ boot, controller: ctl }) {
               writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
               flash(`parallel workers: ${m.name}`)
             }
+            setParticipantModelTarget(null)
             setSelectingDeliberationModel(false)
             setShowResearchModelPanel(false)
             const pending = pendingResearch()
@@ -1760,6 +1771,7 @@ export function App({ boot, controller: ctl }) {
           onPickDefault={() => {}}
           onClose={() => {
             setShowResearchModelPanel(false)
+            setParticipantModelTarget(null)
             setSelectingDeliberationModel(false)
             setPendingResearch(null)
             setPendingDeliberation(null)

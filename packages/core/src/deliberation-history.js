@@ -35,11 +35,11 @@ export function deliberationsFromEvents(events) {
     item.updatedAt = event.at
 
     if (event.type === 'deliberation_event') {
-      const recorded = { ...data.event, role: data.role, round: data.round, at: event.at }
+      const recorded = { ...data.event, role: data.role, round: data.round, ...(data.parallelGroup ? { parallelGroup: data.parallelGroup } : {}), at: event.at }
       item.events.push(recorded)
       item.timeline.push({ kind: 'event', value: recorded })
     } else if (event.type === 'deliberation_turn') {
-      const turn = { role: data.role, round: data.round, text: data.text }
+      const turn = { role: data.role, round: data.round, text: data.text, ...(data.parallelGroup ? { parallelGroup: data.parallelGroup } : {}) }
       item.turns.push(turn)
       item.timeline.push({ kind: 'turn', value: turn })
       item.usage = mergeUsage(item.usage, data.usage)

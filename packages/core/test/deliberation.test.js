@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { runDeliberation, validateDeliberation } from '../src/deliberation.js'
 import { createToolset } from '../src/tools/index.js'
 
-test('deliberation alternates participants with persistent private histories', async () => {
+test('deliberation starts in parallel then exchanges sequentially with private histories', async () => {
   const calls = []
   const events = []
   const result = await runDeliberation({
@@ -14,22 +14,24 @@ test('deliberation alternates participants with persistent private histories', a
       return { messages: [{ role: 'assistant', content: `${role}-${round}` }] }
     },
     runSynthesis: async ({ history }) => {
-      assert.match(history[0].content, /proposer-1/)
-      assert.match(history[0].content, /reviewer-2/)
+      assert.match(history[0].content, /participant-a-1/)
+      assert.match(history[0].content, /participant-b-2/)
       return { messages: [{ role: 'assistant', content: 'decision' }] }
     },
     onEvent: (event) => events.push(event),
   })
 
   assert.deepEqual(calls.map(({ role, round }) => [role, round]), [
-    ['proposer', 1],
-    ['reviewer', 1],
-    ['proposer', 2],
-    ['reviewer', 2],
+    ['participant-a', 1],
+    ['participant-b', 1],
+    ['participant-a', 2],
+    ['participant-b', 2],
   ])
-  assert.match(calls[2].history.map((message) => message.content).join('\n'), /proposer-1/)
-  assert.match(calls[2].history.map((message) => message.content).join('\n'), /reviewer-1/)
+  assert.match(calls[2].history.map((message) => message.content).join('\n'), /participant-a-1/)
+  assert.match(calls[2].history.map((message) => message.content).join('\n'), /participant-b-1/)
   assert.equal(events.length, 4)
+  assert.deepEqual(events.slice(0, 2).map(({ parallelGroup }) => parallelGroup), ['initial', 'initial'])
+  assert.deepEqual(events.slice(2).map(({ parallelGroup }) => parallelGroup), [undefined, undefined])
   assert.equal(result.result, 'decision')
 })
 
@@ -64,4 +66,59 @@ test('deliberation stops after a participant failure', async () => {
   })
   assert.equal(result.error, 'failed')
   assert.equal(result.interrupted, true)
+})
+
+test('both initial calls start before either finishes and the exchange waits for both', async () => {
+  const pending = new Map()
+  const calls = []
+  const events = []
+  const running = runDeliberation({
+    brief: 'independent decision', rounds: 2,
+    runParticipant: ({ role, round, history }) => {
+      calls.push({ role, round, history })
+      if (round === 1) return new Promise((resolve) => pending.set(role, resolve))
+      return Promise.resolve({ messages: [{ role: 'assistant', content: `${role} revision` }] })
+    },
+    runSynthesis: async () => ({ messages: [{ role: 'assistant', content: 'result' }] }),
+    onEvent: (event) => events.push(event),
+  })
+  assert.equal(pending.size, 2)
+  assert.ok(calls.every(({ history }) => history.length === 1))
+  pending.get('participant-b')({ messages: [{ role: 'assistant', content: 'B independent' }] })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(calls.length, 2)
+  assert.equal(events.length, 1)
+  pending.get('participant-a')({ messages: [{ role: 'assistant', content: 'A independent' }] })
+  const result = await running
+  assert.deepEqual(result.turns.map(({ role }) => role), ['participant-a', 'participant-b', 'participant-a', 'participant-b'])
+  assert.match(calls[3].history.map((message) => message.content).join('\n'), /A independent/)
+  assert.match(calls[2].history.map((message) => message.content).join('\n'), /B independent/)
+})
+
+test('a failed initial result cancels and joins the other participant', async () => {
+  let cancelled = false
+  const result = await runDeliberation({
+    brief: 'choose', rounds: 1,
+    runParticipant: async ({ role, signal }) => {
+      if (role === 'participant-a') return { error: 'research failed', messages: [] }
+      await new Promise((resolve) => signal.addEventListener('abort', () => { cancelled = true; resolve() }, { once: true }))
+      return { interrupted: true, messages: [] }
+    },
+    runSynthesis: async () => assert.fail('synthesis must not run'),
+  })
+  assert.equal(cancelled, true)
+  assert.equal(result.error, 'research failed')
+})
+
+test('one round consists of two independent judgments and synthesis only', async () => {
+  const calls = []
+  await runDeliberation({
+    brief: 'choose', rounds: 1,
+    runParticipant: async ({ role, round }) => {
+      calls.push([role, round])
+      return { messages: [{ role: 'assistant', content: role }] }
+    },
+    runSynthesis: async () => ({ messages: [{ role: 'assistant', content: 'done' }] }),
+  })
+  assert.deepEqual(calls, [['participant-a', 1], ['participant-b', 1]])
 })

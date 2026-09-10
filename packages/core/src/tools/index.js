@@ -229,7 +229,7 @@ export function createToolset({ toolResult, cwd, env, tracker, skills, shells, s
       schema: {
         description: describeParam,
         brief: { type: 'string', description: 'self-contained decision, relevant context, constraints, and desired outcome' },
-        rounds: { type: 'integer', description: 'number of proposer-reviewer exchanges (1-5, default 3)', optional: true },
+        rounds: { type: 'integer', description: 'number of Participant A/B exchange rounds (1-5, default 3)', optional: true },
       },
       execute: ({ brief, rounds }) => deliberations.run({ brief, rounds, sessionId, sessionFile, signal }),
     })

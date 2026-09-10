@@ -334,16 +334,16 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'deliberation-turn') {
-    const proposer = item.role === 'proposer'
+    const participantA = item.role === 'participant-a' || item.role === 'proposer'
     const synthesis = item.role === 'synthesis'
-    const label = synthesis ? 'Synthesis' : `${proposer ? 'Proposer' : 'Reviewer'} · round ${item.round}`
+    const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'} · round ${item.round}`
     const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
     return (
       <box style={{ flexDirection: 'column', marginTop: 1, paddingX: 2 }}>
         <box style={{ flexDirection: 'row' }}>
-          <box style={{ width: 1, flexShrink: 0, bg: synthesis || proposer ? accent() : MUTED }} />
-          <box style={{ flexDirection: 'column', flexGrow: 1, paddingX: 2, paddingY: 1, bg: synthesis ? SELECT_BG : proposer ? PANEL_BG : undefined }}>
-            <text style={{ color: synthesis || proposer ? accent() : MUTED, bold: true }}>{label}</text>
+          <box style={{ width: 1, flexShrink: 0, bg: synthesis || participantA ? accent() : MUTED }} />
+          <box style={{ flexDirection: 'column', flexGrow: 1, paddingX: 2, paddingY: 1, bg: synthesis ? SELECT_BG : participantA ? PANEL_BG : undefined }}>
+            <text style={{ color: synthesis || participantA ? accent() : MUTED, bold: true }}>{label}</text>
             <Markdown
               text={text}
               highlight={highlight}

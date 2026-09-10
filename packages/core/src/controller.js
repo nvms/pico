@@ -98,6 +98,8 @@ function errorText(err, limit) {
 }
 
 export function createController({ boot }) {
+  if (!Object.hasOwn(boot, 'participantAModel')) boot.participantAModel = boot.proposerModel ?? null
+  if (!Object.hasOwn(boot, 'participantBModel')) boot.participantBModel = boot.reviewerModel ?? null
   const { on, emit } = createEmitter()
 
   const state = {
@@ -238,10 +240,10 @@ export function createController({ boot }) {
       rounds = options.rounds
       const existingIds = deliberationsFromEvents(state.events).map((item) => Number(item.deliberationId)).filter(Number.isFinite)
       const id = String(Math.max(0, ...existingIds) + 1)
-      const roleModel = (role) => (role === 'proposer' ? boot.proposerModel : role === 'reviewer' ? boot.reviewerModel : null) || boot.deliberationModel || boot.proposerModel || boot.reviewerModel
+      const roleModel = (role) => (role === 'participant-a' ? boot.participantAModel : role === 'participant-b' ? boot.participantBModel : null) || boot.deliberationModel || boot.participantAModel || boot.participantBModel
       const roleWorkers = {}
       const roleAuths = {}
-      for (const part of ['proposer', 'reviewer', 'synthesizer']) {
+      for (const part of ['participant-a', 'participant-b', 'synthesizer']) {
         const name = roleModel(part)
         const found = boot.models.find((m) => m.name === name)
         if (!found || found.available === false) throw new Error(`deliberation model unavailable: ${name}`)
@@ -250,17 +252,18 @@ export function createController({ boot }) {
       }
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('deliberation requires an active session')
-      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: roleModel('synthesizer'), models: { proposer: roleModel('proposer'), reviewer: roleModel('reviewer') } }))
+      persist(makeEvent('deliberation_start', { deliberationId: id, brief, rounds, model: roleModel('synthesizer'), models: { participantA: roleModel('participant-a'), participantB: roleModel('participant-b') } }))
       bumpActivity()
-      const live = { role: null, round: null, text: '' }
+      const live = { turns: {} }
       liveDeliberations.set(id, live)
-      const speak = (role, round) => (event) => {
+      const speak = (role, round, parallelGroup) => (event) => {
+        const key = `${role}:${round}`
         if (event.type === 'content') {
-          if (live.role !== role || live.round !== round) Object.assign(live, { role, round, text: '' })
-          live.text += event.content
+          const current = live.turns[key] || { role, round, text: '', ...(parallelGroup ? { parallelGroup } : {}) }
+          live.turns[key] = { ...current, text: current.text + event.content }
           bumpActivity()
-        } else if (event.type === 'tool_calls_ready' && live.text) {
-          live.text = ''
+        } else if (event.type === 'tool_calls_ready' && live.turns[key]?.text) {
+          live.turns[key] = { ...live.turns[key], text: '' }
           bumpActivity()
         }
       }
@@ -270,7 +273,7 @@ export function createController({ boot }) {
         bumpActivity()
       }
 
-      const runWorker = async ({ history, role, tools: enabled = true, onStream }) => {
+      const runWorker = async ({ history, role, tools: enabled = true, onStream, workerSignal = signal }) => {
         const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
         const scan = await refreshProjectIndexes()
         const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: participantSystemPrompt(scratchpad) })
@@ -279,7 +282,7 @@ export function createController({ boot }) {
           env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
           sessionId,
           sessionFile: state.session?.file,
-          signal,
+          signal: workerSignal,
           maxToolCalls: 30,
           allowNames: enabled ? undefined : [],
         })
@@ -291,7 +294,7 @@ export function createController({ boot }) {
           effort: roleWorkers[role].effort ? 'low' : null,
           auth: roleAuths[role],
           system: context.system,
-          signal,
+          signal: workerSignal,
           onStream,
         })
       }
@@ -300,19 +303,24 @@ export function createController({ boot }) {
         brief,
         rounds,
         signal,
-        runParticipant: ({ history, role, round }) => runWorker({
-          history,
-          role,
-          onStream: (event) => {
-            speak(role, round)(event)
-            if (['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)) {
-              persistDeliberation(makeEvent('deliberation_event', { deliberationId: id, role, round, event }))
-            }
-          },
-        }),
+        runParticipant: ({ history, role, round, parallelGroup, signal: workerSignal }) => {
+          live.turns[`${role}:${round}`] = { role, round, text: '', ...(parallelGroup ? { parallelGroup } : {}) }
+          bumpActivity()
+          return runWorker({
+            workerSignal,
+            history,
+            role,
+            onStream: (event) => {
+              speak(role, round, parallelGroup)(event)
+              if (['tool_executing', 'tool_complete', 'tool_error'].includes(event.type)) {
+                persistDeliberation(makeEvent('deliberation_event', { deliberationId: id, role, round, parallelGroup, event }))
+              }
+            },
+          })
+        },
         runSynthesis: ({ history }) => runWorker({ history, role: 'synthesizer', tools: false, onStream: speak('synthesis', null) }),
         onEvent: (event) => {
-          Object.assign(live, { role: null, round: null, text: '' })
+          delete live.turns[`${event.role}:${event.round}`]
           persistDeliberation(makeEvent('deliberation_turn', { deliberationId: id, ...event }))
         },
       }).finally(() => liveDeliberations.delete(id))
@@ -608,7 +616,7 @@ export function createController({ boot }) {
       sessionFile: state.session?.file,
       wakeups: boot.wakeups,
       agents: boot.researchModel ? agents : null,
-      deliberations: boot.deliberationModel || (boot.proposerModel && boot.reviewerModel) ? deliberations : null,
+      deliberations: boot.deliberationModel || (boot.participantAModel && boot.participantBModel) ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
       askUser,
       signal: controller.signal,
@@ -1073,8 +1081,8 @@ export function createController({ boot }) {
       flash('usage: /deliberate <decision>')
       return true
     }
-    if (!modelAvailable(boot.proposerModel || boot.deliberationModel)) return false
-    if (!modelAvailable(boot.reviewerModel || boot.deliberationModel)) return false
+    if (!modelAvailable(boot.participantAModel || boot.deliberationModel)) return false
+    if (!modelAvailable(boot.participantBModel || boot.deliberationModel)) return false
     const n = Number(rounds)
     send(deliberatePrompt(decision, Number.isInteger(n) && n >= 1 && n <= MAX_DELIBERATION_ROUNDS ? n : null))
     return true
@@ -1110,17 +1118,17 @@ export function createController({ boot }) {
     changed()
   }
 
-  async function setProposerModel(name) {
+  async function setParticipantAModel(name) {
     if (name && !modelAvailable(name)) return flash(`${name} is not available`)
-    boot.proposerModel = name || null
-    await writeConfig({ models: { proposer: name || null } })
+    boot.participantAModel = name || null
+    await writeConfig({ models: { participantA: name || null } })
     changed()
   }
 
-  async function setReviewerModel(name) {
+  async function setParticipantBModel(name) {
     if (name && !modelAvailable(name)) return flash(`${name} is not available`)
-    boot.reviewerModel = name || null
-    await writeConfig({ models: { reviewer: name || null } })
+    boot.participantBModel = name || null
+    await writeConfig({ models: { participantB: name || null } })
     changed()
   }
 
@@ -1323,7 +1331,7 @@ export function createController({ boot }) {
   function activity() {
     const withLive = (item) => {
       const live = liveDeliberations.get(item.deliberationId)
-      return live?.role ? { ...item, live: { ...live } } : item
+      return live && Object.keys(live.turns).length ? { ...item, live: { turns: Object.values(live.turns) } } : item
     }
     const rows = [...agents.list(), ...deliberationsFromEvents(state.events).map(withLive)]
     return rows.sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
@@ -1404,8 +1412,10 @@ export function createController({ boot }) {
     sendInit,
     setResearchModel,
     setDeliberationModel,
-    setProposerModel,
-    setReviewerModel,
+    setParticipantAModel,
+    setParticipantBModel,
+    setProposerModel: setParticipantAModel,
+    setReviewerModel: setParticipantBModel,
     setDefaultModel,
     previewSteer,
     applySteer,

@@ -54,6 +54,7 @@ function deliberationTranscript(agent) {
     if (entry.kind === 'turn') {
       const turn = turnFor(entry.value.role, entry.value.round)
       turn.text = entry.value.text
+      if (entry.value.parallelGroup) turn.parallelGroup = entry.value.parallelGroup
       turn.active = false
       continue
     }
@@ -61,22 +62,34 @@ function deliberationTranscript(agent) {
     if (event.type === 'tool_executing') {
       const item = toolItem(event.call || {}, event.at)
       tools.set(item.callId, item)
-      turnFor(event.role, event.round).tools.push(item)
+      const turn = turnFor(event.role, event.round)
+      if (event.parallelGroup) turn.parallelGroup = event.parallelGroup
+      turn.tools.push(item)
     }
     if (event.type === 'tool_complete' || event.type === 'tool_error') settleTool(tools, event)
   }
-  // whoever is speaking right now shows their words as they arrive
-  const live = agent.live
-  if (live?.text && live.role !== 'synthesis') {
+  const liveTurns = agent.live?.turns || (agent.live?.role ? [agent.live] : [])
+  for (const live of liveTurns.filter((turn) => turn.role !== 'synthesis')) {
     const turn = turnFor(live.role, live.round)
-    if (turn.text == null) turn.text = live.text
+    if (live.parallelGroup) turn.parallelGroup = live.parallelGroup
+    if (turn.text == null && live.text) turn.text = live.text
   }
+  const liveSynthesis = liveTurns.find((turn) => turn.role === 'synthesis')
   if (agent.result) {
     items.push({ kind: 'deliberation-turn', role: 'synthesis', text: agent.result, tools: [], interrupted: agent.status === 'cancelled' })
-  } else if (live?.text && live.role === 'synthesis') {
-    items.push({ kind: 'deliberation-turn', role: 'synthesis', text: live.text, tools: [], active: true })
+  } else if (liveSynthesis?.text) {
+    items.push({ kind: 'deliberation-turn', role: 'synthesis', text: liveSynthesis.text, tools: [], active: true })
   } else if (agent.error) {
     items.push({ kind: 'assistant', text: agent.error, interrupted: true })
+  }
+  const order = (turn) => turn.role === 'participant-a' ? 0 : 1
+  const grouped = items.filter((turn) => turn.parallelGroup)
+  for (const group of new Set(grouped.map((turn) => turn.parallelGroup))) {
+    const sorted = grouped.filter((turn) => turn.parallelGroup === group).sort((a, b) => order(a) - order(b))
+    let index = 0
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].parallelGroup === group) items[i] = sorted[index++]
+    }
   }
   return items
 }

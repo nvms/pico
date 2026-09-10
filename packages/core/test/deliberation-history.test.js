@@ -48,3 +48,22 @@ test('keeps incomplete deliberations reviewable and sorts newest first', () => {
   assert.equal(rows[0].status, 'failed')
   assert.equal(rows[1].status, 'running')
 })
+
+test('serialized parallel research restores both columns and sequential replies', async () => {
+  const { agentTranscript } = await import('../src/agent-transcript.js')
+  const events = [
+    event('deliberation_start', 1, { deliberationId: '1', brief: 'Choose', rounds: 2 }),
+    event('deliberation_event', 2, { deliberationId: '1', role: 'participant-b', round: 1, parallelGroup: 'initial', event: { type: 'tool_executing', call: { id: 'b', function: { name: 'read', arguments: '{}' } } } }),
+    event('deliberation_turn', 3, { deliberationId: '1', role: 'participant-b', round: 1, parallelGroup: 'initial', text: 'B initial' }),
+    event('deliberation_turn', 4, { deliberationId: '1', role: 'participant-a', round: 1, parallelGroup: 'initial', text: 'A initial' }),
+    event('deliberation_turn', 5, { deliberationId: '1', role: 'participant-a', round: 2, text: 'A revision' }),
+    event('deliberation_turn', 6, { deliberationId: '1', role: 'participant-b', round: 2, text: 'B revision' }),
+    event('deliberation_result', 7, { deliberationId: '1', result: 'Synthesis' }),
+  ]
+  const [restored] = deliberationsFromEvents(JSON.parse(JSON.stringify(events)))
+  const turns = agentTranscript(restored).filter((item) => item.kind === 'deliberation-turn')
+  assert.deepEqual(turns.map(({ role }) => role), ['participant-a', 'participant-b', 'participant-a', 'participant-b', 'synthesis'])
+  assert.deepEqual(turns.map(({ parallelGroup }) => parallelGroup), ['initial', 'initial', undefined, undefined, undefined])
+  assert.equal(turns[1].tools[0].callId, 'b')
+  assert.ok(turns.every((turn) => !turn.active))
+})

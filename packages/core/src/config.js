@@ -8,7 +8,12 @@ function configFile() {
 
 export async function readConfig() {
   try {
-    return JSON.parse(await readFile(configFile(), 'utf-8'))
+    const config = JSON.parse(await readFile(configFile(), 'utf-8'))
+    if (config.models) {
+      if (!Object.hasOwn(config.models, 'participantA')) config.models.participantA = config.models.proposer ?? null
+      if (!Object.hasOwn(config.models, 'participantB')) config.models.participantB = config.models.reviewer ?? null
+    }
+    return config
   } catch {
     return {}
   }
