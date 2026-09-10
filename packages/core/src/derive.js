@@ -180,6 +180,7 @@ export function deriveState(events) {
     toolItems: new Map(),
     latestCompactIndex,
     trimmedToolIds: new Set(),
+    toolTrimVersions: new Map(),
   }
 
   for (const event of effectiveEvents) {
@@ -259,7 +260,10 @@ export function deriveState(events) {
         break
       }
       case 'tool_trim':
-        for (const callId of event.data.callIds || []) state.trimmedToolIds.add(callId)
+        for (const callId of event.data.callIds || []) {
+          state.trimmedToolIds.add(callId)
+          state.toolTrimVersions.set(callId, event.data.version?.algorithm || 'tool-trim-v1')
+        }
         state.lastPromptTokens = 0
         break
       case 'tool_restore':
@@ -272,6 +276,7 @@ export function deriveState(events) {
         state.historyEventIds = []
         state.toolItems = new Map()
         state.trimmedToolIds = new Set()
+        state.toolTrimVersions = new Map()
         state.lastPromptTokens = 0
         break
       case 'context_file':
@@ -299,7 +304,7 @@ export function deriveState(events) {
   }
 
   const effectiveHistory = elideStaleToolResults(state.providerHistory)
-  state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds)
+  state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds, state.toolTrimVersions, state.toolItems)
   annotateToolContext(state, state.providerHistory, state.trimmedToolIds)
   return state
 }

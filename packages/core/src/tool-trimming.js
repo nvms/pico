@@ -92,7 +92,7 @@ export function completedToolCalls(history) {
   return new Map([...callsIn(history)].filter(([, entry]) => entry.result))
 }
 
-export function applyToolTrims(history, trimmedIds) {
+export function applyToolTrims(history, trimmedIds, versions = new Map(), toolItems = new Map()) {
   if (!trimmedIds.size) return history
   const completed = completedToolCalls(history)
   const callMessages = new Map()
@@ -106,8 +106,18 @@ export function applyToolTrims(history, trimmedIds) {
       callMessages.set(entry.callIndex, callMessage)
     }
     const call = callMessage.tool_calls.find((candidate) => candidate.id === id)
-    call.function.arguments = trimArguments(call.function.arguments)
-    resultMessages.set(entry.resultIndex, { ...entry.result, content: trimResult(entry.result.content) })
+    if (versions.get(id) === 'tool-compact-v2') {
+      const item = toolItems.get(id)
+      let args
+      try { args = JSON.parse(call.function.arguments) } catch { args = {} }
+      const description = item?.description || args?.description || call.function.name
+      call.function.arguments = JSON.stringify({ description })
+      const outcome = item?.status === 'error' ? 'error' : item?.status || 'completed'
+      resultMessages.set(entry.resultIndex, { ...entry.result, content: `[${outcome}; tool arguments and result compacted, originals retained in session log]` })
+    } else {
+      call.function.arguments = trimArguments(call.function.arguments)
+      resultMessages.set(entry.resultIndex, { ...entry.result, content: trimResult(entry.result.content) })
+    }
   }
   return history.map((message, index) => callMessages.get(index) || resultMessages.get(index) || message)
 }
@@ -129,13 +139,12 @@ export function annotateToolContext(state, effectiveHistory, trimmedIds) {
     item.contextAvailable = !!entry
     item.contextTrimmed = !!entry && trimmedIds.has(item.callId)
     item.contextTokens = entry ? entryTokens(entry.call.function.arguments, entry.result.content) : 0
-    item.contextCanTrim = !!entry && !item.contextTrimmed &&
-      entryTokens(trimArguments(entry.call.function.arguments), trimResult(entry.result.content)) < item.contextTokens
+    item.contextCanTrim = !!entry && !item.contextTrimmed
   }
 }
 
 export const TOOL_TRIM_VERSION = {
-  algorithm: ALGORITHM,
+  algorithm: 'tool-compact-v2',
   argumentChars: ARGUMENT_CHARS,
   resultChars: RESULT_CHARS,
   stringChars: STRING_CHARS,

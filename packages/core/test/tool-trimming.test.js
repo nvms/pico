@@ -111,17 +111,44 @@ test('escaped arguments remain bounded and preserve their description', () => {
   assert.equal(JSON.parse(args).description, 'write file')
 })
 
-test('compact eligibility requires an actual reduction in estimated context', () => {
-  assert.equal(deriveState(eventsFor({ description: 'check status' }, 'ok')).transcript[0].contextCanTrim, false)
+test('compact eligibility is independent of size', () => {
+  assert.equal(deriveState(eventsFor({ description: 'check status' }, 'ok')).transcript[0].contextCanTrim, true)
   const base = eventsFor({ content: 'x'.repeat(30000) }, 'y'.repeat(30000))
   assert.equal(deriveState(base).transcript[0].contextCanTrim, true)
   assert.equal(deriveState([...base, makeEvent('tool_trim', { callIds: ['c1'] })]).transcript[0].contextCanTrim, false)
   assert.equal(deriveState([...base, makeEvent('compact', { summary: 'done' })]).transcript[0].contextCanTrim, false)
 })
 
-test('already elided results do not offer redundant compaction', () => {
+test('already elided results can still be compacted', () => {
   const events = [...eventsFor({}, 'x'.repeat(30000)),
     makeEvent('message', { message: { role: 'user', content: 'next' } }),
     makeEvent('message', { message: { role: 'user', content: 'again' } })]
-  assert.equal(deriveState(events).transcript[0].contextCanTrim, false)
+  assert.equal(deriveState(events).transcript[0].contextCanTrim, true)
+})
+
+
+test('whole-block compaction removes every result regardless of size and restores originals', () => {
+  const events = []
+  const callIds = []
+  for (let i = 0; i < 50; i++) {
+    const id = `call-${i}`
+    callIds.push(id)
+    const pair = eventsFor({ description: `inspect file ${i}`, path: `/file-${i}` }, 'x'.repeat(i ? 1800 : 2))
+    pair[0].data.message.tool_calls[0].id = id
+    pair[1].data.message.tool_call_id = id
+    events.push(...pair)
+  }
+  const original = deriveState(events)
+  const compact = makeEvent('tool_trim', { callIds, version: { algorithm: 'tool-compact-v2' } })
+  const compacted = deriveState([...events, compact])
+  for (let i = 0; i < 50; i++) {
+    assert.deepEqual(JSON.parse(compacted.providerHistory[i * 2].tool_calls[0].function.arguments), { description: `inspect file ${i}` })
+    assert.match(compacted.providerHistory[i * 2 + 1].content, /result compacted/)
+    assert.equal(compacted.transcript[i].contextTrimmed, true)
+    assert.equal(compacted.transcript[i].fullOutput, original.transcript[i].fullOutput)
+  }
+  const count = (state) => state.transcript.reduce((sum, item) => sum + item.contextTokens, 0)
+  assert.ok(count(compacted) < count(original) / 4)
+  assert.deepEqual(deriveState([...events, compact, makeEvent('tool_restore', { callIds })]).providerHistory, original.providerHistory)
+  assert.deepEqual(deriveState(JSON.parse(JSON.stringify([...events, compact]))).providerHistory, compacted.providerHistory)
 })
