@@ -143,7 +143,7 @@ test('whole-block compaction removes every result regardless of size and restore
   const compacted = deriveState([...events, compact])
   for (let i = 0; i < 50; i++) {
     assert.deepEqual(JSON.parse(compacted.providerHistory[i * 2].tool_calls[0].function.arguments), { description: `inspect file ${i}` })
-    assert.match(compacted.providerHistory[i * 2 + 1].content, /result compacted/)
+    assert.match(compacted.providerHistory[i * 2 + 1].content, /compacted; retrieve with tool_result/)
     assert.equal(compacted.transcript[i].contextTrimmed, true)
     assert.equal(compacted.transcript[i].fullOutput, original.transcript[i].fullOutput)
   }
@@ -151,4 +151,33 @@ test('whole-block compaction removes every result regardless of size and restore
   assert.ok(count(compacted) < count(original) / 4)
   assert.deepEqual(deriveState([...events, compact, makeEvent('tool_restore', { callIds })]).providerHistory, original.providerHistory)
   assert.deepEqual(deriveState(JSON.parse(JSON.stringify([...events, compact]))).providerHistory, compacted.providerHistory)
+})
+
+
+test('compacted results carry stable retrieval references and originals remain retrievable', async () => {
+  const { retrieveToolResult } = await import('../src/tool-trimming.js')
+  const base = eventsFor({ description: 'inspect', path: '/original' }, 'original output')
+  const compact = makeEvent('tool_trim', { callIds: ['c1'], version: { algorithm: 'tool-compact-v2' } })
+  const events = [...base, compact]
+  assert.equal(deriveState(events).providerHistory[1].content, '[compacted; retrieve with tool_result({"id":"t1"})]')
+  assert.deepEqual(retrieveToolResult(events, 't1'), {
+    callId: 'c1', name: 'write', arguments: JSON.stringify({ description: 'inspect', path: '/original' }), result: 'original output',
+  })
+  assert.deepEqual(retrieveToolResult(JSON.parse(JSON.stringify(events)), 't1'), retrieveToolResult(events, 't1'))
+  assert.deepEqual(retrieveToolResult([...events, makeEvent('clear', {})], 't1'), retrieveToolResult(events, 't1'))
+  assert.throws(() => retrieveToolResult([], 't1'), /no saved tool result/)
+})
+
+test('retrieval tool returns original data without executing the original tool', async () => {
+  const { createToolset } = await import('../src/tools/index.js')
+  const { tools } = createToolset({ cwd: '/tmp', toolResult: (id) => ({ id, result: 'saved' }) })
+  const tool = tools.find((tool) => tool.name === 'tool_result')
+  assert.deepEqual(await tool.execute({ id: 't42', description: 'Retrieving original output' }), { id: 't42', result: 'saved' })
+})
+
+test('failed compacted calls preserve errors beside the retrieval reference', () => {
+  const events = eventsFor({ description: 'write file' }, 'permission denied')
+  events.push(makeEvent('tool_meta', { callId: 'c1', name: 'write', status: 'error', error: 'permission denied' }))
+  events.push(makeEvent('tool_trim', { callIds: ['c1'], version: { algorithm: 'tool-compact-v2' } }))
+  assert.match(deriveState(events).providerHistory[1].content, /^error: permission denied\n\[compacted;/)
 })

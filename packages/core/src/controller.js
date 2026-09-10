@@ -11,7 +11,7 @@ import { createAgentManager } from './agents.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
-import { completedToolCalls, TOOL_TRIM_VERSION } from './tool-trimming.js'
+import { completedToolCalls, retrieveToolResult, TOOL_TRIM_VERSION } from './tool-trimming.js'
 import { createToolset } from './tools/index.js'
 import { defaultTitle } from './tools/recorder.js'
 import { scanUserTools } from './user-tools.js'
@@ -603,6 +603,7 @@ export function createController({ boot }) {
     const context = await createAgentContext(boot, { userTools: userToolScan.tools })
     const { tools, recorder } = createToolset({
       ...context.tools,
+      toolResult: (id) => retrieveToolResult(state.events, id),
       sessionId: state.session?.id,
       sessionFile: state.session?.file,
       wakeups: boot.wakeups,
@@ -1217,6 +1218,7 @@ export function createController({ boot }) {
     return createToolset({
       cwd: boot.cwd,
       env: boot.env,
+      toolResult: (id) => retrieveToolResult(state.events, id),
       hostTools: boot.hostTools ?? [],
       tracker: boot.tracker,
       skills: boot.skills,

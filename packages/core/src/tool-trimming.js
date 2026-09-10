@@ -92,7 +92,28 @@ export function completedToolCalls(history) {
   return new Map([...callsIn(history)].filter(([, entry]) => entry.result))
 }
 
-export function applyToolTrims(history, trimmedIds, versions = new Map(), toolItems = new Map()) {
+export function toolResultArchive(events) {
+  const history = events.filter((event) => event.type === 'message').map((event) => event.data.message)
+  const references = new Map()
+  for (const message of history) {
+    for (const call of message.tool_calls || []) {
+      if (!references.has(call.id)) references.set(call.id, `t${references.size + 1}`)
+    }
+  }
+  const results = new Map()
+  for (const [callId, entry] of completedToolCalls(history)) {
+    results.set(references.get(callId), { callId, name: entry.call.function.name, arguments: entry.call.function.arguments, result: entry.result.content })
+  }
+  return { references, results }
+}
+
+export function retrieveToolResult(events, id) {
+  const result = toolResultArchive(events).results.get(id)
+  if (!result) throw new Error(`no saved tool result with id ${id}`)
+  return structuredClone(result)
+}
+
+export function applyToolTrims(history, trimmedIds, versions = new Map(), toolItems = new Map(), references = new Map()) {
   if (!trimmedIds.size) return history
   const completed = completedToolCalls(history)
   const callMessages = new Map()
@@ -112,8 +133,9 @@ export function applyToolTrims(history, trimmedIds, versions = new Map(), toolIt
       try { args = JSON.parse(call.function.arguments) } catch { args = {} }
       const description = item?.description || args?.description || call.function.name
       call.function.arguments = JSON.stringify({ description })
-      const outcome = item?.status === 'error' ? 'error' : item?.status || 'completed'
-      resultMessages.set(entry.resultIndex, { ...entry.result, content: `[${outcome}; tool arguments and result compacted, originals retained in session log]` })
+      const error = item?.status === 'error' ? `error: ${item.error || 'tool failed'}\n` : ''
+      const reference = references.get(id)
+      resultMessages.set(entry.resultIndex, { ...entry.result, content: `${error}[compacted; retrieve with tool_result(${JSON.stringify({ id: reference })})]` })
     } else {
       call.function.arguments = trimArguments(call.function.arguments)
       resultMessages.set(entry.resultIndex, { ...entry.result, content: trimResult(entry.result.content) })

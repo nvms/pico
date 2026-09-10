@@ -7,7 +7,7 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createView } from './view.js'
 
-export function createToolset({ cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
+export function createToolset({ toolResult, cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
   const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -21,6 +21,16 @@ export function createToolset({ cwd, env, tracker, skills, shells, sessionId, se
     createGlob(deps),
     createGrep(deps),
   ]
+
+  if (toolResult) local.push({
+    name: 'tool_result',
+    description: 'Retrieve the original arguments and result of a compacted tool call using its retrieval ID. This reads saved data without rerunning the tool or restoring other calls.',
+    schema: {
+      description: describeParam,
+      id: { type: 'string', description: 'retrieval ID shown in the compacted result, such as t42' },
+    },
+    execute: ({ id }) => toolResult(id),
+  })
 
   if (viewer) local.push(createView({ ...deps, viewer }))
 

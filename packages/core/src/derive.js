@@ -1,6 +1,6 @@
 import { continuationMessage } from './compaction.js'
 import { applySteering } from './steer.js'
-import { annotateToolContext, applyToolTrims } from './tool-trimming.js'
+import { annotateToolContext, applyToolTrims, toolResultArchive } from './tool-trimming.js'
 
 const DROPPING_MODES = ['both', 'chat', 'summary']
 
@@ -304,7 +304,7 @@ export function deriveState(events) {
   }
 
   const effectiveHistory = elideStaleToolResults(state.providerHistory)
-  state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds, state.toolTrimVersions, state.toolItems)
+  state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds, state.toolTrimVersions, state.toolItems, toolResultArchive(events).references)
   annotateToolContext(state, state.providerHistory, state.trimmedToolIds)
   return state
 }
