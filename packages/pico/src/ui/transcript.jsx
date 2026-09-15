@@ -157,7 +157,7 @@ function ToolGroup({ item, verbose }) {
   const activity = (item.items || item.tools).map((entry) => entry.kind === 'thoughts'
     ? { ...entry, name: 'thoughts', description: entry.text.replace(/\s+/g, ' ').trim(), thought: true }
     : entry).filter((entry) => entry.description)
-  const descriptions = activity.slice(-TOOL_DESCRIPTION_LIMIT).reverse()
+  const descriptions = activity.slice(-TOOL_DESCRIPTION_LIMIT)
   const hiddenDescriptions = activity.length - descriptions.length
   const toolNameWidth = Math.max(0, ...descriptions.map((entry) => entry.name.length))
   const visibleBash = item.active && item.tools.at(-1)?.name === 'bash' ? item.tools.at(-1) : null
@@ -177,6 +177,12 @@ function ToolGroup({ item, verbose }) {
         {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
       </box>
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
+        {hiddenDescriptions > 0 && (
+          <box style={{ flexDirection: 'row' }}>
+            <text>{' '.repeat(toolNameWidth + 4)}</text>
+            <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
+          </box>
+        )}
         {descriptions.map((tool, i) => (
           <box key={tool.callId || `thought-${i}`} style={{ flexDirection: 'row' }}>
             {tool.thought ? <text>{'  '}</text> : <CompactToolSign tool={tool} />}
@@ -186,12 +192,6 @@ function ToolGroup({ item, verbose }) {
               : <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>}
           </box>
         ))}
-        {hiddenDescriptions > 0 && (
-          <box style={{ flexDirection: 'row' }}>
-            <text>{' '.repeat(toolNameWidth + 4)}</text>
-            <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
-          </box>
-        )}
         {visibleBash?.fullOutput && <BashOutput value={visibleBash.fullOutput} lineStart={visibleBash.outputLineStart} lineCount={visibleBash.outputLineCount} />}
       </box>
     </box>
