@@ -23,6 +23,7 @@ struct RecordingState {
     var timer: DispatchSourceTimer?
     var configurationObserver: NSObjectProtocol?
     var mutedDevice: AudioObjectID?
+    var frames: AVAudioFramePosition = 0
     var active = false
     var failure: String?
     var lastLevelTime = DispatchTime(uptimeNanoseconds: 0)
@@ -37,6 +38,7 @@ func writeRecordingBuffer(_ buffer: AVAudioPCMBuffer) {
         guard recording.active, let file = recording.file else { return }
         do {
             try file.write(from: buffer)
+            recording.frames += AVAudioFramePosition(buffer.frameLength)
             let now = DispatchTime.now()
             if now.uptimeNanoseconds - recording.lastLevelTime.uptimeNanoseconds >= 75_000_000,
                let channel = buffer.floatChannelData?[0] {

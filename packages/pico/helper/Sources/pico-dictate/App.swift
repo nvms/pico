@@ -50,6 +50,9 @@ func start() async throws {
         throw NSError(domain: "pico-dictate", code: 1, userInfo: [NSLocalizedDescriptionKey: "microphone permission denied"])
     }
 
+    let mutedDevice = muteOutput()
+    var started = false
+    defer { if !started { restoreOutput(mutedDevice) } }
     let engine = AVAudioEngine()
     let input = engine.inputNode
     let format = input.outputFormat(forBus: 0)
@@ -59,24 +62,20 @@ func start() async throws {
 
     try FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let url = audioDirectory.appendingPathComponent("\(UUID().uuidString).caf")
-    var started = false
     defer { if !started { try? FileManager.default.removeItem(at: url) } }
     let file = try AVAudioFile(forWriting: url, settings: format.settings)
     input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
         writeRecordingBuffer(buffer)
     }
-    engine.prepare()
-    try engine.start()
-
     recordingLock.withLock {
-        started = true
         recording.engine = engine
         recording.file = file
         recording.url = url
         recording.active = true
         recording.failure = nil
         recording.lastLevelTime = .now()
-        recording.mutedDevice = muteOutput()
+        recording.mutedDevice = mutedDevice
+        recording.frames = 0
         let expiration = DispatchSource.makeTimerSource(queue: .global())
         expiration.schedule(deadline: .now() + 300)
         expiration.setEventHandler { expire() }
@@ -104,6 +103,20 @@ func start() async throws {
             }
         }
     }
+    engine.prepare()
+    try engine.start()
+    for _ in 0..<100 {
+        let state = recordingLock.withLock { (recording.frames, recording.active, recording.failure) }
+        if !state.1 {
+            throw NSError(domain: "pico-dictate", code: 3, userInfo: [NSLocalizedDescriptionKey: state.2 ?? "microphone stopped during startup"])
+        }
+        if state.0 > 0 {
+            started = true
+            return
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+    }
+    throw NSError(domain: "pico-dictate", code: 4, userInfo: [NSLocalizedDescriptionKey: "microphone did not deliver audio"])
 }
 
 func stop() -> (URL, String?)? {
