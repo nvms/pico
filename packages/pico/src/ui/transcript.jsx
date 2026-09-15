@@ -276,6 +276,16 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
 export function Message({ item, verbose, showLocked = false }) {
   if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
+  if (item.kind === 'user' && item.origin === 'view') {
+    const label = /^\[view: ([^\]]+)\]/.exec(item.text)?.[1] || 'image'
+    return (
+      <box style={{ flexDirection: 'column', paddingX: 2 }}>
+        <text> </text>
+        <text style={{ color: MUTED }}>{`✓ Viewed ${label}`}</text>
+      </box>
+    )
+  }
+
   if (item.kind === 'agent-notice-group') {
     return (
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
