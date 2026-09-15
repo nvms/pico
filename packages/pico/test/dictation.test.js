@@ -219,3 +219,20 @@ test('dictation adds a separator only when needed at the cursor', async () => {
     assert.equal(draft, expected)
   }
 })
+
+test('only live recording forwards finite microphone levels', async () => {
+  const levels = []
+  const f = fixture({ onLevel: (level) => levels.push(level) })
+  const child = await recording(f)
+  child.reply({ status: 'level', level: 0.5 })
+  child.reply({ status: 'level', level: 2 })
+  child.reply({ status: 'level', level: 'bad' })
+  assert.deepEqual(levels, [0.5, 1])
+  const stopping = f.dictation.stop()
+  child.reply({ status: 'level', level: 0.8 })
+  child.reply({ id: child.requests.at(-1).id, text: 'Um, this is, uh, a test.' })
+  assert.equal(await stopping, 'This is a test.')
+  child.reply({ status: 'level', level: 0.9 })
+  assert.deepEqual(levels, [0.5, 1])
+  f.dictation.dispose()
+})

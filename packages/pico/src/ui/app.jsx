@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { createDictation } from '../dictation.js'
 import { createDictationInput } from './dictation-input.js'
+import { dictationIndicator, appendLevel } from './dictation-indicator.js'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
 import { listSessions, deleteSession, deleteProjectData } from 'picocode-core/session.js'
@@ -204,6 +205,7 @@ export function App({ boot, controller: ctl }) {
   const [startedAt, setStartedAt] = createSignal(state.startedAt)
   const [input, setInput] = createSignal('')
   const [dictationStatus, setDictationStatus] = createSignal('idle')
+  const [dictationLevels, setDictationLevels] = createSignal([])
   const [model, setModel] = createSignal(state.model)
   const [defaultModel, setDefaultModel] = createSignal(state.defaultModel)
   const [effort, setEffort] = createSignal(state.effort)
@@ -392,7 +394,11 @@ export function App({ boot, controller: ctl }) {
 
   if (!refs.dictation) {
     refs.dictation = createDictation({
-      onStatus: setDictationStatus,
+      onStatus: (status) => {
+        setDictationStatus(status)
+        if (status !== 'recording') setDictationLevels([])
+      },
+      onLevel: (level) => setDictationLevels(appendLevel(dictationLevels(), level)),
       onError: (message) => refs.ui.flash(`dictation failed: ${message}`),
     })
     refs.dictationInput = createDictationInput({ dictation: refs.dictation, getInput: input, setInput })
@@ -1563,7 +1569,11 @@ export function App({ boot, controller: ctl }) {
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
-        {(state.session?.header.forkedFrom || derived().title) && (
+        {dictationStatus() !== 'idle' ? (
+          <text style={{ position: 'absolute', top: 0, right: 0, color: accent(), bg: PANEL_BG, overflow: 'truncate' }}>
+            {dictationIndicator(dictationStatus(), dictationLevels())}
+          </text>
+        ) : (state.session?.header.forkedFrom || derived().title) && (
           <box style={{ position: 'absolute', top: 0, right: 0, flexDirection: 'row' }}>
             {state.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
             {derived().title && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>}
@@ -1687,8 +1697,6 @@ export function App({ boot, controller: ctl }) {
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
       </MouseFocusRegion>}
-
-      {dictationStatus() !== 'idle' && <text style={{ color: accent(), paddingX: 2 }}>{dictationStatus()}</text>}
 
       {showCommands && (
         <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>

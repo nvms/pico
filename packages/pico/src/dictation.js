@@ -1,3 +1,4 @@
+import { cleanDictation } from './dictation-text.js'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +8,7 @@ export function dictationHelperPath() {
   return existsSync(bundled) ? bundled : fileURLToPath(new URL('../helper/.build/release/pico-dictate', import.meta.url))
 }
 
-export function createDictation({ onStatus = () => {}, onError = () => {}, platform = process.platform, arch = process.arch, launch = () => spawn(dictationHelperPath(), [], { stdio: ['pipe', 'pipe', 'pipe'] }), loadingTimeout = 600000, requestTimeout = 45000 } = {}) {
+export function createDictation({ onStatus = () => {}, onLevel = () => {}, onError = () => {}, platform = process.platform, arch = process.arch, launch = () => spawn(dictationHelperPath(), [], { stdio: ['pipe', 'pipe', 'pipe'] }), loadingTimeout = 600000, requestTimeout = 45000 } = {}) {
   let child = null
   let status = 'idle'
   let sequence = 0
@@ -67,7 +68,9 @@ export function createDictation({ onStatus = () => {}, onError = () => {}, platf
         buffer = buffer.slice(at + 1)
         let message
         try { message = JSON.parse(line) } catch { continue }
-        if (message.status === 'ready') settle('ready', message)
+        if (message.status === 'level') {
+          if (status === 'recording' && Number.isFinite(message.level)) onLevel(Math.max(0, Math.min(1, message.level)))
+        } else if (message.status === 'ready') settle('ready', message)
         else if (message.status === 'error') {
           const error = new Error(message.message || 'dictation failed')
           const active = pending.size > 0
@@ -122,7 +125,7 @@ export function createDictation({ onStatus = () => {}, onError = () => {}, platf
       const result = await request('stop')
       if (token !== generation) return null
       setStatus('idle')
-      return result.text || ''
+      return cleanDictation(result.text || '')
     } catch (error) {
       if (token === generation) {
         reset(error)

@@ -17,5 +17,6 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist", "-Xlinker", "Sources/pico-dictate/Info.plist"]),
             ]
         ),
+        .testTarget(name: "pico-dictateTests", dependencies: ["pico-dictate"]),
     ]
 )

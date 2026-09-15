@@ -44,13 +44,6 @@ func restoreOutput(_ device: AudioObjectID?) {
 }
 
 
-private let lock = NSLock()
-private var recordingEngine: AVAudioEngine?
-private var recordingFile: AVAudioFile?
-private var recordingURL: URL?
-private var timer: DispatchSourceTimer?
-private var mutedDevice: AudioObjectID?
-
 func start() async throws {
     cancel()
     guard await microphoneAllowed() else {
@@ -70,53 +63,60 @@ func start() async throws {
     defer { if !started { try? FileManager.default.removeItem(at: url) } }
     let file = try AVAudioFile(forWriting: url, settings: format.settings)
     input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
-        do { try file.write(from: buffer) }
-        catch { emit(["status": "error", "message": "audio recording failed: \(error.localizedDescription)"]) }
+        writeRecordingBuffer(buffer)
     }
     engine.prepare()
     try engine.start()
 
-    lock.withLock {
+    recordingLock.withLock {
         started = true
-        mutedDevice = muteOutput()
-        recordingEngine = engine
-        recordingFile = file
-        recordingURL = url
+        recording.engine = engine
+        recording.file = file
+        recording.url = url
+        recording.active = true
+        recording.failure = nil
+        recording.lastLevelTime = .now()
+        recording.mutedDevice = muteOutput()
         let expiration = DispatchSource.makeTimerSource(queue: .global())
         expiration.schedule(deadline: .now() + 300)
-        expiration.setEventHandler {
-            expire()
-        }
-        timer = expiration
+        expiration.setEventHandler { expire() }
+        recording.timer = expiration
         expiration.resume()
+        recording.configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { _ in
+            DispatchQueue.main.async { [weak engine] in
+                guard let engine else { return }
+                let current = recordingLock.withLock { recording.active && recording.engine === engine }
+                guard current else { return }
+                let currentFormat = engine.inputNode.outputFormat(forBus: 0)
+                if let failure = recordingConfigurationFailure(
+                    running: engine.isRunning,
+                    sampleRate: currentFormat.sampleRate,
+                    channels: currentFormat.channelCount,
+                    expectedSampleRate: format.sampleRate,
+                    expectedChannels: format.channelCount
+                ) {
+                    failRecording(failure)
+                }
+            }
+        }
     }
 }
 
-func stop() -> URL? {
-    lock.lock()
-    defer { lock.unlock() }
-    guard let engine = recordingEngine else { return nil }
-    timer?.cancel()
-    timer = nil
-    engine.stop()
-    engine.inputNode.removeTap(onBus: 0)
-    recordingEngine = nil
-    restoreOutput(mutedDevice)
-    mutedDevice = nil
-    recordingFile = nil
-    let result = recordingURL
-    recordingURL = nil
-    return result
+func stop() -> (URL, String?)? {
+    stopRecording()
 }
 
 func cancel() {
-    if let url = stop() { try? FileManager.default.removeItem(at: url) }
+    if let (url, _) = stopRecording() { try? FileManager.default.removeItem(at: url) }
     try? FileManager.default.removeItem(at: audioDirectory)
 }
 
 private func expire() {
-    guard let url = stop() else { return }
-    try? FileManager.default.removeItem(at: url)
+    guard stopRecording(deleteFile: true) != nil else { return }
     emit(["status": "error", "message": "dictation recording exceeded 5 minutes"])
 }
 
@@ -144,7 +144,7 @@ struct Main {
         }
         emit(["status": "ready"])
 
-        while let line = readLine(strippingNewline: true) {
+        while let line = await Task.detached(priority: .userInitiated, operation: { readLine(strippingNewline: true) }).value {
             guard let data = line.data(using: .utf8) else { continue }
             let request: Request
             do { request = try JSONDecoder().decode(Request.self, from: data) }
@@ -160,11 +160,15 @@ struct Main {
                     emit(["id": request.id, "error": error.localizedDescription])
                 }
             case "stop":
-                guard let url = stop() else {
+                guard let (url, recordingFailure) = stop() else {
                     emit(["id": request.id, "error": "dictation is not recording"])
                     continue
                 }
                 defer { try? FileManager.default.removeItem(at: url) }
+                if let recordingFailure {
+                    emit(["id": request.id, "error": recordingFailure])
+                    continue
+                }
                 do {
                     var state = TdtDecoderState.make()
                     let result = try await manager.transcribe(url, decoderState: &state)

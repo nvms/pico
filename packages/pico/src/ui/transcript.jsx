@@ -182,7 +182,7 @@ function ToolGroup({ item, verbose }) {
             {tool.thought ? <text>{'  '}</text> : <CompactToolSign tool={tool} />}
             <text style={{ color: MUTED, italic: tool.thought }}>{`${tool.name.padStart(toolNameWidth)}  `}</text>
             {tool.thought
-              ? <box style={{ flexGrow: 1, height: 1 }}><text style={{ color: MUTED, italic: true, overflow: 'truncate' }}>{tool.description}</text></box>
+              ? <box style={{ flexGrow: 1, height: 1 }}><Markdown text={tool.description} style={{ color: MUTED, italic: true, overflow: 'truncate' }} /></box>
               : <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>}
           </box>
         ))}
@@ -327,7 +327,7 @@ export function Message({ item, verbose, showLocked = false }) {
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
         <box style={{ paddingX: 1 }}>
-          <text style={{ color: MUTED, italic: true }}>{item.text}</text>
+          <Markdown text={item.text} style={{ color: MUTED, italic: true }} />
         </box>
       </box>
     )

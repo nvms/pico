@@ -9,7 +9,10 @@ build: ## Bundle pico into packages/pico/dist/pico.js
 helper: ## Build the macOS arm64 dictation helper
 	@cd $(PICO)/helper && swift build -c release --arch arm64
 	@mkdir -p $(PICO)/dist
-	@cp $(PICO)/helper/.build/arm64-apple-macosx/release/pico-dictate $(PICO)/dist/pico-dictate
+	@tmp=$$(mktemp $(PICO)/dist/.pico-dictate.XXXXXX); \
+	trap 'rm -f "$$tmp"' EXIT; \
+	cp $(PICO)/helper/.build/arm64-apple-macosx/release/pico-dictate "$$tmp" && \
+	chmod 755 "$$tmp" && mv -f "$$tmp" $(PICO)/dist/pico-dictate
 
 test: ## Run every workspace test suite
 	@npm test --workspaces

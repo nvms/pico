@@ -16,7 +16,9 @@ export function createDictationInput({ dictation, getInput, setInput }) {
     if (token !== generation || !target || text == null || getInput() !== target.value) return
     const before = target.value.slice(0, target.cursor)
     const lead = text && before && !/\s$/.test(before) && !/^\s/.test(text) ? ' ' : ''
-    setInput(before + lead + text + target.value.slice(target.cursor))
+    const after = target.value.slice(target.cursor)
+    const trail = text && after && !/\s$/.test(text) && !/^[\s.,;:!?]/.test(after) ? ' ' : ''
+    setInput(before + lead + text + trail + after)
     draft = null
   }
 
