@@ -1,4 +1,4 @@
-import { defaultTitle } from './tools/recorder.js'
+import { defaultTitle, toolResultOutput } from './tools/recorder.js'
 
 function parseCallArgs(call) {
   try {
@@ -30,7 +30,11 @@ function settleTool(tools, event) {
   if (!item) return
   item.status = event.type === 'tool_error' ? 'error' : 'done'
   item.error = event.error ? String(event.error) : null
-  item.fullOutput = event.result === undefined ? null : typeof event.result === 'string' ? event.result : JSON.stringify(event.result, null, 2)
+  item.fullOutput = toolResultOutput(item.name, event.result)
+  if (item.name === 'bash') {
+    item.exitCode = event.result?.exitCode
+    item.background = event.result?.status === 'running'
+  }
 }
 
 // a deliberation reads as turns: each turn owns the tool runs its

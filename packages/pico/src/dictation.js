@@ -14,6 +14,7 @@ export function createDictation({ onStatus = () => {}, onLevel = () => {}, onErr
   let sequence = 0
   let generation = 0
   let ready = null
+  let disposed = false
   const pending = new Map()
 
   function setStatus(value) {
@@ -100,8 +101,13 @@ export function createDictation({ onStatus = () => {}, onLevel = () => {}, onErr
     return result
   }
 
+  async function preload() {
+    if (disposed) return
+    try { await load() } catch {}
+  }
+
   async function start() {
-    if (status !== 'idle') return
+    if (disposed || status !== 'idle') return
     const token = ++generation
     setStatus('loading')
     try {
@@ -149,9 +155,10 @@ export function createDictation({ onStatus = () => {}, onLevel = () => {}, onErr
   }
 
   function dispose() {
+    disposed = true
     ++generation
     reset()
   }
 
-  return { start, stop, cancel, dispose, get status() { return status } }
+  return { preload, start, stop, cancel, dispose, get status() { return status } }
 }

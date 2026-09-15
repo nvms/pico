@@ -90,7 +90,7 @@ function delayedLinear(t) {
 function DescriptionReveal({ children, running }) {
   const reveal = useAnimated(running ? 0 : 1, ease(DESCRIPTION_REVEAL_DELAY_MS + DESCRIPTION_REVEAL_MS, delayedLinear))
   if (!running) reveal.set(1)
-  return <text style={{ color: mixColor(accent(), FG, reveal()) }}>{children}</text>
+  return <text style={{ color: mixColor(accent(), FG, reveal()), overflow: 'truncate', flexGrow: 1, minWidth: 0 }}>{children}</text>
 }
 
 function outputLines(value) {
@@ -144,7 +144,7 @@ function ToolGroup({ item, verbose }) {
       <box style={{ flexDirection: 'column' }}>
         {(item.items || item.tools).map((entry, i) => entry.kind === 'thoughts'
           ? <Message key={i} item={entry} verbose />
-          : <ToolCard key={i} {...entry} verbose showExpandHint={false} />)}
+          : <ToolCard key={i} {...entry} verbose />)}
       </box>
     )
   }
@@ -192,14 +192,16 @@ function ToolGroup({ item, verbose }) {
               : <DescriptionReveal running={tool.status === 'running'}>{tool.description}</DescriptionReveal>}
           </box>
         ))}
+        {visibleBash?.title && <text style={{ color: FG, overflow: 'truncate' }}>{highlight(visibleBash.title, 'bash')}</text>}
         {visibleBash?.fullOutput && <BashOutput value={visibleBash.fullOutput} lineStart={visibleBash.outputLineStart} lineCount={visibleBash.outputLineCount} />}
       </box>
     </box>
   )
 }
 
-function ToolCard({ name, title, titleLang, description, status, diff, revert, fullOutput, outputLineStart, outputLineCount, error, background, verbose, showExpandHint = true, startedAt, durationMs }) {
+function ToolCard({ name, title, titleLang, description, status, diff, revert, fullOutput, outputLineStart, outputLineCount, error, background, verbose, startedAt, durationMs }) {
   const shownTitle = name === 'bash' ? null : titleLang && title ? highlight(title, titleLang) : title
+  const inlineDescription = !shownTitle
   const preview = diffPreview(diff, revert)
   const running = status === 'running'
   const interrupted = status === 'interrupted'
@@ -216,31 +218,31 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
     : failed ? `failed${took ? ` · ${took}` : ''}`
     : background ? 'background · shell listed below'
     : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
-    : outLines ? `${outputLineCount || outLines.length} ${(outputLineCount || outLines.length) === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}${showExpandHint ? ' · ctrl+o' : ''}`
+    : outLines ? `${outputLineCount || outLines.length} ${(outputLineCount || outLines.length) === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}`
     : `done${took ? ` · ${took}` : ''}`
 
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
       <text> </text>
-      <box style={{ flexDirection: 'row' }}>
+      <box style={{ flexDirection: 'row', height: 1, overflow: 'clip' }}>
         {running
           ? <Spinner color={accent()} />
           : <text style={{ color: interrupted || failed ? RED : reverted ? MUTED : accent() }}>{interrupted ? '✗' : failed ? '✗' : reverted ? '↩' : '✓'}</text>}
         <text> </text>
-        <text style={{ color: MUTED }}>{`${name.padEnd(5)} `}</text>
-        <box style={{ flexGrow: 1, height: 1 }}>
-          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || (name === 'bash' ? '' : name)}</text>
+        <text style={{ color: MUTED, flexShrink: 0 }}>{`${name.padEnd(5)} `}</text>
+        <box style={{ flexGrow: 1, minWidth: 0, height: 1 }}>
+          <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || description || name}</text>
         </box>
-        <text style={{ color: FAINT }}>{`  ${info}`}</text>
+        <text style={{ color: FAINT, flexShrink: 0, overflow: 'truncate' }}>{`  ${info}`}</text>
       </box>
-      {description && (
+      {description && !inlineDescription && (
         <box style={{ paddingLeft: 8 }}>
-          <text style={{ color: MUTED }}>{description}</text>
+          <text style={{ color: MUTED, overflow: 'truncate' }}>{description}</text>
         </box>
       )}
-      {verbose && name === 'bash' && title && (
+      {name === 'bash' && title && (
         <box style={{ paddingLeft: 8 }}>
-          <text style={{ color: FG }}>{highlight(title, titleLang || 'bash')}</text>
+          <text style={{ color: FG, overflow: 'truncate' }}>{highlight(title, titleLang || 'bash')}</text>
         </box>
       )}
       {failed && error && (
@@ -273,6 +275,68 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
   )
 }
 
+function DeliberationTurn({ item, verbose, compact = false }) {
+  const participantA = item.role === 'participant-a' || item.role === 'proposer'
+  const synthesis = item.role === 'synthesis'
+  const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'} · round ${item.round}`
+  const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
+  return (
+    <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: compact ? 0 : 2, bg: compact ? PANEL_BG : undefined }}>
+      <box style={{ flexDirection: 'row' }}>
+        <box style={{ width: 1, flexShrink: 0, bg: synthesis || participantA ? accent() : MUTED }} />
+        <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: compact ? 2 : 2, paddingY: 1, bg: synthesis ? SELECT_BG : participantA || compact ? PANEL_BG : undefined }}>
+          <text style={{ color: synthesis || participantA ? accent() : MUTED, bold: true }}>{label}</text>
+          {item.tools?.map((tool) => <ToolCard key={tool.callId} {...tool} verbose={verbose} />)}
+          {text && (
+            <Markdown
+              text={text}
+              highlight={highlight}
+              codeBg={null}
+              codeBlock={TranscriptCodeBlock}
+              tableBorderColor={MUTED}
+              tableRowHoverBg={PANEL_BG}
+            />
+          )}
+        </box>
+      </box>
+    </box>
+  )
+}
+
+function deliberationRows(turns) {
+  const rows = []
+  for (const turn of turns) {
+    if (turn.role === 'synthesis' || !turn.parallelGroup) {
+      rows.push([turn])
+      continue
+    }
+    const existing = rows.find((row) => row[0]?.parallelGroup === turn.parallelGroup)
+    if (existing) existing.push(turn)
+    else rows.push([turn])
+  }
+  return rows
+}
+
+export function DeliberationExchange({ turns, verbose, wide }) {
+  return (
+    <box style={{ flexDirection: 'column', gap: 1, marginTop: 1 }}>
+      {deliberationRows(turns).map((row, index) => {
+        const synthesis = row[0]?.role === 'synthesis'
+        if (!wide || synthesis) return row.map((turn) => <DeliberationTurn key={`${turn.role}:${turn.round ?? 'synthesis'}`} item={turn} verbose={verbose} />)
+        const left = row.find((turn) => turn.role === 'participant-a' || turn.role === 'proposer')
+        const right = row.find((turn) => turn.role === 'participant-b' || turn.role === 'reviewer')
+        return (
+          <box key={row[0]?.parallelGroup || `${row[0]?.role}:${row[0]?.round}:${index}`} style={{ flexDirection: 'row', width: '100%', overflow: 'clip', bg: PANEL_BG }}>
+            <box style={{ width: '50%', minWidth: 0, overflow: 'clip' }}>{left && <DeliberationTurn item={left} verbose={verbose} compact />}</box>
+            <box style={{ width: 1, flexShrink: 0, bg: PANEL_BG }} />
+            <box style={{ flexGrow: 1, minWidth: 0, overflow: 'clip' }}>{right && <DeliberationTurn item={right} verbose={verbose} compact />}</box>
+          </box>
+        )
+      })}
+    </box>
+  )
+}
+
 export function Message({ item, verbose, showLocked = false }) {
   if (item.kind === 'tool-group') return <ToolGroup item={item} verbose={verbose} />
 
@@ -293,7 +357,6 @@ export function Message({ item, verbose, showLocked = false }) {
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: MUTED, italic: true }}>{`⚙ ${item.notices.length} agents finished`}</text>
           <box style={{ flexGrow: 1 }} />
-          <text style={{ color: FAINT }}>{'ctrl+o'}</text>
         </box>
         {verbose && (
           <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
@@ -318,7 +381,7 @@ export function Message({ item, verbose, showLocked = false }) {
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: MUTED, italic: true }}>{item.source === 'compact' ? '✦ summary · conversation compacted above this point' : '✦ summary · rewound conversation'}</text>
           <box style={{ flexGrow: 1 }} />
-          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} · ctrl+o`}</text>
+          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}</text>
         </box>
         {verbose && (
           <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
@@ -344,28 +407,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'deliberation-turn') {
-    const participantA = item.role === 'participant-a' || item.role === 'proposer'
-    const synthesis = item.role === 'synthesis'
-    const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'} · round ${item.round}`
-    const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
-    return (
-      <box style={{ flexDirection: 'column', marginTop: 1, paddingX: 2 }}>
-        <box style={{ flexDirection: 'row' }}>
-          <box style={{ width: 1, flexShrink: 0, bg: synthesis || participantA ? accent() : MUTED }} />
-          <box style={{ flexDirection: 'column', flexGrow: 1, paddingX: 2, paddingY: 1, bg: synthesis ? SELECT_BG : participantA ? PANEL_BG : undefined }}>
-            <text style={{ color: synthesis || participantA ? accent() : MUTED, bold: true }}>{label}</text>
-            <Markdown
-              text={text}
-              highlight={highlight}
-              codeBg={null}
-              codeBlock={TranscriptCodeBlock}
-              tableBorderColor={MUTED}
-              tableRowHoverBg={PANEL_BG}
-            />
-          </box>
-        </box>
-      </box>
-    )
+    return <box style={{ marginTop: 1 }}><DeliberationTurn item={item} verbose={verbose} /></box>
   }
 
   if (item.kind === 'notice') {

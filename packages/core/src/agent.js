@@ -98,6 +98,10 @@ export async function summarizeText({ text, modelName, auth }) {
   return getText(out.lastResponse?.content || '').trim()
 }
 
+function estimateTokens(value) {
+  return Math.ceil(JSON.stringify(value ?? '').length / 4)
+}
+
 export async function runTurn({ history, tools, recorder, modelName, effort, auth, system, signal, onStream, stallMs = STALL_MS }) {
   const collected = []
   let roundText = ''
@@ -108,6 +112,20 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
   // of the current context as actually sent
   let cumulativePrompt = 0
   let lastPromptTokens = 0
+  let estimatedOutputChars = 0
+  let estimatedPromptTokens = 0
+  const estimatedUsage = () => {
+    const exact = usageSeen || {}
+    const completionTokens = (exact.completionTokens || 0) + Math.ceil(estimatedOutputChars / 4)
+    const prompt = (exact.promptTokens || 0) + estimatedPromptTokens
+    return {
+      promptTokens: prompt,
+      completionTokens,
+      totalTokens: prompt + completionTokens,
+      cachedTokens: exact.cachedTokens || 0,
+      thoughtTokens: exact.thoughtTokens || 0,
+    }
+  }
 
   const internal = new AbortController()
   const onUserAbort = () => internal.abort()
@@ -137,8 +155,15 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
     arm()
     if (event.type === 'content') {
       roundText += event.content
+      estimatedOutputChars += String(event.content ?? '').length
+      onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
+    } else if (event.type === 'thinking') {
+      estimatedOutputChars += String(event.content ?? '').length
+      onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
     } else if (event.type === 'tool_calls_ready') {
       collected.push({ role: 'assistant', content: roundText, tool_calls: event.calls })
+      estimatedOutputChars += JSON.stringify(event.calls ?? []).length
+      onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
       roundText = ''
     } else if (event.type === 'tool_complete') {
       collected.push({ role: 'tool', tool_call_id: event.call.id, content: JSON.stringify(event.result) })
@@ -149,6 +174,8 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
       const prompt = event.usage?.promptTokens || 0
       lastPromptTokens = Math.max(0, prompt - cumulativePrompt)
       cumulativePrompt = prompt
+      estimatedPromptTokens = 0
+      estimatedOutputChars = 0
     }
     onStream?.(event)
   }
@@ -158,12 +185,15 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
     scope(
       { inherit: Inherit.Conversation, system, tools, until: noToolsCalled(), stream },
       async (ctx) => {
+        const hydratedHistory = await hydrateImages(ctx.history)
+        estimatedPromptTokens = estimateTokens({ system, history: hydratedHistory, tools })
+        onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
         const out = await model({
           model: modelName,
           ...(effort && { effort }),
           ...(auth?.apiKey && { apiKey: auth.apiKey }),
           ...(auth?.headers && { headers: auth.headers }),
-        })({ ...ctx, history: await hydrateImages(ctx.history), abortSignal: internal.signal })
+        })({ ...ctx, history: hydratedHistory, abortSignal: internal.signal })
         // Prepared bytes and omission notices belong only to the request, not
         // the conversation returned by the provider or subsequent tool rounds.
         return { ...out, history: [...ctx.history, ...out.history.slice(ctx.history.length)] }

@@ -61,6 +61,84 @@ test('loads lazily, handles split JSON, transcribes and reuses the helper', asyn
   assert.equal(child.killed, true)
 })
 
+test('preloading stays idle, sends no commands and reuses the helper', async () => {
+  const f = fixture()
+  const loading = f.dictation.preload()
+  const again = f.dictation.preload()
+  const child = f.children[0]
+  assert.equal(f.dictation.status, 'idle')
+  assert.deepEqual(f.statuses, [])
+  assert.equal(f.children.length, 1)
+  assert.deepEqual(child.requests, [])
+  child.reply({ status: 'ready' })
+  await Promise.all([loading, again])
+  assert.deepEqual(child.requests, [])
+  await recording(f)
+  assert.equal(f.children.length, 1)
+  f.dictation.dispose()
+})
+
+test('starting during preload shares readiness and starts recording once', async () => {
+  const f = fixture()
+  const loading = f.dictation.preload()
+  await recording(f)
+  await loading
+  assert.equal(f.children.length, 1)
+  assert.deepEqual(f.children[0].requests.map((r) => r.op), ['start'])
+  f.dictation.dispose()
+})
+
+test('background failures are silent and a hotkey can retry', async () => {
+  for (const fail of [
+    (child) => child.emit('error', new Error('ENOENT')),
+    (child) => child.emit('exit', 1),
+    (child) => child.reply({ status: 'error', message: 'model download failed' }),
+  ]) {
+    const f = fixture()
+    const loading = f.dictation.preload()
+    fail(f.children[0])
+    await loading
+    assert.deepEqual(f.errors, [])
+    assert.equal(f.children[0].killed, true)
+    await recording(f)
+    assert.equal(f.children.length, 2)
+    f.dictation.dispose()
+  }
+})
+
+test('preload timeouts and unsupported platforms stay quiet', async () => {
+  for (const options of [{ loadingTimeout: 10 }, { platform: 'linux' }, { arch: 'x64' }, { launch: () => { throw new Error('spawn failed') } }]) {
+    const f = fixture(options)
+    await f.dictation.preload()
+    assert.deepEqual(f.errors, [])
+    assert.equal(f.dictation.status, 'idle')
+    f.dictation.dispose()
+  }
+})
+
+test('quitting during preload kills the helper and prevents further launches', async () => {
+  for (const start of [false, true]) {
+    const f = fixture()
+    const loading = f.dictation.preload()
+    const starting = start ? f.dictation.start() : null
+    const child = f.children[0]
+    f.dictation.dispose()
+    child.reply({ status: 'ready' })
+    await Promise.all([loading, starting])
+    await f.dictation.preload()
+    await f.dictation.start()
+    assert.equal(child.killed, true)
+    assert.equal(child.stdin.writableEnded, true)
+    assert.equal(f.children.length, 1)
+    assert.deepEqual(child.requests, [])
+    assert.deepEqual(f.errors, [])
+  }
+  const f = fixture()
+  f.dictation.dispose()
+  await f.dictation.preload()
+  assert.equal(f.children.length, 0)
+})
+
 test('cancellation during loading rejects stale readiness without an error', async () => {
   const f = fixture()
   const starting = f.dictation.start()

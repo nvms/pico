@@ -119,6 +119,7 @@ export function createController({ boot }) {
     startedAt: 0,
     overlay: [],
     streaming: null,
+    liveUsage: null,
     queued: [],
     expedited: [],
     views: [],
@@ -545,6 +546,15 @@ export function createController({ boot }) {
         set({ turnPhase: 'thinking' })
       } else if (event.type === 'content') {
         set({ turnPhase: 'responding', streaming: (state.streaming || '') + event.content })
+      } else if (event.type === 'usage' || event.type === 'usage_estimate') {
+        const base = state.derived.usageActive
+        set({ liveUsage: {
+          promptTokens: base.promptTokens + (event.usage.promptTokens || 0),
+          completionTokens: base.completionTokens + (event.usage.completionTokens || 0),
+          totalTokens: base.totalTokens + (event.usage.totalTokens || 0),
+          cachedTokens: base.cachedTokens + (event.usage.cachedTokens || 0),
+          thoughtTokens: base.thoughtTokens + (event.usage.thoughtTokens || 0),
+        } })
       } else if (event.type === 'tool_calls_ready') {
         set({ turnPhase: 'tools' })
         updateOverlay((items) => {
@@ -594,7 +604,7 @@ export function createController({ boot }) {
     const researchAgentLimit = nextResearchAgentLimit || null
     nextResearchAgentLimit = null
     emit('turn', 'start')
-    set({ busy: true, turnPhase: 'responding', startedAt: Date.now() })
+    set({ busy: true, turnPhase: 'responding', startedAt: Date.now(), liveUsage: null })
 
     const { auth, ok } = await codexAuth()
     if (!ok) {
@@ -643,7 +653,7 @@ export function createController({ boot }) {
       })
     } catch (err) {
       abort = null
-      set({ overlay: [], streaming: null, turnPhase: 'idle', busy: false })
+      set({ overlay: [], streaming: null, liveUsage: null, turnPhase: 'idle', busy: false })
       flash(`error: ${errorText(err, 120)}`)
       return
     }
@@ -665,6 +675,7 @@ export function createController({ boot }) {
     state.turnPhase = 'idle'
     state.busy = false
     reDerive()
+    set({ liveUsage: null })
     boot.git.refresh()
     if (result.stalled) {
       flash('model stalled · turn interrupted')

@@ -22,6 +22,14 @@ export function defaultTitle(name, args = {}) {
   return raw.length > 60 ? raw.slice(0, 60) + '…' : raw
 }
 
+export function toolResultOutput(name, result) {
+  if (result === undefined) return null
+  if (name === 'bash' && result && typeof result === 'object') {
+    return [result.stdout, result.stderr].filter(Boolean).join('\n')
+  }
+  return typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+}
+
 export function createRecorder(onChange) {
   return {
     currentCall: null,
@@ -67,9 +75,9 @@ export function recorded(recorder, name, fn) {
     recorder.begin(name, args)
     try {
       const result = await fn(args)
-      if (!recorder.pending?.fullOutput && result !== undefined) {
+      if (recorder.pending?.fullOutput == null && result !== undefined) {
         recorder.extra({
-          fullOutput: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+          fullOutput: toolResultOutput(name, result),
         })
       }
       recorder.done()

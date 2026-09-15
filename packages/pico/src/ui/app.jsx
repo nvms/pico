@@ -21,7 +21,7 @@ import { listFiles } from 'picocode-core/files.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from 'picocode-core/format.js'
 import { AnimatedValue } from './animated-value.jsx'
-import { Message } from './transcript.jsx'
+import { DeliberationExchange, Message } from './transcript.jsx'
 import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
@@ -198,6 +198,7 @@ export function App({ boot, controller: ctl }) {
   useResize(({ width }) => setTerminalWidth(width))
   const [overlay, setOverlay] = createSignal(state.overlay)
   const [streaming, setStreaming] = createSignal(state.streaming)
+  const [liveUsage, setLiveUsage] = createSignal(state.liveUsage)
   const [turnPhase, setTurnPhase] = createSignal(state.turnPhase)
   const [busy, setBusy] = createSignal(state.busy)
   const [compacting, setCompacting] = createSignal(state.compacting)
@@ -234,7 +235,7 @@ export function App({ boot, controller: ctl }) {
   const [fileList, setFileList] = createSignal([])
   const [filesDismissed, setFilesDismissed] = createSignal(false)
   const [view, setViewSignal] = createSignal('chat')
-  const [verbose, setVerbose] = createSignal(false)
+  const [verbose] = createSignal(false)
   const [showModelPanel, setShowModelPanel] = createSignal(false)
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
@@ -292,6 +293,7 @@ export function App({ boot, controller: ctl }) {
     mirror(derived, setDerived, state.derived)
     mirror(overlay, setOverlay, state.overlay)
     mirror(streaming, setStreaming, state.streaming)
+    mirror(liveUsage, setLiveUsage, state.liveUsage)
     mirror(turnPhase, setTurnPhase, state.turnPhase)
     mirror(busy, setBusy, state.busy)
     mirror(compacting, setCompacting, state.compacting)
@@ -402,7 +404,12 @@ export function App({ boot, controller: ctl }) {
       onError: (message) => refs.ui.flash(`dictation failed: ${message}`),
     })
     refs.dictationInput = createDictationInput({ dictation: refs.dictation, getInput: input, setInput })
-    process.once('exit', () => refs.dictation.dispose())
+    const preload = setImmediate(() => refs.dictation.preload())
+    preload.unref()
+    process.once('exit', () => {
+      clearImmediate(preload)
+      refs.dictation.dispose()
+    })
     for (const [signal, code] of [['SIGTERM', 143], ['SIGHUP', 129]]) {
       process.once(signal, () => {
         refs.dictation.dispose()
@@ -1127,11 +1134,6 @@ export function App({ boot, controller: ctl }) {
       event.stopPropagation()
       return
     }
-    if (event.ctrl && event.key === 'o') {
-      setVerbose((v) => !v)
-      event.stopPropagation()
-      return
-    }
     if (fm.is('feed') && event.key === '/') {
       conversationSearch.open()
       event.stopPropagation()
@@ -1256,7 +1258,7 @@ export function App({ boot, controller: ctl }) {
     return opts
   })()
 
-  const { usageActive: usage } = derived()
+  const usage = liveUsage() || derived().usageActive
   const contextPercent = model().context > 0 && derived().lastPromptTokens > 0 && derived().lastPromptModel === model().name
     ? Math.min(100, Math.round((derived().lastPromptTokens / model().context) * 100))
     : 0
@@ -1316,7 +1318,8 @@ export function App({ boot, controller: ctl }) {
   ] : null
   const transcriptSource = activeShell ? `shell:${activeShell.id}` : activeAgent ? `agent:${activeAgent.id}` : 'main'
   const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript)
-  const hiddenCount = Math.max(0, transcript.length - histWindow())
+  const deliberationView = activeAgent?.role === 'deliberation'
+  const hiddenCount = deliberationView ? 0 : Math.max(0, transcript.length - histWindow())
   const isolatedTranscript = activeAgent || activeShell
   const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
   const groupedItems = steer()
@@ -1464,7 +1467,17 @@ export function App({ boot, controller: ctl }) {
             <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
           </box>
         )}
-        {items.map((item, i) => steer() && item.messageId ? (
+        {deliberationView ? (
+          <>
+            {items.filter((item) => item.kind === 'user').map((item, i) => (
+              <Message key={`${transcriptSource}:prompt:${item.messageId || i}`} item={item} verbose={verbose()} />
+            ))}
+            <DeliberationExchange turns={items.filter((item) => item.kind === 'deliberation-turn')} verbose={verbose()} wide={terminalWidth() >= 110} />
+            {items.filter((item) => item.kind !== 'user' && item.kind !== 'deliberation-turn').map((item, i) => (
+              <Message key={`${transcriptSource}:tail:${item.messageId || item.callId || i}`} item={item} verbose={verbose()} />
+            ))}
+          </>
+        ) : items.map((item, i) => steer() && item.messageId ? (
           <SteerMessage
             key={`${transcriptSource}:${item.messageId || item.callId || hiddenCount + i}`}
             item={item}
@@ -2090,8 +2103,8 @@ export function App({ boot, controller: ctl }) {
             <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Directory      '}</text><text style={{ color: FG_SOFT, overflow: 'truncate' }}>{boot.displayCwd}</text></box>
             <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Model          '}</text><text style={{ color: accent() }}>{model().name}</text></box>
             {effortApplies() && effort() && <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Effort         '}</text><text style={{ color: FG_SOFT }}>{effort()}</text></box>}
-            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Input tokens   '}</text><AnimatedValue value={usage.promptTokens} color={FG_SOFT} highlight={accent()} format={(n) => Math.round(n).toLocaleString()} /></box>
-            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Output tokens  '}</text><AnimatedValue value={usage.completionTokens} color={FG_SOFT} highlight={accent()} format={(n) => Math.round(n).toLocaleString()} /></box>
+            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Input tokens   '}</text><text style={{ color: FG_SOFT }}>{Math.round(usage.promptTokens).toLocaleString()}</text></box>
+            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Output tokens  '}</text><text style={{ color: FG_SOFT }}>{Math.round(usage.completionTokens).toLocaleString()}</text></box>
             {usage.thoughtTokens > 0 && <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Thought tokens '}</text><AnimatedValue value={usage.thoughtTokens} color={FG_SOFT} highlight={accent()} format={(n) => Math.round(n).toLocaleString()} /></box>}
             {contextPercent > 0 && <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Context used   '}</text><AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : FG_SOFT} highlight={accent()} format={(n) => `${Math.round(n)}%`} /></box>}
             {pendingWakeups > 0 && <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Wake-ups       '}</text><text style={{ color: FG_SOFT }}>{pendingWakeups}</text></box>}
@@ -2120,15 +2133,12 @@ export function App({ boot, controller: ctl }) {
           </box>
           <box style={{ flexDirection: 'row', paddingX: 2, gap: 1 }}>
             <text style={{ color: MUTED }}>{model().name}</text>
-            {effortApplies() && effort() && <text style={{ color: MUTED }}>{`· ${effort()}`}</text>}
+            {effortApplies() && effort() && <text style={{ color: MUTED }}>{effort()}</text>}
             <box style={{ flexGrow: 1 }} />
             {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
-            <AnimatedValue value={usage.promptTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} input`} />
-            <text style={{ color: MUTED }}>{'·'}</text>
-            <AnimatedValue value={usage.completionTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} output`} />
-            {usage.thoughtTokens > 0 && <text style={{ color: MUTED }}>{'·'}</text>}
+            <text style={{ color: MUTED }}>{`${compactNumber(usage.promptTokens)} input`}</text>
+            <text style={{ color: MUTED }}>{`${compactNumber(usage.completionTokens)} output`}</text>
             {usage.thoughtTokens > 0 && <AnimatedValue value={usage.thoughtTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} thought`} />}
-            {contextPercent > 0 && <text style={{ color: MUTED }}>{'·'}</text>}
             {contextPercent > 0 && <AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : MUTED} highlight={accent()} format={(n) => `${Math.round(n)}% context`} />}
           </box>
         </box>
