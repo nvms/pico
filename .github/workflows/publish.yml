@@ -6,7 +6,18 @@ permissions:
   contents: read
   id-token: write
 jobs:
+  helper:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - run: make helper
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pico-dictate
+          path: packages/pico/dist/pico-dictate
+          if-no-files-found: error
   publish:
+    needs: helper
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -14,6 +25,11 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          name: pico-dictate
+          path: packages/pico/dist
+      - run: chmod +x packages/pico/dist/pico-dictate
       - run: npm install -g npm@latest
       - run: npm ci
       - run: npm publish --access public -w picocode-core

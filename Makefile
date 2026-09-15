@@ -6,6 +6,11 @@ dev: build ## Build and run pico
 build: ## Bundle pico into packages/pico/dist/pico.js
 	@npm run build -w picocode
 
+helper: ## Build the macOS arm64 dictation helper
+	@cd $(PICO)/helper && swift build -c release --arch arm64
+	@mkdir -p $(PICO)/dist
+	@cp $(PICO)/helper/.build/arm64-apple-macosx/release/pico-dictate $(PICO)/dist/pico-dictate
+
 test: ## Run every workspace test suite
 	@npm test --workspaces
 
@@ -31,6 +36,6 @@ deps-local: ## Point @trendr/core and @prsm/ai at local working trees
 deps-npm: ## Restore published deps from npm
 	@npm install
 
-.PHONY: help dev build test link release deps-local deps-npm
+.PHONY: help dev build helper test link release deps-local deps-npm
 help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[32m%-20s\033[0m %s\n", $$1, $$2}'

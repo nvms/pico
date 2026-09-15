@@ -1,4 +1,6 @@
 import { homedir } from 'node:os'
+import { createDictation } from '../dictation.js'
+import { createDictationInput } from './dictation-input.js'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
 import { listSessions, deleteSession, deleteProjectData } from 'picocode-core/session.js'
@@ -101,6 +103,13 @@ function SteerMessage({ item, verbose, selected, focus }) {
   return <Message item={item} verbose={verbose} showLocked />
 }
 
+function DictationKeys({ input }) {
+  useInput((event) => {
+    if (input.handle(event)) event.stopPropagation()
+  })
+  return null
+}
+
 function MouseFocusRegion({ children, onPress, ...props }) {
   const hitTest = useHitTest()
   useMouse((event) => {
@@ -194,6 +203,7 @@ export function App({ boot, controller: ctl }) {
   const [compactStatus, setCompactStatus] = createSignal(state.compactStatus)
   const [startedAt, setStartedAt] = createSignal(state.startedAt)
   const [input, setInput] = createSignal('')
+  const [dictationStatus, setDictationStatus] = createSignal('idle')
   const [model, setModel] = createSignal(state.model)
   const [defaultModel, setDefaultModel] = createSignal(state.defaultModel)
   const [effort, setEffort] = createSignal(state.effort)
@@ -306,13 +316,20 @@ export function App({ boot, controller: ctl }) {
       setAccent(next.color)
       boot.setTheme?.({ accent: next.color || DEFAULT_ACCENT, muted: MUTED })
     },
-    question: () => fm.focus('question'),
+    question: () => {
+      refs.dictationInput?.cancel()
+      fm.focus('question')
+    },
     turn: () => {
       setFollow(true)
       setHistWindow(HISTORY_WINDOW)
     },
-    input: (text) => setInput(text),
+    input: (text) => {
+      refs.dictationInput?.cancel()
+      setInput(text)
+    },
     session: () => {
+      refs.dictationInput?.cancel()
       setViewedAgentId(null)
       setViewedShellId(null)
       setHistWindow(HISTORY_WINDOW)
@@ -321,6 +338,7 @@ export function App({ boot, controller: ctl }) {
     },
     resumed: (meta) => flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`),
     project: (next) => {
+      refs.dictationInput?.cancel()
       process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
       setMcpServers(next.mcp.list())
       setFileList([])
@@ -370,6 +388,21 @@ export function App({ boot, controller: ctl }) {
 
   function flash(msg) {
     toast(msg)
+  }
+
+  if (!refs.dictation) {
+    refs.dictation = createDictation({
+      onStatus: setDictationStatus,
+      onError: (message) => refs.ui.flash(`dictation failed: ${message}`),
+    })
+    refs.dictationInput = createDictationInput({ dictation: refs.dictation, getInput: input, setInput })
+    process.once('exit', () => refs.dictation.dispose())
+    for (const [signal, code] of [['SIGTERM', 143], ['SIGHUP', 129]]) {
+      process.once(signal, () => {
+        refs.dictation.dispose()
+        process.exit(code)
+      })
+    }
   }
 
   if (!refs.updateChecked) {
@@ -979,6 +1012,10 @@ export function App({ boot, controller: ctl }) {
   }
 
   useInput(async (event) => {
+    if (refs.dictationInput.handle(event)) {
+      event.stopPropagation()
+      return
+    }
     if (steer() && fm.is('steer') && !steer().editing) {
       const draft = steer()
       const rows = steerRows()
@@ -1564,6 +1601,11 @@ export function App({ boot, controller: ctl }) {
           }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (refs.dictationInput.handle(e)) return true
+            if (e.ctrl && e.key === 'g') {
+              refs.dictationInput.start(e)
+              return true
+            }
             if (e.key === 'tab' && !e.ctrl && !e.meta && showFiles && matchedFiles.length > 0) {
               pickFile(matchedFiles[Math.min(fileIndex(), matchedFiles.length - 1)])
               return true
@@ -1646,6 +1688,8 @@ export function App({ boot, controller: ctl }) {
         />
       </MouseFocusRegion>}
 
+      {dictationStatus() !== 'idle' && <text style={{ color: accent(), paddingX: 2 }}>{dictationStatus()}</text>}
+
       {showCommands && (
         <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
           {matchedCommands.length === 0 ? (
@@ -1657,7 +1701,7 @@ export function App({ boot, controller: ctl }) {
               selected={cmdIndex()}
               onSelect={setCmdIndex}
               onSubmit={(c) => runCommand(c)}
-              focused={showCommands}
+              focused={showCommands && dictationStatus() === 'idle'}
               maxVisible={5}
               scrolloff={2}
               renderItem={(c, { active }) => (
@@ -1681,7 +1725,7 @@ export function App({ boot, controller: ctl }) {
             onSelect={setFileIndex}
             onSubmit={pickFile}
             onCancel={() => setFilesDismissed(true)}
-            focused={showFiles}
+            focused={showFiles && dictationStatus() === 'idle'}
             maxVisible={5}
             scrolloff={2}
             renderItem={(f, { active }) => (
@@ -1703,7 +1747,7 @@ export function App({ boot, controller: ctl }) {
             onSelect={setCompIndex}
             onSubmit={(candidate) => acceptCompletion(input(), compCtx, candidate)}
             onCancel={dismissCompletion}
-            focused={showCompletion}
+            focused={showCompletion && dictationStatus() === 'idle'}
             maxVisible={5}
             scrolloff={2}
             renderItem={(candidate, { active }) => (
@@ -2082,6 +2126,7 @@ export function App({ boot, controller: ctl }) {
         </box>
       )}
       </box>
+      <DictationKeys input={refs.dictationInput} />
     </box>
   )
 }

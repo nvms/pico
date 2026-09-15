@@ -19,6 +19,10 @@ In the MCP panel: enter enables/disables a server (disabled is sticky across res
 
 ## Composer
 
+- \`ctrl+g\`: Record (macOS)
+- \`enter\`: Transcribe recording
+- \`esc\`: Cancel dictation
+
 - \`enter\` sends; \`shift+enter\` or \`\\<enter>\` inserts a newline
 - \`@\` opens a fuzzy file picker; enter inserts the selected path
 - drag an image file into the terminal to attach it: it appears inline as \`[Image #N]\`, exactly where your cursor is, so images can sit between sentences; backspace after one removes the whole attachment
