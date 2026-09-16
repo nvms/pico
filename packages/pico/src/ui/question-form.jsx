@@ -1,5 +1,5 @@
 import { createSignal, Button, TextInput, useInput } from '@trendr/core'
-import { accent, FAINT, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG } from './theme.js'
+import { accent, MUTED, FG, FG_SOFT, PANEL_BG, SELECT_BG } from './theme.js'
 
 function answerText(question, answer) {
   if (Array.isArray(answer)) return answer.join(', ')
@@ -132,7 +132,7 @@ export function QuestionForm({ request, focused, onSubmit, onCancel }) {
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: accent(), bold: true }}>Review answers</text>
           <box style={{ flexGrow: 1 }} />
-          <text style={{ color: FAINT }}>enter: edit or submit · esc: back</text>
+          <text style={{ color: MUTED }}>enter: edit or submit  esc: back</text>
         </box>
         {questions.map((item, index) => (
           <box style={{ flexDirection: 'column', bg: cursor() === index ? SELECT_BG : undefined, paddingX: 1 }}>
@@ -167,7 +167,7 @@ export function QuestionForm({ request, focused, onSubmit, onCancel }) {
         )}
         <text style={{ color: accent(), bold: true }}>{progress}</text>
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>{item.type === 'multi' ? 'space: select · enter: continue' : 'enter: answer'} · esc: cancel</text>
+        <text style={{ color: MUTED }}>{item.type === 'multi' ? 'space: select  enter: continue' : 'enter: answer'}  esc: cancel</text>
       </box>
       <text style={{ color: FG, bold: true }}>{item.question}</text>
       {item.description && <text style={{ color: FG_SOFT }}>{item.description}</text>}
@@ -190,7 +190,7 @@ export function QuestionForm({ request, focused, onSubmit, onCancel }) {
                   ? `${option.other ? (otherAnswer() ? '[x]' : '[ ]') : (selected(option.label) ? '[x]' : '[ ]')} `
                   : `${cursor() === index ? '›' : ' '} `}{option.label}
               </text>
-              {option.description && <text style={{ color: FG_SOFT }}>{` · ${option.description}`}</text>}
+              {option.description && <text style={{ color: FG_SOFT }}>{`  ${option.description}`}</text>}
               {option.other && (custom() || otherAnswer()) && (
                 <box style={{ bg: custom() ? PANEL_BG : undefined, paddingLeft: 4 }}>
                   <TextInput

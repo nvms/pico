@@ -6,8 +6,7 @@ const PALETTES = {
     accent: '#a78bfa',
     fg: '#e5e7eb',
     fgSoft: '#9ca3af',
-    muted: '#6b7280',
-    faint: '#4b5563',
+    muted: '#b8c0d0',
     panelBg: '#1e1e22',
     selectBg: '#374151',
     red: '#f87171',
@@ -20,8 +19,7 @@ const PALETTES = {
     accent: '#a78bfa',
     fg: '#1f2430',
     fgSoft: '#4b5563',
-    muted: '#6b7280',
-    faint: '#a3a8b3',
+    muted: '#4b5563',
     panelBg: '#e9e9ee',
     selectBg: '#d4d4dc',
     red: '#dc2626',
@@ -34,8 +32,7 @@ const PALETTES = {
     accent: '#88c0d0',
     fg: '#d8dee9',
     fgSoft: '#aab2c4',
-    muted: '#7b88a1',
-    faint: '#616e88',
+    muted: '#b8c0d0',
     panelBg: '#3b4252',
     selectBg: '#434c5e',
     red: '#bf616a',
@@ -49,7 +46,6 @@ export let DEFAULT_ACCENT = PALETTES.dark.accent
 export let FG = PALETTES.dark.fg
 export let FG_SOFT = PALETTES.dark.fgSoft
 export let MUTED = PALETTES.dark.muted
-export let FAINT = PALETTES.dark.faint
 export let PANEL_BG = PALETTES.dark.panelBg
 export let SELECT_BG = PALETTES.dark.selectBg
 export let RED = PALETTES.dark.red
@@ -75,7 +71,6 @@ export function setPalette(name) {
   FG = p.fg
   FG_SOFT = p.fgSoft
   MUTED = p.muted
-  FAINT = p.faint
   PANEL_BG = p.panelBg
   SELECT_BG = p.selectBg
   RED = p.red

@@ -1,5 +1,5 @@
 import { createSignal, Button, Checkbox, ease, Field, FieldList, Menu, NumberInput, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { compactNumber } from 'picocode-core/format.js'
 import { homedir } from 'node:os'
@@ -58,7 +58,7 @@ export function ConfirmPanel({ title, message, confirmLabel = 'Confirm', focused
   })
 
   return (
-    <PanelFrame title={title} hint={`enter: ${confirmLabel.toLowerCase()} · esc: cancel`}>
+    <PanelFrame title={title} hint={`enter: ${confirmLabel.toLowerCase()}  esc: cancel`}>
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <text style={{ color: FG }}>{message}</text>
         <text style={{ color: RED, bold: true }}>This cannot be undone.</text>
@@ -73,9 +73,9 @@ function ConfigField({ field, value, focused, onChange }) {
       <box style={{ flexDirection: 'row' }}>
         <Checkbox checked={value} label={field.label} focused={focused} onChange={onChange} />
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>{field.path}</text>
+        <text style={{ color: MUTED }}>{field.path}</text>
       </box>
-      <text style={{ color: FAINT }}>{`    ${field.desc}`}</text>
+      <text style={{ color: MUTED }}>{`    ${field.desc}`}</text>
     </box>
   )
 }
@@ -87,9 +87,9 @@ function ConfigNumberField({ value, focused, onChange }) {
         <NumberInput focused={focused} value={value} onChange={onChange} min={1} max={100} width={5} />
         <text style={{ color: FG }}> Parallel agent limit</text>
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>research.agentLimit</text>
+        <text style={{ color: MUTED }}>research.agentLimit</text>
       </box>
-      <text style={{ color: FAINT }}>    Maximum agents per parallel run (1-100)</text>
+      <text style={{ color: MUTED }}>    Maximum agents per parallel run (1-100)</text>
     </box>
   )
 }
@@ -100,9 +100,9 @@ function ConfigModelField({ model, label, path, focused, onPick }) {
       <box style={{ flexDirection: 'row' }}>
         <Button label={label} focused={focused} onPress={onPick} />
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>{path}</text>
+        <text style={{ color: MUTED }}>{path}</text>
       </box>
-      <text style={{ color: FAINT }}>{`    ${model || 'Not configured'}`}</text>
+      <text style={{ color: MUTED }}>{`    ${model || 'Not configured'}`}</text>
     </box>
   )
 }
@@ -124,7 +124,7 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
   })
 
   return (
-    <PanelFrame title="Configuration" hint="tab: next setting · space/enter: change · esc: close" fullScreen>
+    <PanelFrame title="Configuration" hint="tab: next setting  space/enter: change  esc: close" fullScreen>
       <box style={{ flexGrow: 1, marginTop: 1, paddingX: 2 }}>
         <FieldList focused={focused} initialFocus="clouds" scrollbar focusPadding={1}>
           {fields.map((field) => (
@@ -158,13 +158,13 @@ export function ScopeTabs({ scopes, active }) {
   return (
     <box style={{ flexDirection: 'row' }}>
       {scopes.map((s, i) => (
-        <text key={s} style={{ color: i === active ? accent() : FAINT, bold: i === active }}>{`${i > 0 ? '  ' : ''}${s}`}</text>
+        <text key={s} style={{ color: i === active ? accent() : MUTED, bold: i === active }}>{`${i > 0 ? '  ' : ''}${s}`}</text>
       ))}
     </box>
   )
 }
 
-export function ModelPanel({ models, current, defaultName, focused, onPick, onPickDefault, onClose, title = 'Select model', hint = 'enter: this session · ctrl+s: set as default · esc: close' }) {
+export function ModelPanel({ models, current, defaultName, focused, onPick, onPickDefault, onClose, title = 'Select model', hint = 'enter: this session  ctrl+s: set as default  esc: close' }) {
   const [cursor, setCursor] = createSignal(models[0] || null)
   const [query, setQuery] = createSignal('')
   const rankedModels = rankFuzzy(models, query(), (q, model) => fuzzyScore(q, model.name))
@@ -201,10 +201,10 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
                 <box style={{ flexDirection: 'row' }}>
                   <text style={{ bold: !off, color: selected ? 'black' : off ? MUTED : FG }}>{m.name}</text>
                   {m.name === current && <text style={{ color: selected ? 'black' : accent() }}>{' ✓'}</text>}
-                  {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{' · default'}</text>}
+                  {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{'  default'}</text>}
                   <box style={{ flexGrow: 1 }} />
                   <text style={{ color: selected ? 'black' : MUTED }}>
-                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in · $${m.price.out} out` : m.provider === 'codex' ? 'subscription' : 'price unknown'}
+                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in  $${m.price.out} out` : m.provider === 'codex' ? 'subscription' : 'price unknown'}
                   </text>
                 </box>
                 <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
@@ -225,7 +225,7 @@ export function HistoryPanel({ prompts, scopes, scopeIndex, focused, onPick, onC
   return (
     <PanelFrame
       title="Search prompts"
-      hint="↑↓ to move · ctrl+s scope · enter to edit · esc to close"
+      hint="↑↓ to move  ctrl+s scope  enter to edit  esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
     >
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
@@ -247,7 +247,7 @@ export function HistoryPanel({ prompts, scopes, scopeIndex, focused, onPick, onC
                 <box style={{ flexGrow: 1, height: 1 }}>
                   <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{p.text.replace(/\n/g, ' ')}</text>
                 </box>
-                <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${timeAgo(p.at)}`}</text>
+                <text style={{ color: selected ? 'black' : MUTED }}>{`  ${timeAgo(p.at)}`}</text>
               </box>
             )}
           />
@@ -256,7 +256,7 @@ export function HistoryPanel({ prompts, scopes, scopeIndex, focused, onPick, onC
           {anyMatch && preview() ? (
             <text style={{ color: FG }}>{preview().text.slice(0, 2000)}</text>
           ) : (
-            <text style={{ color: FAINT }}>no matching prompts</text>
+            <text style={{ color: MUTED }}>no matching prompts</text>
           )}
         </box>
       </box>
@@ -268,7 +268,7 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
   const [preview, setPreview] = createSignal(entries[0] || null)
 
   return (
-    <PanelFrame title="Rewind to a message" hint="↑↓ to move · enter to choose · esc to close">
+    <PanelFrame title="Rewind to a message" hint="↑↓ to move  enter to choose  esc to close">
       <box style={{ flexDirection: 'row', height: 12, marginTop: 1, gap: 2 }}>
         <box style={{ flexDirection: 'column', width: '50%' }}>
           <PickList
@@ -287,7 +287,7 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
                 <box style={{ flexGrow: 1, height: 1 }}>
                   <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{m.text.replace(/\n/g, ' ')}</text>
                 </box>
-                <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${stats(m.index).msgs} after`}</text>
+                <text style={{ color: selected ? 'black' : MUTED }}>{`  ${stats(m.index).msgs} after`}</text>
               </box>
             )}
           />
@@ -295,15 +295,15 @@ export function RewindPickPanel({ entries, stats, focused, onPick, onClose }) {
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 1 }}>
           {preview() ? (
             <box style={{ flexDirection: 'column' }}>
-              <text style={{ color: FAINT }}>{`rewinding here drops ${stats(preview().index).msgs} entries`}</text>
+              <text style={{ color: MUTED }}>{`rewinding here drops ${stats(preview().index).msgs} entries`}</text>
               {stats(preview().index).edits.map((m, i) => (
-                <text key={i} style={{ color: FAINT }}>{`  ↩ ${m.title}`}</text>
+                <text key={i} style={{ color: MUTED }}>{`  ↩ ${m.title}`}</text>
               ))}
               <text> </text>
               <text style={{ color: FG }}>{preview().text.slice(0, 2000)}</text>
             </box>
           ) : (
-            <text style={{ color: FAINT }}>no matching messages</text>
+            <text style={{ color: MUTED }}>no matching messages</text>
           )}
         </box>
       </box>
@@ -338,12 +338,12 @@ export function RewindActionPanel({ target, options, focused, onSubmit, onBack }
                 <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
                 <text style={{ color: active ? accent() : FG }}>{o.label}</text>
               </box>
-              <text style={{ color: FAINT }}>{`  ${o.desc}`}</text>
+              <text style={{ color: MUTED }}>{`  ${o.desc}`}</text>
             </box>
           )}
         />
       </box>
-      <text style={{ color: FAINT }}>enter to confirm · esc to pick a different message</text>
+      <text style={{ color: MUTED }}>enter to confirm  esc to pick a different message</text>
     </box>
   )
 }
@@ -390,7 +390,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
   return (
     <PanelFrame
       title="Resume a session"
-      hint="↑↓ to move · tab: preview · ctrl+s scope · enter to resume · ctrl+x delete · esc to close"
+      hint="↑↓ to move  tab: preview  ctrl+s scope  enter to resume  ctrl+x delete  esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
       fullScreen
     >
@@ -399,7 +399,7 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
           {loading ? (
             <text style={{ color: MUTED }}>loading sessions...</text>
           ) : sessions.length === 0 ? (
-            <text style={{ color: FAINT }}>no sessions here yet</text>
+            <text style={{ color: MUTED }}>no sessions here yet</text>
           ) : (
             <PickList
               counter
@@ -419,8 +419,8 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
                   <box style={{ flexGrow: 1, height: 1 }}>
                     <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{s.title.replace(/\n/g, ' ')}</text>
                   </box>
-                  {s.header.id === currentId && <text style={{ color: selected ? 'black' : accent(), dim: !selected }}> current</text>}
-                  <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${timeAgo(s.at)}`}</text>
+                  {s.header.id === currentId && <text style={{ color: selected ? 'black' : accent() }}> current</text>}
+                  <text style={{ color: selected ? 'black' : MUTED }}>{`  ${timeAgo(s.at)}`}</text>
                 </box>
               )}
             />
@@ -431,12 +431,12 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
           {selectedSession() ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               <box style={{ flexDirection: 'column' }}>
-                <text style={{ color: FAINT }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'} · ${timeAgo(selectedSession().at)} · ${shortenHome(selectedSession().header.root)}`}</text>
+                <text style={{ color: MUTED }}>{`${selectedSession().turns} ${selectedSession().turns === 1 ? 'turn' : 'turns'}  ${timeAgo(selectedSession().at)}  ${shortenHome(selectedSession().header.root)}`}</text>
                 <box style={{ height: 1 }} />
                 {(selectedSession().preview || []).length > 0 ? (
                   <box style={{ flexDirection: 'column' }}>
                     {selectedSession().previewMessageCount > selectedSession().preview.length && (
-                      <text style={{ color: FAINT }}>{`${selectedSession().previewMessageCount - selectedSession().preview.length} earlier messages omitted`}</text>
+                      <text style={{ color: MUTED }}>{`${selectedSession().previewMessageCount - selectedSession().preview.length} earlier messages omitted`}</text>
                     )}
                     {(selectedSession().preview || []).map((message, i) => (
                       <box key={`${message.role}-${i}`} style={{ flexDirection: 'column', marginTop: i === 0 ? 0 : 1 }}>
@@ -445,12 +445,12 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
                     ))}
                   </box>
                 ) : (
-                  <text style={{ color: FAINT }}>no transcript preview</text>
+                  <text style={{ color: MUTED }}>no transcript preview</text>
                 )}
               </box>
             </ScrollBox>
           ) : (
-            <text style={{ color: FAINT }}>no sessions</text>
+            <text style={{ color: MUTED }}>no sessions</text>
           )}
         </box>
       </box>
@@ -479,14 +479,14 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
   return (
     <PanelFrame
       title="Memory"
-      hint="↑↓ to move · enter: enable/disable · tab: preview · ctrl+s scope · ctrl+x forget (twice) · esc to close"
+      hint="↑↓ to move  enter: enable/disable  tab: preview  ctrl+s scope  ctrl+x forget (twice)  esc to close"
       right={<ScopeTabs scopes={scopes} active={scopeIndex} />}
       fullScreen
     >
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
         <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
           {memories.length === 0 ? (
-            <text style={{ color: FAINT }}>no memories here yet</text>
+            <text style={{ color: MUTED }}>no memories here yet</text>
           ) : (
             <PickList
               counter
@@ -502,10 +502,10 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
               renderItem={(m, { selected, focused: f }) => (
                 <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
                   <box style={{ flexGrow: 1, height: 1 }}>
-                    <text style={{ overflow: 'truncate', color: selected ? 'black' : (m.disabled ? FAINT : FG), dim: m.disabled }}>{m.name}</text>
+                    <text style={{ overflow: 'truncate', italic: m.disabled, color: selected ? 'black' : (m.disabled ? MUTED : FG) }}>{`${m.disabled ? '   ' : ''}${m.name}`}</text>
                   </box>
-                  {m.disabled && <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>  suppressed</text>}
-                  <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${m.scope}`}</text>
+                  {m.disabled && <text style={{ color: selected ? 'black' : MUTED }}>  suppressed</text>}
+                  <text style={{ color: selected ? 'black' : MUTED }}>{`  ${m.scope}`}</text>
                 </box>
               )}
             />
@@ -515,13 +515,13 @@ export function MemoryPanel({ memories, scopes, scopeIndex, focused, onToggleDis
         <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 3 }}>
           {preview ? (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
-              {preview.disabled && <text style={{ color: FAINT, bold: true }}>SUPPRESSED</text>}
+              {preview.disabled && <text style={{ color: MUTED, bold: true }}>SUPPRESSED</text>}
               <text style={{ color: MUTED, italic: true }}>{preview.description || 'no description'}</text>
               <text> </text>
               <text style={{ color: FG_SOFT }}>{preview.body}</text>
             </ScrollBox>
           ) : (
-            <text style={{ color: FAINT }}>no memories</text>
+            <text style={{ color: MUTED }}>no memories</text>
           )}
         </box>
       </box>
@@ -544,7 +544,7 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   const label = (l) => (l.key === null ? 'default' : l.key)
 
   return (
-    <PanelFrame title="Thinking effort" hint="j/k to move · enter: this session · ctrl+s: set as default · esc: close">
+    <PanelFrame title="Thinking effort" hint="j/k to move  enter: this session  ctrl+s: set as default  esc: close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
           counter
@@ -560,9 +560,9 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
             <box style={{ flexDirection: 'row' }}>
               <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
               <text style={{ color: active ? accent() : FG }}>{label(l).padEnd(Math.max(10, label(l).length + 1))}</text>
-              <text style={{ color: FAINT }}>{l.desc}</text>
+              <text style={{ color: MUTED }}>{l.desc}</text>
               {l.key === current && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
-              {l.key === defaultLevel && <text style={{ color: FAINT }}>{'  · default'}</text>}
+              {l.key === defaultLevel && <text style={{ color: MUTED }}>{'   default'}</text>}
             </box>
           )}
         />
@@ -575,7 +575,7 @@ export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }
   const [cursor, setCursor] = createSignal(Math.max(0, themes.findIndex((t) => t.key === pref)))
 
   return (
-    <PanelFrame title="Theme" hint="j/k to move and preview · enter to apply · esc: close">
+    <PanelFrame title="Theme" hint="j/k to move and preview  enter to apply  esc: close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
           items={themes}
@@ -593,7 +593,7 @@ export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }
             <box style={{ flexDirection: 'row' }}>
               <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
               <text style={{ color: active ? accent() : FG }}>{t.key.padEnd(Math.max(10, t.key.length + 1))}</text>
-              <text style={{ color: FAINT }}>{t.desc}</text>
+              <text style={{ color: MUTED }}>{t.desc}</text>
               {t.key === pref && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
             </box>
           )}
@@ -620,7 +620,7 @@ function ContextOverview({ overview }) {
     })
     boundary = 0
     cells.push(
-      <text key={i} style={{ color: i >= visible ? PANEL_BG : segment?.color || FAINT }}>
+      <text key={i} style={{ color: i >= visible ? PANEL_BG : segment?.color || MUTED }}>
         {i >= visible ? ' ' : segment ? '█' : '░'}
       </text>,
     )
@@ -656,7 +656,7 @@ function ContextOverview({ overview }) {
                   value={segment.tokens}
                   initial={0}
                   duration={2000}
-                  color={FAINT}
+                  color={MUTED}
                   highlight={accent()}
                   format={formatTokens}
                 />
@@ -673,11 +673,11 @@ export function InfoListPanel({ title, rows, overview, focused, onClose }) {
   useEscape(() => focused, onClose)
 
   return (
-    <PanelFrame title={title} hint="j/k or ↑↓ to scroll · esc close">
+    <PanelFrame title={title} hint="j/k or ↑↓ to scroll  esc close">
       {overview && <ContextOverview overview={overview} />}
       <box style={{ flexDirection: 'column', height: 14, marginTop: 1 }}>
         {rows.length === 0 ? (
-          <text style={{ color: FAINT }}>nothing here yet</text>
+          <text style={{ color: MUTED }}>nothing here yet</text>
         ) : (
           <ScrollBox style={{ flexGrow: 1 }} focused={focused} scrollbar>
             {rows.map((row, i) => (
@@ -685,7 +685,7 @@ export function InfoListPanel({ title, rows, overview, focused, onClose }) {
                 <box style={{ flexDirection: 'row' }}>
                   <text style={{ color: accent() }}>{row.name}</text>
                   <box style={{ flexGrow: 1 }} />
-                  {row.note && <text style={{ color: FAINT }}>{row.note}</text>}
+                  {row.note && <text style={{ color: MUTED }}>{row.note}</text>}
                 </box>
                 <text style={{ color: MUTED }}>{row.desc || 'no description'}</text>
               </box>
@@ -717,13 +717,13 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
   })
 
   return (
-    <PanelFrame title="Switch project" hint="↑↓ to move · tab: sessions · enter to jump to its last session · ctrl+x delete · esc to close" fullScreen>
+    <PanelFrame title="Switch project" hint="↑↓ to move  tab: sessions  enter to jump to its last session  ctrl+x delete  esc to close" fullScreen>
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
         <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading projects...</text>
           ) : projects.length === 0 ? (
-            <text style={{ color: FAINT }}>no known projects yet</text>
+            <text style={{ color: MUTED }}>no known projects yet</text>
           ) : (
             <PickList
               counter
@@ -743,7 +743,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
                   <box style={{ flexGrow: 1, height: 1 }}>
                     <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{p.path}</text>
                   </box>
-                  <text style={{ color: selected ? 'black' : FAINT, dim: !selected }}>{`  ${p.current ? 'current · ' : ''}${timeAgo(p.latest.at)}`}</text>
+                  <text style={{ color: selected ? 'black' : MUTED }}>{`  ${p.current ? 'current  ' : ''}${timeAgo(p.latest.at)}`}</text>
                 </box>
               )}
             />
@@ -755,7 +755,7 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
             <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
               <box style={{ flexDirection: 'column' }}>
                 <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
-                <text style={{ color: FAINT }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'} · ${timeAgo(preview().latest.at)}`}</text>
+                <text style={{ color: MUTED }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'}  ${timeAgo(preview().latest.at)}`}</text>
                 <box style={{ height: 1 }} />
                 {(preview().sessions || []).map((session, i) => (
                   <box key={session.header.id} style={{ flexDirection: 'column' }}>
@@ -764,14 +764,14 @@ export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onC
                       <box style={{ flexGrow: 1, height: 1 }}>
                         <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{session.title.replace(/\n/g, ' ')}</text>
                       </box>
-                      <text style={{ color: FAINT }}>{`  ${session.turns} ${session.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(session.at)}`}</text>
+                      <text style={{ color: MUTED }}>{`  ${session.turns} ${session.turns === 1 ? 'turn' : 'turns'}  ${timeAgo(session.at)}`}</text>
                     </box>
                   </box>
                 ))}
               </box>
             </ScrollBox>
           ) : (
-            <text style={{ color: FAINT }}>no projects</text>
+            <text style={{ color: MUTED }}>no projects</text>
           )}
         </box>
       </box>
@@ -795,7 +795,7 @@ export function ConnectPanel({ providers, focused, onConnect, onDisconnect, onCl
   })
 
   return (
-    <PanelFrame title="Connect a subscription" hint="enter sign in · ctrl+x disconnect (twice) · esc close">
+    <PanelFrame title="Connect a subscription" hint="enter sign in  ctrl+x disconnect (twice)  esc close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <Menu
           counter
@@ -852,10 +852,10 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
   }
 
   return (
-    <PanelFrame title="Scheduled wake-ups" hint="j/k to move · enter or ctrl+x cancel (twice) · esc close">
+    <PanelFrame title="Scheduled wake-ups" hint="j/k to move  enter or ctrl+x cancel (twice)  esc close">
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {wakeups.length === 0 ? (
-          <text style={{ color: FAINT }}>no pending wake-ups · the agent schedules them with schedule_wakeup</text>
+          <text style={{ color: MUTED }}>no pending wake-ups  the agent schedules them with schedule_wakeup</text>
         ) : (
           <Menu
             counter
@@ -876,10 +876,10 @@ export function WakeupsPanel({ wakeups, focused, onCancel, onClose }) {
                   <text style={{ color: active ? accent() : FG }}>{`⏰ ${w.id}`}</text>
                   <box style={{ flexGrow: 1 }} />
                   <text style={{ color: MUTED }}>{countdown(w.at)}</text>
-                  <text style={{ color: FAINT }}>{`  ${new Date(w.at).toLocaleTimeString()}`}</text>
+                  <text style={{ color: MUTED }}>{`  ${new Date(w.at).toLocaleTimeString()}`}</text>
                 </box>
                 <box style={{ flexGrow: 1, height: 1, flexDirection: 'row' }}>
-                  <text style={{ color: FAINT }}>{'    '}</text>
+                  <text style={{ color: MUTED }}>{'    '}</text>
                   <text style={{ overflow: 'truncate', color: FG_SOFT }}>{w.note.replace(/\n/g, ' ')}</text>
                 </box>
               </box>
@@ -896,7 +896,7 @@ function mcpStatus(status) {
     connected: { icon: '▪', color: accent() },
     connecting: { icon: '◌', color: '#fbbf24' },
     error: { icon: '✗', color: RED },
-    disabled: { icon: '▫', color: FAINT },
+    disabled: { icon: '▫', color: MUTED },
     idle: { icon: '▫', color: MUTED },
   }
   return palette[status] || palette.idle
@@ -905,7 +905,7 @@ function mcpStatus(status) {
 function FormField({ label, active, children }) {
   return (
     <box style={{ flexDirection: 'column' }}>
-      <text style={{ color: active ? accent() : FAINT }}>{label}</text>
+      <text style={{ color: active ? accent() : MUTED }}>{label}</text>
       {children}
       <text> </text>
     </box>
@@ -996,7 +996,7 @@ function McpServerForm({ focused, server, onSave, onInvalid, onCancel }) {
         </box>
       </FormField>
       {http && (
-        <FormField label="headers · optional" active={fm.is('headers')}>
+        <FormField label="headers  optional" active={fm.is('headers')}>
           <box style={{ bg: PANEL_BG, paddingX: 1 }}>
             <TextInput focused={focused && fm.is('headers')} placeholder='Authorization="Bearer ..." X-Team="core"' initialValue={headers()} onChange={setHeaders} />
           </box>
@@ -1025,12 +1025,12 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
     const describe = (t) => t.description.replace(/^\[[^\]]*\]\s*/, '').trim() || 'no description'
     return (
       <PanelFrame
-        title={`MCP servers · ${server.name} · ${server.tools.length} ${server.tools.length === 1 ? 'tool' : 'tools'}`}
-        hint="j/k or ↑↓ to scroll · esc back to servers"
+        title={`MCP servers  ${server.name}  ${server.tools.length} ${server.tools.length === 1 ? 'tool' : 'tools'}`}
+        hint="j/k or ↑↓ to scroll  esc back to servers"
       >
         <box style={{ flexDirection: 'column', height: 14, marginTop: 1 }}>
           {server.tools.length === 0 ? (
-            <text style={{ color: FAINT }}>no tools reported · is the server connected?</text>
+            <text style={{ color: MUTED }}>no tools reported  is the server connected?</text>
           ) : (
             <ScrollBox style={{ flexGrow: 1 }} focused={focused} scrollbar>
               {server.tools.map((t, i) => (
@@ -1050,8 +1050,8 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
     <PanelFrame
       title="MCP servers"
       hint={form()
-        ? 'tab moves between fields · j/k + space picks a radio option · esc cancels'
-        : 'enter enable/disable · t tools · e edit · r reconnect · a add · ctrl+x remove (twice) · esc close'}
+        ? 'tab moves between fields  j/k + space picks a radio option  esc cancels'
+        : 'enter enable/disable  t tools  e edit  r reconnect  a add  ctrl+x remove (twice)  esc close'}
     >
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         {form() ? (
@@ -1067,7 +1067,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
             onCancel={() => setForm(null)}
           />
         ) : servers.length === 0 ? (
-          <text style={{ color: FAINT }}>no MCP servers configured · press a to add one</text>
+          <text style={{ color: MUTED }}>no MCP servers configured  press a to add one</text>
         ) : (
           <Menu
             counter
@@ -1097,9 +1097,9 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                   <box style={{ flexDirection: 'row', height: 1 }}>
                     <text>{'     '}</text>
                     <box style={{ flexGrow: 1, height: 1 }}>
-                      <text style={{ overflow: 'truncate', color: FAINT }}>{shortenHome(redactServerSpec(s.command))}</text>
+                      <text style={{ overflow: 'truncate', color: MUTED }}>{shortenHome(redactServerSpec(s.command))}</text>
                     </box>
-                    <text style={{ color: FAINT }}>{`  ${s.scope === 'project' ? 'project' : 'global'}`}</text>
+                    <text style={{ color: MUTED }}>{`  ${s.scope === 'project' ? 'project' : 'global'}`}</text>
                   </box>
                 </box>
               )

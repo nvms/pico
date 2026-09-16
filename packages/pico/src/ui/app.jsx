@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import { createDictation } from '../dictation.js'
 import { createDictationInput } from './dictation-input.js'
+import { createComposerFiles } from './composer-files.js'
 import { dictationIndicator, appendLevel } from './dictation-indicator.js'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
@@ -27,7 +28,7 @@ import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
+import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
@@ -204,7 +205,9 @@ export function App({ boot, controller: ctl }) {
   const [compacting, setCompacting] = createSignal(state.compacting)
   const [compactStatus, setCompactStatus] = createSignal(state.compactStatus)
   const [startedAt, setStartedAt] = createSignal(state.startedAt)
-  const [input, setInput] = createSignal('')
+  const [input, setInputValue] = createSignal('')
+  const composerFiles = boot.refs.composerFiles ??= createComposerFiles()
+  const setInput = (text) => setInputValue(composerFiles.update(text, state.attachments))
   const [dictationStatus, setDictationStatus] = createSignal('idle')
   const [dictationLevels, setDictationLevels] = createSignal([])
   const [model, setModel] = createSignal(state.model)
@@ -340,10 +343,10 @@ export function App({ boot, controller: ctl }) {
       setFollow(true)
       fm.focus('input')
     },
-    resumed: (meta) => flash(`resumed · ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'} · ${timeAgo(meta.at)}`),
+    resumed: (meta) => flash(`resumed  ${meta.turns} ${meta.turns === 1 ? 'turn' : 'turns'}  ${timeAgo(meta.at)}`),
     project: (next) => {
       refs.dictationInput?.cancel()
-      process.stdout.write(`\x1b]0;pico · ${next.root.split('/').pop()}\x07`)
+      process.stdout.write(`\x1b]0;pico  ${next.root.split('/').pop()}\x07`)
       setMcpServers(next.mcp.list())
       setFileList([])
     },
@@ -360,8 +363,8 @@ export function App({ boot, controller: ctl }) {
   }
   syncFromController()
 
-  const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill · ${s.description || s.source}`, skill: true }))
-  const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command · ${c.description || c.source}`, command: true }))
+  const skillCommands = skills.list().map((s) => ({ name: s.name, desc: `skill  ${s.description || s.source}`, skill: true }))
+  const userCommands = boot.commands.list().map((c) => ({ name: c.name, desc: `command  ${c.description || c.source}`, command: true }))
   const byName = new Map()
   const shadowed = []
   for (const c of [...COMMANDS, ...skillCommands, ...userCommands]) {
@@ -422,7 +425,7 @@ export function App({ boot, controller: ctl }) {
     refs.updateChecked = true
     checkForUpdate(version).then((found) => {
       if (!found) return
-      updateToast(`pico v${found.version} available · /update`)
+      updateToast(`pico v${found.version} available  /update`)
       found.markNotified()
     }).catch(() => {})
   }
@@ -464,7 +467,8 @@ export function App({ boot, controller: ctl }) {
       }
     }
     setHistIdx(-1)
-    ctl.send(value)
+    composerFiles.update(text, state.attachments)
+    ctl.send(composerFiles.content().trim())
   }
 
   function interrupt() {
@@ -517,7 +521,7 @@ export function App({ boot, controller: ctl }) {
       })
     }
     setInfoPanel({
-      title: `Context · ${breakdown.model}`,
+      title: `Context  ${breakdown.model}`,
       rows,
       overview: breakdown.segments.length ? { segments: breakdown.segments } : null,
     })
@@ -541,7 +545,7 @@ export function App({ boot, controller: ctl }) {
     setThemePref(pref)
     previewPalette(pref)
     writeConfig({ theme: pref === 'auto' ? undefined : pref }).catch(() => {})
-    flash(pref === 'auto' ? `theme: auto · following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
+    flash(pref === 'auto' ? `theme: auto  following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
   }
 
   function steerPreview() {
@@ -568,7 +572,7 @@ export function App({ boot, controller: ctl }) {
     setSteerText('')
     setHistWindow(HISTORY_WINDOW)
     fm.focus('input')
-    if (applied) flash('conversation steering applied · nothing sent')
+    if (applied) flash('conversation steering applied  nothing sent')
   }
 
   function applySteer() {
@@ -582,7 +586,7 @@ export function App({ boot, controller: ctl }) {
     const draft = steer()
     const row = steerRows()[draft.selected]
     if (!row) return startSteerAdd()
-    if (row.locked) return flash('locked · this message is before the latest compaction')
+    if (row.locked) return flash('locked  this message is before the latest compaction')
     setSteerText(row.text)
     setSteer({ ...draft, editing: true, adding: false, role: row.role })
   }
@@ -615,7 +619,7 @@ export function App({ boot, controller: ctl }) {
     const rows = steerRows()
     const target = rows[draft.selected]
     if (!target) return
-    if (target.locked) return flash('locked · this message is before the latest compaction')
+    if (target.locked) return flash('locked  this message is before the latest compaction')
     const changes = [...draft.changes, { op: 'delete', target: target.messageId }]
     const remaining = rows.filter((row) => row.messageId !== target.messageId)
     const selected = Math.min(draft.selected, Math.max(0, remaining.length - 1))
@@ -638,7 +642,7 @@ export function App({ boot, controller: ctl }) {
       if (!args) return setShowThemePanel(true)
       const choice = args.toLowerCase()
       const valid = [...paletteList().map((p) => p.key), 'auto']
-      if (!valid.includes(choice)) return flash(`theme: ${paletteName()} · /theme <${valid.join('|')}>`)
+      if (!valid.includes(choice)) return flash(`theme: ${paletteName()}  /theme <${valid.join('|')}>`)
       applyThemePref(choice)
       return
     }
@@ -671,12 +675,12 @@ export function App({ boot, controller: ctl }) {
       return ctl.setEffortByName(args.toLowerCase())
     }
     if (c.name === 'update') {
-      if (isDevInstall(import.meta.url)) return flash('this pico runs from a source checkout · update it with git')
+      if (isDevInstall(import.meta.url)) return flash('this pico runs from a source checkout  update it with git')
       const latest = await fetchLatestVersion().catch(() => null)
       if (latest && !newerVersion(version, latest)) return flash(`pico v${version} is already the latest`)
       flash(`updating${latest ? ` to v${latest}` : ''}...`)
       const result = await runUpdate()
-      if (result.ok) return flash(`updated${latest ? ` to v${latest}` : ''} · restart pico to use it`)
+      if (result.ok) return flash(`updated${latest ? ` to v${latest}` : ''}  restart pico to use it`)
       return flash(`update failed: ${result.output.slice(0, 100)}`)
     }
     if (c.name === 'steer') return beginSteer()
@@ -697,7 +701,7 @@ export function App({ boot, controller: ctl }) {
     }
     if (c.name === 'project') return openProjectPanel()
     if (c.name === 'cwd') {
-      const rootNote = boot.root !== boot.cwd ? ` · project root ${shortenPath(boot.root)}` : ''
+      const rootNote = boot.root !== boot.cwd ? `  project root ${shortenPath(boot.root)}` : ''
       return flash(`${boot.displayCwd}${rootNote}`)
     }
     if (c.name === 'skills') {
@@ -717,7 +721,7 @@ export function App({ boot, controller: ctl }) {
     }
     if (c.name === 'tools') {
       const { rows, mcpCount } = await ctl.describeTools()
-      setInfoPanel({ title: `Tools${mcpCount ? ` · plus ${mcpCount} MCP (see /mcp)` : ''}`, rows })
+      setInfoPanel({ title: `Tools${mcpCount ? `  plus ${mcpCount} MCP (see /mcp)` : ''}`, rows })
       return
     }
     if (c.name === 'new') return ctl.newSession()
@@ -738,8 +742,8 @@ export function App({ boot, controller: ctl }) {
     if (c.name === 'cost') {
       const cost = ctl.costSummary()
       if (!cost) return flash('no usage yet')
-      const base = `$${cost.spent.toFixed(4)} spent · ${cost.promptTokens.toLocaleString()} in · ${cost.completionTokens.toLocaleString()} out`
-      flash(cost.spent - cost.active > 0.00005 ? `${base} · current conversation $${cost.active.toFixed(4)}` : base)
+      const base = `$${cost.spent.toFixed(4)} spent  ${cost.promptTokens.toLocaleString()} in  ${cost.completionTokens.toLocaleString()} out`
+      flash(cost.spent - cost.active > 0.00005 ? `${base}  current conversation $${cost.active.toFixed(4)}` : base)
       return
     }
     if (c.name === 'export') {
@@ -752,7 +756,7 @@ export function App({ boot, controller: ctl }) {
   async function refreshAuthProviders() {
     const openai = await openaiStatus().catch(() => ({ connected: false, email: null }))
     setAuthProviders([
-      { id: 'openai', label: 'OpenAI · ChatGPT / Codex plan', connected: openai.connected, email: openai.email },
+      { id: 'openai', label: 'OpenAI  ChatGPT / Codex plan', connected: openai.connected, email: openai.email },
     ])
   }
 
@@ -766,7 +770,7 @@ export function App({ boot, controller: ctl }) {
     setShowConnectPanel(false)
     flash('opening your browser for ChatGPT sign-in...')
     ctl.connectProvider()
-      .then(({ email, count }) => flash(`connected as ${email || 'your ChatGPT account'} · ${count} codex models unlocked in /model`))
+      .then(({ email, count }) => flash(`connected as ${email || 'your ChatGPT account'}  ${count} codex models unlocked in /model`))
       .catch((err) => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
   }
 
@@ -805,7 +809,7 @@ export function App({ boot, controller: ctl }) {
   }
 
   async function deleteProject(p) {
-    if (p.current) return flash('cannot delete the current project · switch away first')
+    if (p.current) return flash('cannot delete the current project  switch away first')
     const armed = refs.projectDeleteArm
     if (!armed || armed.root !== p.root || Date.now() - armed.at > 3000) {
       refs.projectDeleteArm = { root: p.root, at: Date.now() }
@@ -815,7 +819,7 @@ export function App({ boot, controller: ctl }) {
     try {
       await deleteProjectData(p.root)
       setProjects((list) => list.filter((x) => x.root !== p.root))
-      flash(`deleted ${p.path} · ${p.count} ${p.count === 1 ? 'session' : 'sessions'} removed`)
+      flash(`deleted ${p.path}  ${p.count} ${p.count === 1 ? 'session' : 'sessions'} removed`)
     } catch (err) {
       flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
     }
@@ -1129,7 +1133,7 @@ export function App({ boot, controller: ctl }) {
       } else {
         refs.quitAt = now
         const running = boot.shells.running()
-        flash(running ? `${running} ${running === 1 ? 'shell' : 'shells'} running · ctrl+c again to exit and kill ${running === 1 ? 'it' : 'them'}` : 'ctrl+c again to exit')
+        flash(running ? `${running} ${running === 1 ? 'shell' : 'shells'} running  ctrl+c again to exit and kill ${running === 1 ? 'it' : 'them'}` : 'ctrl+c again to exit')
       }
       event.stopPropagation()
       return
@@ -1247,13 +1251,13 @@ export function App({ boot, controller: ctl }) {
     const e = edits.length
     const editsLabel = `${e} ${e === 1 ? 'edit' : 'edits'}`
     const opts = []
-    if (e > 0) opts.push({ key: 'both', label: 'restore code and conversation', desc: `chat returns to this message · ${editsLabel} reverted` })
+    if (e > 0) opts.push({ key: 'both', label: 'restore code and conversation', desc: `chat returns to this message  ${editsLabel} reverted` })
     opts.push({
       key: 'chat',
       label: e > 0 ? 'restore conversation only' : 'restore conversation',
-      desc: e > 0 ? 'chat returns to this message · file changes kept' : `chat returns to this message · drops ${msgs} entries`,
+      desc: e > 0 ? 'chat returns to this message  file changes kept' : `chat returns to this message  drops ${msgs} entries`,
     })
-    if (e > 0) opts.push({ key: 'code', label: 'restore code only', desc: `conversation kept · ${editsLabel} reverted` })
+    if (e > 0) opts.push({ key: 'code', label: 'restore code only', desc: `conversation kept  ${editsLabel} reverted` })
     opts.push({ key: 'summary', label: 'rewind and keep a summary', desc: 'dropped entries collapse into a one-line note' })
     return opts
   })()
@@ -1464,7 +1468,7 @@ export function App({ boot, controller: ctl }) {
         <ConversationScrollAnchor target={conversationSearch.scroll} />
         {hiddenCount > 0 && (
           <box style={{ paddingX: 2 }}>
-            <text style={{ color: FAINT, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'} · scroll to top to load`}</text>
+            <text style={{ color: MUTED, italic: true }}>{`⌃ ${hiddenCount.toLocaleString()} older ${hiddenCount === 1 ? 'message' : 'messages'}  scroll to top to load`}</text>
           </box>
         )}
         {deliberationView ? (
@@ -1503,7 +1507,7 @@ export function App({ boot, controller: ctl }) {
         ) : fm.is('feed') && !anyPanel() && (
           <box style={{ position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', bg: accent(), paddingX: 2 }}>
             <box style={{ flexGrow: 1 }} />
-            <text style={{ color: 'black' }}>{'j/k · ↑/↓ scroll   g/G ends   / search   ctrl-u/d page'}</text>
+            <text style={{ color: 'black' }}>{'j/k  ↑/↓ scroll   g/G ends   / search   ctrl-u/d page'}</text>
           </box>
         )}
       </box>}
@@ -1516,16 +1520,16 @@ export function App({ boot, controller: ctl }) {
               <box style={{ flexGrow: 1, height: 1 }}>
                 <text style={{ overflow: 'truncate', color: accent() }}>{message.replace(/\n/g, ' ')}</text>
               </box>
-              {i === 0 && <text style={{ color: accent() }}>{'  after next tool · ↑ to edit'}</text>}
+              {i === 0 && <text style={{ color: accent() }}>{'  after next tool  ↑ to edit'}</text>}
             </box>
           ))}
           {queued().map((message, i) => (
             <box key={`pending-${i}`} style={{ flexDirection: 'row' }}>
-              <text style={{ color: FAINT }}>{'› '}</text>
+              <text style={{ color: MUTED }}>{'› '}</text>
               <box style={{ flexGrow: 1, height: 1 }}>
                 <text style={{ overflow: 'truncate', color: MUTED }}>{message.replace(/\n/g, ' ')}</text>
               </box>
-              {i === 0 && expedited().length === 0 && <text style={{ color: MUTED }}>{'  pending · ↑ edit · → send after next tool'}</text>}
+              {i === 0 && expedited().length === 0 && <text style={{ color: MUTED }}>{'  pending  ↑ edit  → send after next tool'}</text>}
             </box>
           ))}
         </box>
@@ -1548,7 +1552,7 @@ export function App({ boot, controller: ctl }) {
 
       {steer() && (
         <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 2, paddingY: 1, marginTop: 1 }}>
-          <text style={{ color: accent(), bold: true }}>{steer().editing ? `${steer().adding ? 'Add' : 'Edit'} ${steer().role}` : `Steer · ${steer().changes.length} staged`}</text>
+          <text style={{ color: accent(), bold: true }}>{steer().editing ? `${steer().adding ? 'Add' : 'Edit'} ${steer().role}` : `Steer  ${steer().changes.length} staged`}</text>
           {steer().editing ? (
             <TextArea
               focused={fm.is('steer')}
@@ -1574,7 +1578,7 @@ export function App({ boot, controller: ctl }) {
               cursor={{ blink: true, bg: accent(), color: 'black' }}
             />
           ) : (
-            <text style={{ color: MUTED }}>{'↑↓ select · enter edit · a add after · x/d delete · ctrl+s apply · esc discard'}</text>
+            <text style={{ color: MUTED }}>{'↑↓ select  enter edit  a add after  x/d delete  ctrl+s apply  esc discard'}</text>
           )}
         </box>
       )}
@@ -1714,7 +1718,7 @@ export function App({ boot, controller: ctl }) {
       {showCommands && (
         <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
           {matchedCommands.length === 0 ? (
-            <text style={{ color: FAINT }}>no matching commands</text>
+            <text style={{ color: MUTED }}>no matching commands</text>
           ) : (
             <Menu
               counter
@@ -1729,7 +1733,7 @@ export function App({ boot, controller: ctl }) {
                 <box style={{ flexDirection: 'row' }}>
                   <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
                   <text style={{ color: active ? accent() : MUTED }}>{`/${c.name}`.padEnd(matchedCommands.reduce((m, x) => Math.max(m, x.name.length + 3), 12))}</text>
-                  <text style={{ color: active ? '#cbd5e1' : FAINT }}>{c.desc}</text>
+                  <text style={{ color: active ? FG : MUTED }}>{c.desc}</text>
                 </box>
               )}
             />
@@ -1805,7 +1809,7 @@ export function App({ boot, controller: ctl }) {
           current={participantModelTarget() ? boot[`${participantModelTarget()}Model`] : selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
           defaultName={null}
           title={participantModelTarget() ? `Choose Participant ${participantModelTarget() === 'participantA' ? 'A' : 'B'} model` : selectingDeliberationModel() ? 'Choose synthesis model' : 'Choose parallel worker model'}
-          hint="enter: save model · esc: cancel"
+          hint="enter: save model  esc: cancel"
           focused={showResearchModelPanel()}
           onPick={(m) => {
             if (participantModelTarget()) {
@@ -2001,7 +2005,7 @@ export function App({ boot, controller: ctl }) {
       {visibleShells.length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <text style={{ color: MUTED }}>{`${shellActionHint ? `${shellActionHint} · ` : ''}j/k move`}</text>
+            <text style={{ color: MUTED }}>{`${shellActionHint ? `${shellActionHint}  ` : ''}j/k move`}</text>
           </box>
           {!combinedActivity && (
             <AgentStripRow selected={!viewedShell} focused={fm.current() === 'shell-main'} onPress={() => { fm.focus('shell-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true) }}>
@@ -2021,12 +2025,12 @@ export function App({ boot, controller: ctl }) {
                 <box style={{ flexGrow: 1, height: 1 }}>
                   <text style={{ overflow: 'truncate', color: focused ? 'black' : MUTED }}>{s.description || s.command.replace(/\n/g, ' ')}</text>
                 </box>
-                <text style={{ color: focused ? 'black' : MUTED }}>{`  ${s.status === 'running' ? '' : `exit ${s.exitCode} · `}${elapsed}`}</text>
+                <text style={{ color: focused ? 'black' : MUTED }}>{`  ${s.status === 'running' ? '' : `exit ${s.exitCode}  `}${elapsed}`}</text>
               </AgentStripRow>
             )
           })}
           {visibleShells.length > SHELL_STRIP_MAX && (
-            <text style={{ color: MUTED }}>{`  ${shellWindowStart > 0 ? `↑ ${shellWindowStart}` : ''}${shellWindowStart > 0 && shellWindowStart + shellWindow.length < visibleShells.length ? ' · ' : ''}${shellWindowStart + shellWindow.length < visibleShells.length ? `↓ ${visibleShells.length - shellWindowStart - shellWindow.length}` : ''} more`}</text>
+            <text style={{ color: MUTED }}>{`  ${shellWindowStart > 0 ? `↑ ${shellWindowStart}` : ''}${shellWindowStart > 0 && shellWindowStart + shellWindow.length < visibleShells.length ? '  ' : ''}${shellWindowStart + shellWindow.length < visibleShells.length ? `↓ ${visibleShells.length - shellWindowStart - shellWindow.length}` : ''} more`}</text>
           )}
         </box>
       )}
@@ -2034,7 +2038,7 @@ export function App({ boot, controller: ctl }) {
       {visibleAgents.length > 0 && (
         <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-            <text style={{ color: MUTED }}>{`${agentActionHint ? `${agentActionHint} · ` : ''}j/k move`}</text>
+            <text style={{ color: MUTED }}>{`${agentActionHint ? `${agentActionHint}  ` : ''}j/k move`}</text>
           </box>
           {!combinedActivity && (
             <AgentStripRow selected={!viewedAgent} focused={fm.current() === 'agent-main'} onPress={() => { fm.focus('agent-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
@@ -2054,13 +2058,13 @@ export function App({ boot, controller: ctl }) {
                   <text style={{ overflow: 'truncate', color: focused ? 'black' : MUTED }}>{a.description}</text>
                 </box>
                 {status.label && <text style={{ color: focused ? 'black' : status.color }}>{`  ${status.label}`}</text>}
-                <text style={{ color: focused ? 'black' : MUTED }}>{`${status.label ? ' ·' : '  '} ${agentElapsed(a)} · ↓ `}</text>
+                <text style={{ color: focused ? 'black' : MUTED }}>{`${status.label ? '  ' : '  '} ${agentElapsed(a)}  ↓ `}</text>
                 <AnimatedValue value={a.usage?.totalTokens || a.usage?.promptTokens || 0} color={focused ? 'black' : MUTED} highlight={focused ? 'black' : accent()} format={(n) => `${compactNumber(n)} tokens`} />
               </AgentStripRow>
             )
           })}
           {visibleAgents.length > AGENT_STRIP_MAX && (
-            <text style={{ color: MUTED }}>{`  ${agentWindowStart > 0 ? `↑ ${agentWindowStart}` : ''}${agentWindowStart > 0 && agentWindowStart + agentWindow.length < visibleAgents.length ? ' · ' : ''}${agentWindowStart + agentWindow.length < visibleAgents.length ? `↓ ${visibleAgents.length - agentWindowStart - agentWindow.length}` : ''} more`}</text>
+            <text style={{ color: MUTED }}>{`  ${agentWindowStart > 0 ? `↑ ${agentWindowStart}` : ''}${agentWindowStart > 0 && agentWindowStart + agentWindow.length < visibleAgents.length ? '  ' : ''}${agentWindowStart + agentWindow.length < visibleAgents.length ? `↓ ${visibleAgents.length - agentWindowStart - agentWindow.length}` : ''} more`}</text>
           )}
         </box>
       )}
@@ -2074,10 +2078,10 @@ export function App({ boot, controller: ctl }) {
               <box style={{ flexDirection: 'row' }}>
                 <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
                   {compacting()
-                    ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
+                    ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
                     : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
                 </Shimmer>
-                <text style={{ color: FAINT }}>{` · ${elapsed} · esc to interrupt`}</text>
+                <text style={{ color: MUTED }}>{`  ${elapsed}  esc to interrupt`}</text>
               </box>
               {compactStatus()?.phase === 'writing' && <ProgressBar variant="thin" value={compactStatus().section / 8} width={30} percentage={false} color={accent()} />}
             </box>
@@ -2092,7 +2096,7 @@ export function App({ boot, controller: ctl }) {
               <box style={{ flexDirection: 'row' }}>
                 <text style={{ color: MUTED }}>{'Changes '}</text>
                 {gitInfo.added > 0 && <text style={{ color: GREEN }}>{`${gitInfo.added} added`}</text>}
-                {gitInfo.added > 0 && gitInfo.removed > 0 && <text style={{ color: MUTED }}>{' · '}</text>}
+                {gitInfo.added > 0 && gitInfo.removed > 0 && <text style={{ color: MUTED }}>{'  '}</text>}
                 {gitInfo.removed > 0 && <text style={{ color: RED }}>{`${gitInfo.removed} removed`}</text>}
                 {gitInfo.added === 0 && gitInfo.removed === 0 && <text style={{ color: MUTED }}>{'clean'}</text>}
               </box>
@@ -2119,10 +2123,10 @@ export function App({ boot, controller: ctl }) {
                   <box style={{ flexDirection: 'row' }}>
                     <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
                       {compacting()
-                        ? compactStatus()?.phase === 'writing' ? `Compacting · writing ${compactStatus().section}/8` : 'Compacting · analyzing'
+                        ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
                         : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
                     </Shimmer>
-                    <text style={{ color: FAINT, overflow: 'truncate' }}>{` · ${elapsed} · esc to interrupt`}</text>
+                    <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${elapsed}  esc to interrupt`}</text>
                   </box>
                 )
                 : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}

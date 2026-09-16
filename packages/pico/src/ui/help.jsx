@@ -1,5 +1,5 @@
 import { Markdown, ScrollBox, useInput } from '@trendr/core'
-import { accent, FAINT } from './theme.js'
+import { accent, MUTED } from './theme.js'
 
 const HELP_TEXT = (commands) => `pico is a coding agent in your terminal. It reads, edits, and searches files, runs commands, and streams its work into this transcript.
 
@@ -90,9 +90,9 @@ export function Help({ commands, onClose }) {
   return (
     <box style={{ flexDirection: 'column', height: '100%', paddingX: 2, paddingY: 1 }}>
       <box style={{ flexDirection: 'row' }}>
-        <text style={{ color: accent(), bold: true }}>pico · help</text>
+        <text style={{ color: accent(), bold: true }}>pico  help</text>
         <box style={{ flexGrow: 1 }} />
-        <text style={{ color: FAINT }}>↑↓ scroll · esc back</text>
+        <text style={{ color: MUTED }}>↑↓ scroll  esc back</text>
       </box>
       <text> </text>
       <ScrollBox style={{ flexGrow: 1 }} focused scrollbar>

@@ -1,5 +1,5 @@
 import { createSignal, useInterval, useMouse, useResize } from '@trendr/core'
-import { accent, FAINT } from './theme.js'
+import { accent, MUTED } from './theme.js'
 
 function EmptyCloud({ width, height, version }) {
   const [phase, setPhase] = createSignal(0)
@@ -24,7 +24,7 @@ function EmptyCloud({ width, height, version }) {
     setWake(points => points.map(point => ({ ...point, age: point.age + 1 })).filter(point => point.age < 18))
   }, 90)
 
-  const glyphs = '  ··::++**░▒'
+  const glyphs = '  ..::++**░▒'
   const rows = []
   const base = accent()
   const rgb = /^#([0-9a-f]{6})$/i.exec(base)
@@ -92,7 +92,7 @@ function EmptyCloud({ width, height, version }) {
             {inBrandBox && cloud(row.slice(0, boxStart))}
             {inBrandBox && (
               <box style={{ width: boxWidth, paddingX: 1 }}>
-                {label && <text style={{ bold: i === 1, color: i === 1 ? accent() : FAINT }}>{label}</text>}
+                {label && <text style={{ bold: i === 1, color: i === 1 ? accent() : MUTED }}>{label}</text>}
               </box>
             )}
             {cloud(row.slice(inBrandBox ? boxStart + boxWidth : 0))}
@@ -112,7 +112,7 @@ export function EmptyState({ version, clouds = false }) {
     return (
       <box style={{ flexDirection: 'column', marginTop: 1 }}>
         <text style={{ bold: true, color: accent() }}>{'  pico'}</text>
-        <text style={{ color: FAINT }}>{`  v${version}`}</text>
+        <text style={{ color: MUTED }}>{`  v${version}`}</text>
       </box>
     )
   }

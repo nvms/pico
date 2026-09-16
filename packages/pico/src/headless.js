@@ -122,7 +122,7 @@ export async function runHeadless(opts) {
     }
   }
 
-  log(`pico · ${model.name}${effort ? ` · ${effort}` : ''} · session ${session.id}`)
+  log(`pico  ${model.name}${effort ? `  ${effort}` : ''}  session ${session.id}`)
   let thoughts = ''
   const result = await runTurn({
     history: derived.providerHistory,

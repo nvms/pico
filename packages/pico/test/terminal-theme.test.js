@@ -24,7 +24,7 @@ test('setPalette swaps live bindings and falls back to dark', () => {
   assert.equal(paletteName(), 'light')
   assert.equal(theme.FG, '#1f2430')
   assert.equal(theme.PANEL_BG, '#e9e9ee')
-  assert.equal(theme.accent(), '#0f9d63')
+  assert.equal(theme.accent(), theme.DEFAULT_ACCENT)
 
   theme.setAccent('#60a5fa')
   setPalette('dark')
@@ -44,10 +44,31 @@ test('every palette declares the full color set and a shiki theme', () => {
   for (const key of keys) {
     setPalette(key)
     assert.equal(paletteName(), key)
-    for (const value of [theme.FG, theme.FG_SOFT, theme.MUTED, theme.FAINT, theme.PANEL_BG, theme.SELECT_BG, theme.RED, theme.HIGHLIGHT, theme.DEFAULT_ACCENT]) {
+    for (const value of [theme.FG, theme.FG_SOFT, theme.MUTED, theme.PANEL_BG, theme.SELECT_BG, theme.RED, theme.HIGHLIGHT, theme.DEFAULT_ACCENT]) {
       assert.match(value, /^#[0-9a-fA-F]{6}$/)
     }
     assert.equal(typeof theme.shikiTheme(), 'string')
   }
   setPalette('dark')
+})
+
+test('secondary text maintains readable contrast on theme surfaces', () => {
+  function luminance(hex) {
+    const channels = hex.slice(1).match(/../g).map(value => {
+      const channel = parseInt(value, 16) / 255
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    })
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+  }
+  try {
+    for (const { key } of theme.paletteList()) {
+      setPalette(key)
+      for (const background of [theme.PANEL_BG, theme.SELECT_BG]) {
+        const values = [luminance(theme.MUTED), luminance(background)].sort((a, b) => a - b)
+        assert.ok((values[1] + 0.05) / (values[0] + 0.05) >= 4.5, `${key} secondary text on ${background}`)
+      }
+    }
+  } finally {
+    setPalette('dark')
+  }
 })

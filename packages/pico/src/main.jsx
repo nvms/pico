@@ -169,6 +169,6 @@ git.retarget(boot.root)
 git.setEnabled(boot.gitFooter)
 
 const controller = createController({ boot })
-const app = mount(() => <App boot={boot} controller={controller} />, { title: `pico · ${boot.root.split('/').pop()}`, theme })
+const app = mount(() => <App boot={boot} controller={controller} />, { title: `pico  ${boot.root.split('/').pop()}`, theme })
 boot.setTheme = app.setTheme
 boot.mcp.connectAll()

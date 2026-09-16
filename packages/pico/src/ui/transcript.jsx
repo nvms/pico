@@ -1,5 +1,5 @@
 import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, FAINT, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from 'picocode-core/tools/recorder.js'
@@ -111,7 +111,7 @@ function BashOutput({ value, lineStart, lineCount }) {
     <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
       {shown.map((line, i) => (
         <box key={first + i} style={{ flexDirection: 'row' }}>
-          <text style={{ color: FAINT }}>{`${String(first + i).padStart(gutterWidth)} `}</text>
+          <text style={{ color: MUTED }}>{`${String(first + i).padStart(gutterWidth)} `}</text>
           <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
         </box>
       ))}
@@ -174,13 +174,13 @@ function ToolGroup({ item, verbose }) {
             </text>
           ))}
         </box>
-        {totalMs > 0 && <text style={{ color: FAINT, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
+        {totalMs > 0 && <text style={{ color: MUTED, flexShrink: 0 }}>{fmtDuration(totalMs)}</text>}
       </box>
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
         {hiddenDescriptions > 0 && (
           <box style={{ flexDirection: 'row' }}>
             <text>{' '.repeat(toolNameWidth + 4)}</text>
-            <text style={{ color: FAINT }}>{`...${hiddenDescriptions} more`}</text>
+            <text style={{ color: MUTED }}>{`...${hiddenDescriptions} more`}</text>
           </box>
         )}
         {descriptions.map((tool, i) => (
@@ -215,11 +215,11 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
   const info = running ? (elapsed >= 5000 ? `running (${fmtRunning(elapsed)})` : 'running')
     : interrupted ? 'interrupted'
     : reverted ? 'reverted'
-    : failed ? `failed${took ? ` · ${took}` : ''}`
-    : background ? 'background · shell listed below'
-    : diff ? `+${diff.additions} -${diff.deletions}${took ? ` · ${took}` : ''}`
-    : outLines ? `${outputLineCount || outLines.length} ${(outputLineCount || outLines.length) === 1 ? 'line' : 'lines'}${took ? ` · ${took}` : ''}`
-    : `done${took ? ` · ${took}` : ''}`
+    : failed ? `failed${took ? `  ${took}` : ''}`
+    : background ? 'background  shell listed below'
+    : diff ? `+${diff.additions} -${diff.deletions}${took ? `  ${took}` : ''}`
+    : outLines ? `${outputLineCount || outLines.length} ${(outputLineCount || outLines.length) === 1 ? 'line' : 'lines'}${took ? `  ${took}` : ''}`
+    : `done${took ? `  ${took}` : ''}`
 
   return (
     <box style={{ flexDirection: 'column', paddingX: 2 }}>
@@ -233,7 +233,7 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
         <box style={{ flexGrow: 1, minWidth: 0, height: 1 }}>
           <text style={{ overflow: 'truncate', color: FG }}>{shownTitle || description || name}</text>
         </box>
-        <text style={{ color: FAINT, flexShrink: 0, overflow: 'truncate' }}>{`  ${info}`}</text>
+        <text style={{ color: MUTED, flexShrink: 0, overflow: 'truncate' }}>{`  ${info}`}</text>
       </box>
       {description && !inlineDescription && (
         <box style={{ paddingLeft: 8 }}>
@@ -268,7 +268,7 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
           {outLines.slice(0, 200).map((line, i) => (
             <text key={i} style={{ color: FG_SOFT, overflow: 'truncate' }}>{line || ' '}</text>
           ))}
-          {outLines.length > 200 && <text style={{ color: FAINT }}>{`… ${outLines.length - 200} more lines`}</text>}
+          {outLines.length > 200 && <text style={{ color: MUTED }}>{`… ${outLines.length - 200} more lines`}</text>}
         </box>
       )}
     </box>
@@ -278,7 +278,7 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
 function DeliberationTurn({ item, verbose, compact = false }) {
   const participantA = item.role === 'participant-a' || item.role === 'proposer'
   const synthesis = item.role === 'synthesis'
-  const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'} · round ${item.round}`
+  const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'}  round ${item.round}`
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
   return (
     <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: compact ? 0 : 2, bg: compact ? PANEL_BG : undefined }}>
@@ -379,16 +379,16 @@ export function Message({ item, verbose, showLocked = false }) {
       <box style={{ flexDirection: 'column', paddingX: 2 }}>
         <text> </text>
         <box style={{ flexDirection: 'row' }}>
-          <text style={{ color: MUTED, italic: true }}>{item.source === 'compact' ? '✦ summary · conversation compacted above this point' : '✦ summary · rewound conversation'}</text>
+          <text style={{ color: MUTED, italic: true }}>{item.source === 'compact' ? '✦ summary  conversation compacted above this point' : '✦ summary  rewound conversation'}</text>
           <box style={{ flexGrow: 1 }} />
-          <text style={{ color: FAINT }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}</text>
+          <text style={{ color: MUTED }}>{`${lines.length} ${lines.length === 1 ? 'line' : 'lines'}`}</text>
         </box>
         {verbose && (
           <box style={{ flexDirection: 'column', bg: PANEL_BG, paddingX: 1, marginTop: 1 }}>
             {lines.slice(0, 500).map((line, i) => (
               <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>
             ))}
-            {lines.length > 500 && <text style={{ color: FAINT }}>{`… ${lines.length - 500} more lines`}</text>}
+            {lines.length > 500 && <text style={{ color: MUTED }}>{`… ${lines.length - 500} more lines`}</text>}
           </box>
         )}
       </box>
@@ -462,7 +462,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   if (item.kind === 'user') {
-    const label = showLocked && item.locked ? 'Locked · compacted' : showLocked ? 'User' : null
+    const label = showLocked && item.locked ? 'Locked  compacted' : showLocked ? 'User' : null
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
@@ -478,7 +478,7 @@ export function Message({ item, verbose, showLocked = false }) {
   }
 
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
-  const label = showLocked && item.locked ? 'Locked · compacted' : showLocked ? 'Assistant' : null
+  const label = showLocked && item.locked ? 'Locked  compacted' : showLocked ? 'Assistant' : null
   return (
     <box style={{ flexDirection: 'column' }}>
       <text> </text>
