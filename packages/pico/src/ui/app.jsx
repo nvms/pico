@@ -5,6 +5,8 @@ import { commandAt, replaceCommand, commandFields } from './composer-commands.js
 import { CommandForm } from './command-form.jsx'
 import { homedir } from 'node:os'
 import { createDictation } from '../dictation.js'
+import { readClipboardImage } from '../clipboard.js'
+import { createClipboardInput } from './clipboard-input.js'
 import { createDictationInput } from './dictation-input.js'
 import { createComposerFiles } from './composer-files.js'
 import { dictationIndicator, appendLevel } from './dictation-indicator.js'
@@ -215,6 +217,7 @@ export function App({ boot, controller: ctl }) {
   const [inputCursor, setInputCursor] = createSignal(0)
   const [commandForm, setCommandForm] = createSignal(null)
   const setInput = (text, cursor) => {
+    boot.refs.draftRevision = (boot.refs.draftRevision ?? 0) + 1
     const value = composerFiles.update(text, state.attachments)
     setInputValue(value)
     setInputCursor(cursor ?? value.length)
@@ -409,6 +412,14 @@ export function App({ boot, controller: ctl }) {
   function flash(msg) {
     toast(msg)
   }
+
+  refs.pasteImage ??= createClipboardInput({
+    readImage: readClipboardImage,
+    getDraft: () => ({ value: input(), cursor: inputCursor(), session: state.session, revision: refs.draftRevision }),
+    attachImage: ctl.attachImage,
+    setInput,
+    onError: (message) => refs.ui.flash(message),
+  })
 
   if (!refs.dictation) {
     refs.dictation = createDictation({
@@ -1697,6 +1708,10 @@ export function App({ boot, controller: ctl }) {
           onSubmit={send}
           onKeyDown={(e) => {
             if (refs.dictationInput.handle(e)) return true
+            if (e.ctrl && e.key === 'v') {
+              void refs.pasteImage()
+              return true
+            }
             if (e.ctrl && e.key === 'g') {
               refs.dictationInput.start(e)
               return true
