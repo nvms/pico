@@ -1,6 +1,7 @@
 import { createSignal, Button, Checkbox, ease, Field, FieldList, Menu, NumberInput, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
+import { contextBar } from './context-bar.js'
 import { compactNumber } from 'picocode-core/format.js'
 import { homedir } from 'node:os'
 import { fuzzyScore, rankFuzzy } from 'picocode-core/fuzzy.js'
@@ -609,7 +610,10 @@ function ContextOverview({ overview }) {
   reveal.set(1)
   const width = Math.max(1, layout.width || 1)
   const visible = Math.round(width * reveal())
+  const usageWidth = Math.max(1, width - 5)
   const total = overview.segments.reduce((sum, segment) => sum + segment.tokens, 0)
+  const used = overview.measured || total
+  const percent = used && overview.limit ? Math.min(100, used / overview.limit * 100) : 0
   let boundary = 0
   const cells = []
 
@@ -644,6 +648,12 @@ function ContextOverview({ overview }) {
 
   return (
     <box style={{ flexDirection: 'column', marginTop: 1 }}>
+      {percent > 0 && (
+        <box style={{ flexDirection: 'row', marginBottom: 1 }}>
+          <AnimatedValue value={percent} initial={0} duration={1000} color={percent >= 80 ? RED : FG_SOFT} highlight={accent()} background={SELECT_BG} format={(value) => contextBar(value, usageWidth)} />
+          <text style={{ color: percent >= 80 ? RED : MUTED }}>{`${overview.measured ? '' : '~'}${Math.round(percent)}%`.padStart(5)}</text>
+        </box>
+      )}
       <box style={{ flexDirection: 'row' }}>{cells}</box>
       <box style={{ flexDirection: 'column' }}>
         {legendRows().map((row, rowIndex) => (

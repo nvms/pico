@@ -19,7 +19,7 @@ function mixColor(from, to, amount) {
   return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`
 }
 
-export function AnimatedValue({ value, initial = value, duration = 1000, color, highlight, format = String }) {
+export function AnimatedValue({ value, initial = value, duration = 1000, color, highlight, background, format = String }) {
   const displayed = useAnimated(initial, ease(duration))
   const glow = useAnimated(0, ease(duration, linear))
 
@@ -30,7 +30,7 @@ export function AnimatedValue({ value, initial = value, duration = 1000, color, 
   }
 
   return (
-    <text style={{ color: mixColor(color, highlight, glow()) }}>
+    <text style={{ color: mixColor(color, highlight, glow()), bg: background }}>
       {format(displayed())}
     </text>
   )

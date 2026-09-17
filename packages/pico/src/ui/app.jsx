@@ -28,6 +28,7 @@ import { extractImagePaths, placeholderizeImagePaths } from 'picocode-core/attac
 import { listFiles } from 'picocode-core/files.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from 'picocode-core/format.js'
+import { contextBar } from './context-bar.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { DeliberationExchange, Message } from './transcript.jsx'
 import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
@@ -549,7 +550,7 @@ export function App({ boot, controller: ctl }) {
     setInfoPanel({
       title: `Context  ${breakdown.model}`,
       rows,
-      overview: breakdown.segments.length ? { segments: breakdown.segments } : null,
+      overview: breakdown.segments.length ? { segments: breakdown.segments, measured: breakdown.measured, limit: breakdown.limit ?? model().context } : null,
     })
   }
 
@@ -2225,10 +2226,10 @@ export function App({ boot, controller: ctl }) {
             {effortApplies() && effort() && <text style={{ color: MUTED }}>{effort()}</text>}
             <box style={{ flexGrow: 1 }} />
             {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}
-            <text style={{ color: MUTED }}>{`${compactNumber(usage.promptTokens)} input`}</text>
-            <text style={{ color: MUTED }}>{`${compactNumber(usage.completionTokens)} output`}</text>
-            {usage.thoughtTokens > 0 && <AnimatedValue value={usage.thoughtTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} thought`} />}
-            {contextPercent > 0 && <AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : MUTED} highlight={accent()} format={(n) => `${Math.round(n)}% context`} />}
+            <text style={{ color: MUTED }}>{`${compactNumber(usage.promptTokens)} ↓`}</text>
+            <text style={{ color: MUTED }}>{`${compactNumber(usage.completionTokens)} ↑`}</text>
+            {usage.thoughtTokens > 0 && <AnimatedValue value={usage.thoughtTokens} color={MUTED} highlight={accent()} format={(n) => `${compactNumber(n)} ◈`} />}
+            {contextPercent > 0 && <AnimatedValue value={contextPercent} color={contextPercent >= 80 ? RED : MUTED} highlight={accent()} background={PANEL_BG} format={contextBar} />}
           </box>
         </box>
       )}

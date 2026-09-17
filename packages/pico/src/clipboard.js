@@ -11,13 +11,21 @@ process.once('exit', () => {
   for (const dir of directories) rmSync(dir, { recursive: true, force: true })
 })
 
-const macScript = `ObjC.import('AppKit');
-const image = $.NSImage.alloc.initWithPasteboard($.NSPasteboard.generalPasteboard);
-if (image.isNil()) { '' } else {
+const macScript = `ObjC.import('AppKit'); ObjC.import('Foundation');
+const pasteboard = $.NSPasteboard.generalPasteboard;
+const files = pasteboard.propertyListForType('NSFilenamesPboardType');
+let image = null;
+if (!files.isNil() && files.count > 0) {
+  const path = ObjC.unwrap(files.objectAtIndex(0));
+  if (/\\.(png|jpe?g|gif|webp)$/i.test(path)) image = $.NSImage.alloc.initWithContentsOfFile(path);
+}
+if (!image || image.isNil()) image = $.NSImage.alloc.initWithPasteboard(pasteboard);
+let data = null;
+if (!image.isNil()) {
   const bitmap = $.NSBitmapImageRep.imageRepWithData(image.TIFFRepresentation);
-  const data = bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));
-  ObjC.unwrap(data.base64EncodedStringWithOptions(0));
-}`
+  data = bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({}));
+}
+data ? ObjC.unwrap(data.base64EncodedStringWithOptions(0)) : ''`
 
 const windowsScript = `Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing;
 if ([System.Windows.Forms.Clipboard]::ContainsImage()) {

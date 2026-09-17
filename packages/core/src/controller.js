@@ -1318,7 +1318,8 @@ export function createController({ boot }) {
     ].filter((segment) => segment.tokens > 0)
       .map((segment, i) => ({ ...segment, color: CONTEXT_COLORS[i] }))
 
-    return { model: state.model.name, rows, measured, segments }
+    const limit = state.model.context ?? boot.models.find((model) => model.name === state.model.name)?.context ?? null
+    return { model: state.model.name, limit, rows, measured, segments }
   }
 
   async function connectProvider() {
