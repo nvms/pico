@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@shikijs/cli": "^3.0.0",
-    "@trendr/core": "0.4.39",
+    "@trendr/core": "0.4.40",
     "picocode-core": "0.9.182"
   },
   "devDependencies": {

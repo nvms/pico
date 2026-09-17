@@ -12,6 +12,7 @@ function toRgb(color) {
 }
 
 function mixColor(from, to, amount) {
+  if (from === to) return from
   const a = toRgb(from)
   const b = toRgb(to)
   const channels = a.map((value, i) => Math.round(value + (b[i] - value) * amount))

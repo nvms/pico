@@ -1,3 +1,8 @@
+import { readFile } from 'node:fs/promises'
+import { parseFrontmatter } from 'picocode-core/skills.js'
+import { expandCommand, parseCommandArguments } from 'picocode-core/commands.js'
+import { commandAt, replaceCommand, commandFields } from './composer-commands.js'
+import { CommandForm } from './command-form.jsx'
 import { homedir } from 'node:os'
 import { createDictation } from '../dictation.js'
 import { createDictationInput } from './dictation-input.js'
@@ -207,7 +212,13 @@ export function App({ boot, controller: ctl }) {
   const [startedAt, setStartedAt] = createSignal(state.startedAt)
   const [input, setInputValue] = createSignal('')
   const composerFiles = boot.refs.composerFiles ??= createComposerFiles()
-  const setInput = (text) => setInputValue(composerFiles.update(text, state.attachments))
+  const [inputCursor, setInputCursor] = createSignal(0)
+  const [commandForm, setCommandForm] = createSignal(null)
+  const setInput = (text, cursor) => {
+    const value = composerFiles.update(text, state.attachments)
+    setInputValue(value)
+    setInputCursor(cursor ?? value.length)
+  }
   const [dictationStatus, setDictationStatus] = createSignal('idle')
   const [dictationLevels, setDictationLevels] = createSignal([])
   const [model, setModel] = createSignal(state.model)
@@ -336,6 +347,8 @@ export function App({ boot, controller: ctl }) {
       setInput(text)
     },
     session: () => {
+      setCommandForm(null)
+      refs.commandExpansion = null
       refs.dictationInput?.cancel()
       setViewedAgentId(null)
       setViewedShellId(null)
@@ -461,6 +474,7 @@ export function App({ boot, controller: ctl }) {
       const [name, ...rest] = value.slice(1).split(/\s+/)
       const match = allCommands.find((c) => c.name === name.toLowerCase())
       if (match) {
+        if (match.command) return insertCommand(match, { start: text.indexOf('/'), end: text.length }, rest.join(' '))
         setInput('')
         runCommand(match, rest.join(' '))
         return
@@ -469,6 +483,7 @@ export function App({ boot, controller: ctl }) {
     setHistIdx(-1)
     composerFiles.update(text, state.attachments)
     ctl.send(composerFiles.content().trim())
+    setInput('')
   }
 
   function interrupt() {
@@ -627,8 +642,46 @@ export function App({ boot, controller: ctl }) {
     if (remaining[selected]) steerListFocus.focus(remaining[selected].messageId)
   }
 
+  async function insertCommand(command, range = commandAt(input(), inputCursor()), args = '') {
+    if (!range) return
+    const draft = input()
+    const token = {}
+    refs.commandExpansion = token
+    setCmdCycle(null)
+    try {
+      const metadata = boot.commands.list().find((item) => item.name === command.name)
+      const { body } = parseFrontmatter(await readFile(metadata.file, 'utf-8'))
+      if (refs.commandExpansion !== token || input() !== draft) return
+      const form = { name: command.name, body: body.trim(), draft, range, args, token }
+      const fields = commandFields({ arguments: parseCommandArguments(body) }, body, args)
+      if (fields.length) {
+        setCommandForm({ ...form, fields })
+        if (fields.some((field) => field.type === 'path')) {
+          listFiles(cwd).then(setFileList).catch((error) => flash(error.message))
+        }
+      } else finishCommand(form, {})
+    } catch (error) {
+      flash(`could not load /${command.name}: ${error.message}`)
+    }
+  }
+
+  function finishCommand(form, values) {
+    if (refs.commandExpansion !== form.token || input() !== form.draft) return
+    try {
+      const body = expandCommand(form.body, values['$args'] ?? form.args, values)
+      const next = replaceCommand(form.draft, form.range, body)
+      setInput(next.text, next.cursor)
+      setCommandForm(null)
+      refs.commandExpansion = null
+      fm.focus('input')
+    } catch (error) {
+      flash(error.message)
+    }
+  }
+
   async function runCommand(c, args = '') {
     if (typeof args !== 'string') args = ''
+    if (c.command) return insertCommand(c)
     setInput('')
     setCmdCycle(null)
     if (c.name === 'fork') return ctl.fork(args.trim())
@@ -647,7 +700,6 @@ export function App({ boot, controller: ctl }) {
       return
     }
     if (c.skill) return ctl.sendSkill(c.name)
-    if (c.command) return ctl.sendCommand(c.name, args)
     if (c.name === 'connect') return openConnectPanel()
     if (c.name === 'init') return ctl.sendInit(args)
     if (c.name === 'parallel') {
@@ -902,7 +954,7 @@ export function App({ boot, controller: ctl }) {
   const anyPanel = () =>
     showModelPanel() || showResearchModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showWakeupsPanel() || showConnectPanel() ||
-    infoPanel() !== null || rewindStep() !== null
+    commandForm() !== null || infoPanel() !== null || rewindStep() !== null
 
   // every focus-taking panel dims the conversation behind it; the theme
   // picker is the one exemption, since its job is previewing palettes on
@@ -1205,13 +1257,14 @@ export function App({ boot, controller: ctl }) {
   const fmtElapsed = (s) => (s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`)
   const elapsed = fmtElapsed(busy() ? Math.max(0, Math.floor((Date.now() - startedAt()) / 1000)) : 0)
 
-  const slashQuery = input().startsWith('/') ? input().slice(1) : null
-  const showCommands = slashQuery !== null && !slashQuery.includes(' ') && !anyPanel()
+  const slashRange = commandAt(input(), inputCursor())
+  const slashQuery = slashRange?.query ?? null
+  const showCommands = slashRange !== null && !anyPanel()
   const matchedCommands = !showCommands
     ? []
     : cmdCycle()
       ? cmdCycle().matches
-      : allCommands.filter((c) => c.name.toLowerCase().startsWith(slashQuery.toLowerCase()))
+      : allCommands.filter((c) => (c.command || (slashRange.start === 0 && slashRange.end === input().length)) && c.name.toLowerCase().startsWith(slashQuery.toLowerCase()))
 
   const atMatch = input().match(/(^|[\s(])@([^\s@]*)$/)
   const showFiles = atMatch !== null && !showCommands && !filesDismissed() && !anyPanel()
@@ -1535,6 +1588,15 @@ export function App({ boot, controller: ctl }) {
         </box>
       )}
 
+      {commandForm() && <CommandForm
+        name={commandForm().name}
+        fields={commandForm().fields}
+        files={fileList()}
+        focused
+        onSubmit={(values) => finishCommand(commandForm(), values)}
+        onCancel={() => { setCommandForm(null); refs.commandExpansion = null; fm.focus('input') }}
+      />}
+
       {questionRequest() && (
         <QuestionForm
           request={questionRequest()}
@@ -1602,12 +1664,18 @@ export function App({ boot, controller: ctl }) {
           scrollbar
           focused={fm.is('input') && !anyPanel() && !questionRequest()}
           value={input()}
+          cursorOffset={inputCursor()}
+          onCursorChange={(cursor) => {
+            setInputCursor(cursor)
+            setCmdCycle(null)
+            setCmdIndex(0)
+          }}
           onChange={(v) => {
             const converted = placeholderizeImagePaths(v, {
               attachments: state.attachments,
               nextId: () => ++state.imageCount,
             })
-            setInput(converted.text)
+            setInput(converted.text, converted.text === v ? inputCursor() : undefined)
             setCmdIndex(0)
             setCmdCycle(null)
             setFileIndex(0)
@@ -1643,11 +1711,13 @@ export function App({ boot, controller: ctl }) {
                 const start = Math.min(cmdIndex(), matchedCommands.length - 1)
                 setCmdCycle({ matches: matchedCommands })
                 setCmdIndex(start)
-                setInput('/' + matchedCommands[start].name)
+                const next = replaceCommand(input(), slashRange, '/' + matchedCommands[start].name)
+                setInput(next.text, next.cursor)
               } else {
                 const next = (cmdIndex() + 1) % cycle.matches.length
                 setCmdIndex(next)
-                setInput('/' + cycle.matches[next].name)
+                const replacement = replaceCommand(input(), slashRange, '/' + cycle.matches[next].name)
+                setInput(replacement.text, replacement.cursor)
               }
               return true
             }
@@ -1709,7 +1779,7 @@ export function App({ boot, controller: ctl }) {
           }}
           submitOnEnter
           newlineOnBackslashEnter
-          clearOnSubmit
+          clearOnSubmit={false}
           maxHeight={8}
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
