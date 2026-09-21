@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
@@ -35,10 +35,10 @@ export function ownerRoot(root) {
   if (owners.has(key)) return owners.get(key)
   let owner = key
   try {
-    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: key, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-    const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: key, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-    const candidate = dirname(common)
-    if (top === key && candidate !== top) owner = candidate
+    if (statSync(join(key, '.git')).isFile()) {
+      const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: key, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+      owner = dirname(common)
+    }
   } catch {}
   owners.set(key, owner)
   return owner

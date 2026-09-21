@@ -1,6 +1,6 @@
 import { access, appendFile, open, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { picoHome, sessionsDir, ensureDir, projectDir } from './paths.js'
+import { picoHome, sessionsDir, ensureDir, projectDir, ownerRoot } from './paths.js'
 import { withSessionLock } from './session-lock.js'
 import { flushSessionIndex, indexedSessions, markSessionIndexDirty, removeFromSessionIndex, scheduleSessionIndexUpdate } from './session-index.js'
 import { makeEvent, makeHeader, readEvents, serializeLine } from './events.js'
@@ -152,6 +152,11 @@ export function deleteProjectData(root) {
   return rm(projectDir(root), { recursive: true, force: true })
 }
 
+export async function deleteProjectSessions(root) {
+  for (const session of await listSessions({ scope: 'project', root })) await deleteSession(session.file)
+  await rm(projectDir(root), { recursive: true, force: true })
+}
+
 export async function listSessions({ scope, root }) {
   let sessions
   if (scope === 'everywhere') {
@@ -161,6 +166,10 @@ export async function listSessions({ scope, root }) {
       projects = await readdir(projectsDir)
     } catch {}
     sessions = (await Promise.all(projects.map((project) => indexedSessions(join(projectsDir, project, 'sessions'))))).flat()
+  } else if (scope === 'repository') {
+    const owner = ownerRoot(root)
+    const all = await listSessions({ scope: 'everywhere', root })
+    sessions = all.filter((session) => ownerRoot(session.header.root) === owner)
   } else {
     sessions = await indexedSessions(sessionsDir(root))
   }

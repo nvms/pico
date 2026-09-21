@@ -2,7 +2,9 @@ import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { makeEvent } from './events.js'
-import { createSession, createEphemeralSession, forkSession, openSession, loadSession, listSessions, deleteSession, appendSessionEvent, onSessionWriteError } from './session.js'
+import { createSession, createEphemeralSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectSessions, appendSessionEvent, onSessionWriteError } from './session.js'
+import { createWorktree, listWorktrees, removeWorktree } from './worktrees.js'
+import { ownerRoot } from './paths.js'
 import { createAgentContext } from './agent-context.js'
 import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
@@ -980,19 +982,81 @@ export function createController({ boot }) {
     }
   }
 
+  async function listResumeSessions(scope) {
+    const sessions = await listSessions({ scope, root: boot.root })
+    if (scope === 'everywhere') return sessions
+    const owner = ownerRoot(boot.root)
+    if (boot.root === owner) return sessions
+    const trees = await listWorktrees(owner)
+    return sessions.map((session) => ({
+      ...session,
+      checkout: trees.find((tree) => tree.path === session.header.root)?.branch ?? (session.header.root === owner ? 'main' : session.header.root.split('/').pop()),
+    }))
+  }
+
   async function listProjects() {
     const metas = await listSessions({ scope: 'everywhere', root: boot.root })
-    const byRoot = new Map()
-    for (const m of metas) {
-      const entry = byRoot.get(m.header.root)
-      if (entry) {
-        entry.sessions.push(m)
-        entry.count++
-        continue
-      }
-      byRoot.set(m.header.root, { root: m.header.root, latest: m, sessions: [m], count: 1, current: m.header.root === boot.root })
+    const sessionsByRoot = Map.groupBy(metas, (meta) => meta.header.root)
+    const knownRoots = new Set([...sessionsByRoot.keys(), boot.root])
+    const owners = new Map()
+    for (const root of knownRoots) {
+      const owner = ownerRoot(root)
+      if (!owners.has(owner)) owners.set(owner, new Set())
+      owners.get(owner).add(root)
     }
-    return [...byRoot.values()]
+    const projects = []
+    for (const [owner, roots] of owners) {
+      const trees = await listWorktrees(owner)
+      for (const tree of trees) roots.add(tree.path)
+      const checkouts = [...roots].map((root) => {
+        const sessions = sessionsByRoot.get(root) || []
+        const tree = trees.find((entry) => entry.path === root)
+        return {
+          root,
+          owner,
+          branch: tree?.branch ?? null,
+          worktree: root !== owner,
+          current: root === boot.root,
+          sessions,
+          count: sessions.length,
+          latest: sessions[0] ?? null,
+        }
+      }).filter((checkout) => checkout.sessions.length || checkout.current || trees.some((tree) => tree.path === checkout.root))
+      checkouts.sort((a, b) => Number(b.current) - Number(a.current) || Number(a.worktree) - Number(b.worktree) || (b.latest?.at ?? 0) - (a.latest?.at ?? 0))
+      const latest = checkouts.map((checkout) => checkout.latest).filter(Boolean).sort((a, b) => b.at - a.at)[0] ?? null
+      projects.push({ root: owner, checkouts, latest, current: checkouts.some((checkout) => checkout.current) })
+    }
+    return projects.sort((a, b) => Number(b.current) - Number(a.current) || (b.latest?.at ?? 0) - (a.latest?.at ?? 0))
+  }
+
+  async function addWorktree(root = boot.root) {
+    if (state.busy) throw new Error('finish or interrupt the current turn first')
+    return createWorktree(root)
+  }
+
+  async function deleteWorktree(checkout) {
+    if (state.busy) throw new Error('finish or interrupt the current turn first')
+    if (checkout.current) throw new Error('cannot remove the current worktree')
+    await removeWorktree(boot.root, checkout.root)
+    await deleteProjectSessions(checkout.root)
+  }
+
+  async function switchToWorktree(checkout) {
+    if (state.busy) return flash('finish or interrupt the current turn first')
+    const previousMcp = boot.mcp
+    const next = await boot.rebuild(checkout.root)
+    previousMcp.closeAll().catch(() => {})
+    process.chdir(next.cwd)
+    Object.assign(boot, next)
+    boot.git.retarget(next.root)
+    next.mcp.connectAll()
+    emit('mcp', next.mcp.list())
+    resetConversation()
+    agents.clear()
+    reDerive()
+    emit('project', boot)
+    emit('session', state.session)
+    flash(`switched to ${next.displayCwd}`)
   }
 
   async function switchProject(meta) {
@@ -1416,7 +1480,11 @@ export function createController({ boot }) {
     setColor,
     clear,
     resume,
+    listResumeSessions,
     listProjects,
+    addWorktree,
+    deleteWorktree,
+    switchToWorktree,
     switchProject,
     resolveModel,
     switchModel,

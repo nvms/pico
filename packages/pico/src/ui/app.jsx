@@ -152,7 +152,7 @@ function AgentStripRow({ selected, focused, children, onPress }) {
 // batches when the user scrolls to the top. render cost is per-item, so this
 // keeps day-long sessions as fast as fresh ones
 const HISTORY_WINDOW = 50
-const RESUME_SCOPES = ['project', 'everywhere']
+const RESUME_SCOPES = ['repository', 'checkout', 'everywhere']
 
 function collapseSteerTools(items) {
   const collapsed = []
@@ -831,7 +831,7 @@ export function App({ boot, controller: ctl }) {
 
   function refreshSessions(scopeIndex) {
     setResumeLoading(true)
-    listSessions({ scope: RESUME_SCOPES[scopeIndex], root })
+    ctl.listResumeSessions(RESUME_SCOPES[scopeIndex])
       .then(setResumeSessions)
       .finally(() => setResumeLoading(false))
   }
@@ -844,24 +844,62 @@ export function App({ boot, controller: ctl }) {
   function openProjectPanel() {
     if (busy()) return flash('finish or interrupt the current turn before switching sessions')
     setShowProjectPanel(true)
-    setProjectsLoading(true)
-    ctl.listProjects()
-      .then((list) => setProjects(list.map((p) => ({ ...p, path: shortenPath(p.root) }))))
-      .finally(() => setProjectsLoading(false))
+    refreshProjects()
   }
 
-  async function deleteProject(p) {
-    if (p.current) return flash('cannot delete the current project  switch away first')
+  async function refreshProjects() {
+    setProjectsLoading(true)
+    try {
+      const list = await ctl.listProjects()
+      setProjects(list.map((project) => ({
+        ...project,
+        path: shortenPath(project.root),
+        checkouts: project.checkouts.map((checkout) => ({ ...checkout, path: shortenPath(checkout.root) })),
+      })))
+    } finally {
+      setProjectsLoading(false)
+    }
+  }
+
+  async function addProjectWorktree(checkout) {
+    try {
+      const tree = await ctl.addWorktree(checkout.owner)
+      await ctl.switchToWorktree({ root: tree.path })
+      setShowProjectPanel(false)
+    } catch (err) {
+      flash(`worktree failed: ${String(err.message || err).slice(0, 80)}`)
+    }
+  }
+
+  async function deleteProjectCheckout(checkout) {
+    if (checkout.worktree) {
+      if (checkout.current) return flash('cannot remove the current worktree  switch away first')
+      const armed = refs.projectDeleteArm
+      if (!armed || armed.root !== checkout.root || Date.now() - armed.at > 3000) {
+        refs.projectDeleteArm = { root: checkout.root, at: Date.now() }
+        return flash(`ctrl+x again to remove "${checkout.branch || checkout.path}" and its ${checkout.count} ${checkout.count === 1 ? 'session' : 'sessions'}`)
+      }
+      refs.projectDeleteArm = null
+      try {
+        await ctl.deleteWorktree(checkout)
+        await refreshProjects()
+        flash(`removed ${checkout.branch || checkout.path}`)
+      } catch (err) {
+        flash(`remove failed: ${String(err.message || err).slice(0, 80)}`)
+      }
+      return
+    }
+    if (checkout.current) return flash('cannot delete the current project  switch away first')
     const armed = refs.projectDeleteArm
-    if (!armed || armed.root !== p.root || Date.now() - armed.at > 3000) {
-      refs.projectDeleteArm = { root: p.root, at: Date.now() }
-      return flash(`ctrl+x again to delete "${p.path}" and its ${p.count} ${p.count === 1 ? 'session' : 'sessions'}`)
+    if (!armed || armed.root !== checkout.root || Date.now() - armed.at > 3000) {
+      refs.projectDeleteArm = { root: checkout.root, at: Date.now() }
+      return flash(`ctrl+x again to delete "${checkout.path}" and its ${checkout.count} ${checkout.count === 1 ? 'session' : 'sessions'}`)
     }
     refs.projectDeleteArm = null
     try {
-      await deleteProjectData(p.root)
-      setProjects((list) => list.filter((x) => x.root !== p.root))
-      flash(`deleted ${p.path}  ${p.count} ${p.count === 1 ? 'session' : 'sessions'} removed`)
+      await deleteProjectData(checkout.root)
+      await refreshProjects()
+      flash(`deleted ${checkout.path}  ${checkout.count} ${checkout.count === 1 ? 'session' : 'sessions'} removed`)
     } catch (err) {
       flash(`delete failed: ${String(err.message || err).slice(0, 80)}`)
     }
@@ -1421,8 +1459,10 @@ export function App({ boot, controller: ctl }) {
         projects={projects()}
         loading={projectsLoading()}
         focused
-        onPick={(p) => resumeSession(p.latest)}
-        onDelete={deleteProject}
+        onPickCheckout={(checkout) => checkout.latest ? resumeSession(checkout.latest) : ctl.switchToWorktree(checkout).then(() => setShowProjectPanel(false))}
+        onPickSession={resumeSession}
+        onAddWorktree={addProjectWorktree}
+        onDelete={deleteProjectCheckout}
         onClose={() => setShowProjectPanel(false)}
       />
     )

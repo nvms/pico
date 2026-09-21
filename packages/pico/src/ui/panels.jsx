@@ -369,8 +369,9 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
   const rankedSessions = rankFuzzy(sessions, query(), (q, session) => {
     const customScore = session.customTitle ? fuzzyScore(q, session.customTitle) : -1
     if (customScore >= 0) return 20_000 + customScore
-    return fuzzyScore(q, session.automaticTitle || session.title)
+    return Math.max(fuzzyScore(q, session.automaticTitle || session.title), fuzzyScore(q, session.checkout || ''))
   })
+  const showCheckouts = new Set(sessions.map((session) => session.checkout).filter(Boolean)).size > 1
   const selectedSession = () => {
     if (loading) return null
     const selected = preview()
@@ -418,10 +419,10 @@ export function ResumePanel({ sessions, scopes, scopeIndex, loading, focused, cu
               scrollbar
               gap={1}
               renderItem={(s, { selected, focused: f }) => (
-                <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
-                  {s.color && <text style={{ color: selected ? 'black' : s.color }}>{'▪ '}</text>}
+                <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : (showCheckouts ? s.color : null), paddingX: 1 }}>
+                  {showCheckouts && <text style={{ color: selected ? 'black' : MUTED, bg: selected ? null : s.color }}>{`${s.checkout}  `}</text>}
                   <box style={{ flexGrow: 1, height: 1 }}>
-                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{s.title.replace(/\n/g, ' ')}</text>
+                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG, bg: selected || showCheckouts ? null : s.color }}>{s.title.replace(/\n/g, ' ')}</text>
                   </box>
                   {s.header.id === currentId && <text style={{ color: selected ? 'black' : accent() }}> current</text>}
                   <text style={{ color: selected ? 'black' : MUTED }}>{`  ${timeAgo(s.at)}`}</text>
@@ -710,81 +711,96 @@ export function InfoListPanel({ title, rows, overview, focused, onClose }) {
   )
 }
 
-export function ProjectPanel({ projects, loading, focused, onPick, onDelete, onClose }) {
-  const [preview, setPreview] = createSignal(projects[0] || null)
-  const [pane, setPane] = createSignal('list')
-  const [query, setQuery] = createSignal('')
-  const rankedProjects = rankFuzzy(projects, query(), (q, project) => fuzzyScore(q, project.path))
+export function ProjectPanel({ projects, loading, focused, onPickCheckout, onPickSession, onAddWorktree, onDelete, onClose }) {
+  const rows = projects.flatMap((project) => project.checkouts.map((checkout, index) => ({
+    ...checkout,
+    projectPath: project.path,
+    grouped: project.checkouts.length > 1,
+    first: index === 0,
+    last: index === project.checkouts.length - 1,
+  })))
+  const [preview, setPreview] = createSignal(rows[0] || null)
+  const [pane, setPane] = createSignal('projects')
   useEscape(() => focused, onClose)
   useInput((event) => {
     if (!focused) return
     if (event.key === 'tab' && !event.ctrl && !event.meta) {
-      setPane((current) => current === 'list' ? 'preview' : 'list')
+      if (preview()?.sessions.length) setPane((current) => current === 'projects' ? 'sessions' : 'projects')
       event.stopPropagation()
       return
     }
-    if (event.ctrl && event.key === 'x' && preview()) {
+    if (pane() === 'projects' && event.ctrl && event.key === 't' && preview()) {
+      onAddWorktree(preview())
+      event.stopPropagation()
+      return
+    }
+    if (pane() === 'projects' && event.ctrl && event.key === 'x' && preview()) {
       onDelete(preview())
       event.stopPropagation()
     }
   })
 
+  const checkoutLabel = (row) => `${row.last ? '└─' : '├─'} ${row.branch || (row.worktree ? row.path : 'main')}`
+
   return (
-    <PanelFrame title="Switch project" hint="↑↓ to move  tab: sessions  enter to jump to its last session  ctrl+x delete  esc to close" fullScreen>
+    <PanelFrame title="Switch project" hint="↑↓ move  tab switch pane  enter open  ctrl+t new worktree  ctrl+x delete  esc close" fullScreen>
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, gap: 1 }}>
-        <box style={{ flexDirection: 'column', height: '40%', paddingX: 2 }}>
+        <box style={{ flexDirection: 'column', height: '44%', paddingX: 2 }}>
           {loading ? (
             <text style={{ color: MUTED }}>loading projects...</text>
-          ) : projects.length === 0 ? (
+          ) : rows.length === 0 ? (
             <text style={{ color: MUTED }}>no known projects yet</text>
           ) : (
             <PickList
               counter
-              items={rankedProjects}
-              focused={focused && pane() === 'list' && !loading}
+              items={rows}
+              focused={focused && pane() === 'projects'}
               placeholder="filter projects..."
-              filter={() => true}
-              onChange={setQuery}
-              onCursorChange={(p) => setPreview(p)}
-              onSubmit={onPick}
+              filter={(query, row) => fuzzyScore(query, `${row.projectPath} ${row.branch || ''}`) >= 0}
+              onCursorChange={setPreview}
+              onSubmit={onPickCheckout}
               onCancel={onClose}
               scrollbar
               gap={1}
-              renderItem={(p, { selected, focused: f }) => (
-                <box style={{ flexDirection: 'row', bg: selected ? (f ? accent() : SELECT_BG) : null, paddingX: 1 }}>
-                  {p.latest.color && <text style={{ color: selected ? 'black' : p.latest.color }}>{'▪ '}</text>}
-                  <box style={{ flexGrow: 1, height: 1 }}>
-                    <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{p.path}</text>
+              renderItem={(row, { selected, focused: active }) => (
+                <box style={{ flexDirection: 'column' }}>
+                  {row.grouped && row.first && <text style={{ color: FG }}>{`▾ ${row.projectPath}`}</text>}
+                  <box style={{ flexDirection: 'row', bg: selected ? (active ? accent() : SELECT_BG) : null, paddingX: 1 }}>
+                    <box style={{ flexGrow: 1, height: 1 }}>
+                      <text style={{ overflow: 'truncate', color: selected ? 'black' : FG }}>{row.grouped ? `  ${checkoutLabel(row)}` : row.projectPath}</text>
+                    </box>
+                    <text style={{ color: selected ? 'black' : MUTED }}>{`  ${row.current ? 'current  ' : ''}${row.latest ? timeAgo(row.latest.at) : 'no sessions'}`}</text>
                   </box>
-                  <text style={{ color: selected ? 'black' : MUTED }}>{`  ${p.current ? 'current  ' : ''}${timeAgo(p.latest.at)}`}</text>
                 </box>
               )}
             />
           )}
         </box>
         <PanelDivider />
-        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 3 }}>
-          {preview() ? (
-            <ScrollBox style={{ flexGrow: 1 }} focused={focused && pane() === 'preview'} scrollbar>
-              <box style={{ flexDirection: 'column' }}>
-                <text style={{ color: FG, overflow: 'truncate' }}>{preview().path}</text>
-                <text style={{ color: MUTED }}>{`${preview().count} ${preview().count === 1 ? 'session' : 'sessions'}  ${timeAgo(preview().latest.at)}`}</text>
-                <box style={{ height: 1 }} />
-                {(preview().sessions || []).map((session, i) => (
-                  <box key={session.header.id} style={{ flexDirection: 'column' }}>
-                    {i > 0 && <text style={{ color: SELECT_BG, overflow: 'clip' }}>{'─'.repeat(process.stdout.columns || 80)}</text>}
-                    <box style={{ flexDirection: 'row' }}>
-                      <box style={{ flexGrow: 1, height: 1 }}>
-                        <text style={{ color: FG_SOFT, overflow: 'truncate' }}>{session.title.replace(/\n/g, ' ')}</text>
-                      </box>
-                      <text style={{ color: MUTED }}>{`  ${session.turns} ${session.turns === 1 ? 'turn' : 'turns'}  ${timeAgo(session.at)}`}</text>
-                    </box>
+        <box style={{ flexDirection: 'column', flexGrow: 1, bg: PANEL_BG, paddingX: 2 }}>
+          {preview()?.sessions.length ? (
+            <PickList
+              key={preview().root}
+              counter
+              items={preview().sessions}
+              focused={focused && pane() === 'sessions'}
+              placeholder="filter sessions..."
+              filter={(query, session) => fuzzyScore(query, session.title) >= 0}
+              onSubmit={onPickSession}
+              onCancel={onClose}
+              scrollbar
+              gap={1}
+              renderItem={(session, { selected, focused: active }) => (
+                <box style={{ flexDirection: 'row', bg: selected ? (active ? accent() : SELECT_BG) : null, paddingX: 1 }}>
+                  <box style={{ flexGrow: 1, height: 1 }}>
+                    <text style={{ color: selected ? 'black' : FG_SOFT, overflow: 'truncate' }}>{session.title.replace(/\n/g, ' ')}</text>
                   </box>
-                ))}
-              </box>
-            </ScrollBox>
+                  <text style={{ color: selected ? 'black' : MUTED }}>{`  ${session.turns} ${session.turns === 1 ? 'turn' : 'turns'}  ${timeAgo(session.at)}`}</text>
+                </box>
+              )}
+            />
           ) : (
-            <text style={{ color: MUTED }}>no projects</text>
+            <text style={{ color: MUTED }}>no sessions</text>
           )}
         </box>
       </box>
