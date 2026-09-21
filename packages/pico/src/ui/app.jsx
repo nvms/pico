@@ -28,6 +28,8 @@ import { fuzzyScore } from 'picocode-core/fuzzy.js'
 import { completionContext, applyCompletion } from 'picocode-core/completion.js'
 import { extractImagePaths, placeholderizeImagePaths } from 'picocode-core/attachments.js'
 import { listFiles } from 'picocode-core/files.js'
+import { listWorktrees } from 'picocode-core/worktrees.js'
+import { ownerRoot } from 'picocode-core/paths.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from 'picocode-core/format.js'
 import { contextBar } from './context-bar.js'
@@ -296,6 +298,7 @@ export function App({ boot, controller: ctl }) {
 
   const refs = boot.refs
   refs.quitAt ??= 0
+  refs.resumeOpen ??= 0
 
   function setView(next) {
     setViewSignal(next)
@@ -858,14 +861,17 @@ export function App({ boot, controller: ctl }) {
     flash('disconnected from ChatGPT')
   }
 
-  async function openResumePanel() {
-    const projects = await ctl.listProjects()
-    const current = projects.find((project) => project.current)
-    const scopes = current?.checkouts.length > 1 ? ['repository', 'checkout', 'everywhere'] : ['repository', 'everywhere']
+  function openResumePanel() {
+    const request = ++refs.resumeOpen
+    const scopes = ['repository', 'everywhere']
     setResumeScopes(scopes)
     setResumeScope(0)
     setShowResumePanel(true)
     refreshSessions(0, scopes)
+    listWorktrees(ownerRoot(boot.root)).then((trees) => {
+      if (trees.length < 2 || !showResumePanel() || request !== refs.resumeOpen) return
+      setResumeScopes(['repository', 'checkout', 'everywhere'])
+    })
   }
 
   function refreshSessions(scopeIndex, scopes = resumeScopes()) {
