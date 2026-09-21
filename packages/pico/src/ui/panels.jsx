@@ -1056,8 +1056,9 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       <PanelFrame
         title={`MCP servers  ${server.name}  ${server.tools.length} ${server.tools.length === 1 ? 'tool' : 'tools'}`}
         hint="j/k or ↑↓ to scroll  esc back to servers"
+        fullScreen
       >
-        <box style={{ flexDirection: 'column', height: 14, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, paddingX: 2 }}>
           {server.tools.length === 0 ? (
             <text style={{ color: MUTED }}>no tools reported  is the server connected?</text>
           ) : (
@@ -1081,8 +1082,9 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       hint={form()
         ? 'tab moves between fields  j/k + space picks a radio option  esc cancels'
         : 'enter enable/disable  t tools  e edit  r reconnect  a add  ctrl+x remove (twice)  esc close'}
+      fullScreen
     >
-      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+      <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, paddingX: 2 }}>
         {form() ? (
           <McpServerForm
             focused={focused}

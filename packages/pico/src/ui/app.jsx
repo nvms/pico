@@ -1455,7 +1455,7 @@ export function App({ boot, controller: ctl }) {
   const items = preparedConversation.items
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
-  const showComposerActions = !steer() && !viewedAgent && !viewedShell && process.platform === 'darwin'
+  const showComposerActions = !steer() && !viewedAgent && !viewedShell && !anyPanel() && process.platform === 'darwin'
 
   if (showMemoryPanel()) {
     return (
@@ -1467,6 +1467,37 @@ export function App({ boot, controller: ctl }) {
         onToggleDisabled={toggleMemoryDisabled}
         onForget={forgetMemory}
         onClose={() => setShowMemoryPanel(false)}
+      />
+    )
+  }
+
+  if (showMcpPanel()) {
+    return (
+      <McpPanel
+        servers={mcpServers()}
+        focused
+        onToggle={(name) => mcp.toggle(name)}
+        onReconnect={(name) => mcp.reconnect(name)}
+        onRemove={(name) => {
+          const armed = refs.mcpRemoveArm
+          if (!armed || armed.name !== name || Date.now() - armed.at > 3000) {
+            refs.mcpRemoveArm = { name, at: Date.now() }
+            return flash(`ctrl+x again to remove "${name}" and its config`)
+          }
+          refs.mcpRemoveArm = null
+          mcp.remove(name)
+          flash(`removed mcp server ${name}`)
+        }}
+        onAdd={(name, command, scope) => {
+          mcp.add(name, command, scope)
+          flash(`added ${name} (${scope})`)
+        }}
+        onEdit={(name, command) => {
+          mcp.update(name, command)
+          flash(`updated ${name}`)
+        }}
+        onInvalid={flash}
+        onClose={() => setShowMcpPanel(false)}
       />
     )
   }
@@ -2154,35 +2185,6 @@ export function App({ boot, controller: ctl }) {
             ctl.cancelWakeup(w)
           }}
           onClose={() => setShowWakeupsPanel(false)}
-        />
-      )}
-
-      {showMcpPanel() && (
-        <McpPanel
-          servers={mcpServers()}
-          focused={showMcpPanel()}
-          onToggle={(name) => mcp.toggle(name)}
-          onReconnect={(name) => mcp.reconnect(name)}
-          onRemove={(name) => {
-            const armed = refs.mcpRemoveArm
-            if (!armed || armed.name !== name || Date.now() - armed.at > 3000) {
-              refs.mcpRemoveArm = { name, at: Date.now() }
-              return flash(`ctrl+x again to remove "${name}" and its config`)
-            }
-            refs.mcpRemoveArm = null
-            mcp.remove(name)
-            flash(`removed mcp server ${name}`)
-          }}
-          onAdd={(name, command, scope) => {
-            mcp.add(name, command, scope)
-            flash(`added ${name} (${scope})`)
-          }}
-          onEdit={(name, command) => {
-            mcp.update(name, command)
-            flash(`updated ${name}`)
-          }}
-          onInvalid={flash}
-          onClose={() => setShowMcpPanel(false)}
         />
       )}
 
