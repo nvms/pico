@@ -29,7 +29,7 @@
   "dependencies": {
     "@shikijs/cli": "^3.0.0",
     "@trendr/core": "0.4.40",
-    "picocode-core": "0.9.185"
+    "picocode-core": "0.9.186"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
