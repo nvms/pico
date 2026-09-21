@@ -131,18 +131,22 @@ function MouseFocusRegion({ children, onPress, ...props }) {
   return <box {...props}>{children}</box>
 }
 
-function ComposerAction({ icon, onPress }) {
+function ComposerAction({ icon, activeIcon, active = false, onPress, onHover }) {
   const hitTest = useHitTest()
   const [hovered, setHovered] = createSignal(false)
   useMouse((event) => {
     const inside = hitTest(event.x, event.y)
-    if (event.action === 'move') setHovered(inside)
+    if (event.action === 'move' && inside !== hovered()) {
+      setHovered(inside)
+      onHover?.(inside)
+    }
     if (inside && event.action === 'press' && event.button === 'left') {
       onPress()
       event.stopPropagation()
     }
   })
-  return <text style={{ bg: hovered() ? accent() : PANEL_BG, color: hovered() ? 'black' : MUTED }}>{` ${icon} `}</text>
+  const highlighted = hovered() || active
+  return <text style={{ bg: highlighted ? accent() : undefined, color: highlighted ? 'black' : MUTED }}>{` ${highlighted ? activeIcon : icon} `}</text>
 }
 
 function AgentStripRow({ selected, focused, children, onPress }) {
@@ -217,6 +221,8 @@ export function App({ boot, controller: ctl }) {
   }
   const [dictationStatus, setDictationStatus] = createSignal('idle')
   const [dictationLevels, setDictationLevels] = createSignal([])
+  const [captureStatus, setCaptureStatus] = createSignal('idle')
+  const [composerActionLabel, setComposerActionLabel] = createSignal('')
   const [model, setModel] = createSignal(state.model)
   const [defaultModel, setDefaultModel] = createSignal(state.defaultModel)
   const [effort, setEffort] = createSignal(state.effort)
@@ -421,6 +427,7 @@ export function App({ boot, controller: ctl }) {
     attachImage: ctl.attachImage,
     setInput,
     onError: (message) => refs.ui.flash(message),
+    onStatus: setCaptureStatus,
   })
 
   if (!refs.dictation) {
@@ -1442,7 +1449,7 @@ export function App({ boot, controller: ctl }) {
   const items = preparedConversation.items
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
-  const showComposerActions = !steer() && !viewedAgent && !viewedShell && process.platform === 'darwin' && dictationStatus() === 'idle'
+  const showComposerActions = !steer() && !viewedAgent && !viewedShell && process.platform === 'darwin'
 
   if (showMemoryPanel()) {
     return (
@@ -1552,6 +1559,25 @@ export function App({ boot, controller: ctl }) {
   return (
     <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
+      <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, bg: PANEL_BG }}>
+        <box style={{ flexGrow: 1, height: 1 }}>
+          {busy()
+            ? (
+              <box style={{ flexDirection: 'row' }}>
+                <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
+                  {compacting()
+                    ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
+                    : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
+                </Shimmer>
+                <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${elapsed}  esc to interrupt`}</text>
+              </box>
+            )
+            : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}
+        </box>
+        {gitInfo?.branch && <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>}
+        {gitInfo?.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
+        {gitInfo?.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
+      </box>
       {transcript.length === 0 ? (
         <box style={{ flexGrow: 1, dim: dimmingPanel() }}>
           <EmptyState version={version} clouds={clouds()} />
@@ -1719,11 +1745,7 @@ export function App({ boot, controller: ctl }) {
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
-        {dictationStatus() !== 'idle' ? (
-          <text style={{ position: 'absolute', top: 0, right: 0, color: accent(), bg: PANEL_BG, overflow: 'truncate' }}>
-            {dictationIndicator(dictationStatus(), dictationLevels())}
-          </text>
-        ) : (state.session?.header.forkedFrom || derived().title) && (
+        {(state.session?.header.forkedFrom || derived().title) && (
           <box style={{ position: 'absolute', top: 0, right: 0, flexDirection: 'row' }}>
             {state.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
             {derived().title && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>}
@@ -1865,11 +1887,31 @@ export function App({ boot, controller: ctl }) {
       </MouseFocusRegion>}
 
       {showComposerActions && (
-        <box style={{ flexDirection: 'row', justifyContent: 'center', height: 1 }}>
-          <box style={{ flexDirection: 'row' }}>
-            <ComposerAction icon="●" onPress={() => refs.dictationInput.start({ value: input(), cursor: inputCursor() })} />
-            <ComposerAction icon="+" onPress={() => void refs.captureImage()} />
-          </box>
+        <box style={{ flexDirection: 'row', height: 1, marginLeft: 1 }}>
+          <ComposerAction
+            icon="○"
+            activeIcon="●"
+            active={dictationStatus() !== 'idle'}
+            onHover={(hovered) => {
+              if (hovered) setComposerActionLabel('capture audio')
+              else if (composerActionLabel() === 'capture audio') setComposerActionLabel('')
+            }}
+            onPress={() => dictationStatus() === 'recording'
+              ? void refs.dictationInput.stop()
+              : refs.dictationInput.start({ value: input(), cursor: inputCursor() })}
+          />
+          <ComposerAction
+            icon="□"
+            activeIcon="■"
+            active={captureStatus() === 'capturing'}
+            onHover={(hovered) => {
+              if (hovered) setComposerActionLabel('capture image')
+              else if (composerActionLabel() === 'capture image') setComposerActionLabel('')
+            }}
+            onPress={() => void refs.captureImage()}
+          />
+          {dictationStatus() !== 'idle' && <text style={{ color: accent(), overflow: 'truncate' }}>{dictationIndicator(dictationStatus(), dictationLevels())}</text>}
+          <text style={{ color: MUTED }}>{dictationStatus() === 'recording' ? 'esc cancel  enter confirm' : captureStatus() === 'capturing' ? ' esc cancel' : composerActionLabel() ? ` ${composerActionLabel()}` : ''}</text>
         </box>
       )}
 
@@ -2279,25 +2321,7 @@ export function App({ boot, controller: ctl }) {
         </box>
       ) : (
         <box style={{ flexDirection: 'column' }}>
-          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: showComposerActions && visibleShells.length === 0 && visibleAgents.length === 0 ? 0 : 1 }}>
-            <box style={{ flexGrow: 1, height: 1 }}>
-              {busy()
-                ? (
-                  <box style={{ flexDirection: 'row' }}>
-                    <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
-                      {compacting()
-                        ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
-                        : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
-                    </Shimmer>
-                    <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${elapsed}  esc to interrupt`}</text>
-                  </box>
-                )
-                : <text style={{ color: MUTED, overflow: 'truncate' }}>{boot.displayCwd}</text>}
-            </box>
-            {gitInfo?.branch && <text style={{ color: MUTED, overflow: 'truncate' }}>{gitInfo.branch}</text>}
-            {gitInfo?.added > 0 && <text style={{ color: GREEN }}>{`+${gitInfo.added}`}</text>}
-            {gitInfo?.removed > 0 && <text style={{ color: RED }}>{`-${gitInfo.removed}`}</text>}
-          </box>
+          <box style={{ height: 1 }} />
           <box style={{ flexDirection: 'row', paddingX: 2, gap: 1 }}>
             <text style={{ color: MUTED }}>{model().name}</text>
             {effortApplies() && effort() && <text style={{ color: MUTED }}>{effort()}</text>}

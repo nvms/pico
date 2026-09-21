@@ -1,8 +1,9 @@
-export function createScreenCaptureInput({ captureRegion, getDraft, attachImage, setInput, onError }) {
+export function createScreenCaptureInput({ captureRegion, getDraft, attachImage, setInput, onError, onStatus = () => {} }) {
   let pending = false
   return async function captureImage() {
     if (pending) return
     pending = true
+    onStatus('capturing')
     const target = getDraft()
     try {
       const image = await captureRegion()
@@ -25,6 +26,7 @@ export function createScreenCaptureInput({ captureRegion, getDraft, attachImage,
       onError(`Screen capture failed: ${error.message}`)
     } finally {
       pending = false
+      onStatus('idle')
     }
   }
 }

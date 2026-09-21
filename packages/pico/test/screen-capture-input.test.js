@@ -39,8 +39,10 @@ test('disposes a capture when the draft changes', async () => {
 })
 
 test('does nothing when capture is cancelled', async () => {
+  const statuses = []
   const capture = createScreenCaptureInput({
     captureRegion: async () => null,
+    onStatus: (status) => statuses.push(status),
     getDraft: () => ({ value: '', cursor: 0, session: null, revision: 0 }),
     attachImage: () => assert.fail('capture should not attach'),
     setInput: () => assert.fail('input should not change'),
@@ -48,4 +50,5 @@ test('does nothing when capture is cancelled', async () => {
   })
 
   await capture()
+  assert.deepEqual(statuses, ['capturing', 'idle'])
 })

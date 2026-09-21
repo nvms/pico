@@ -35,5 +35,5 @@ export function createDictationInput({ dictation, getInput, setInput }) {
     return true
   }
 
-  return { start, cancel, handle }
+  return { start, stop, cancel, handle }
 }
