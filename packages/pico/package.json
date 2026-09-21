@@ -1,6 +1,6 @@
 {
   "name": "picocode",
-  "version": "0.9.186",
+  "version": "0.9.187",
   "description": "a TUI coding agent built on trend and @prsm/ai",
   "type": "module",
   "license": "MIT",
@@ -29,7 +29,7 @@
   "dependencies": {
     "@shikijs/cli": "^3.0.0",
     "@trendr/core": "0.4.40",
-    "picocode-core": "0.9.186"
+    "picocode-core": "0.9.187"
   },
   "devDependencies": {
     "esbuild": "^0.25.0"
