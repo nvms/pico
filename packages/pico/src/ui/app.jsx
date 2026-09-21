@@ -1564,11 +1564,13 @@ export function App({ boot, controller: ctl }) {
           {busy()
             ? (
               <box style={{ flexDirection: 'row' }}>
-                <Shimmer color={accent()} highlight={HIGHLIGHT} duration={1500} reverse>
-                  {compacting()
-                    ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
-                    : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
-                </Shimmer>
+                <box style={{ bg: accent(), paddingX: 1 }}>
+                  <Shimmer color="black" highlight={PANEL_BG} duration={1500} reverse>
+                    {compacting()
+                      ? compactStatus()?.phase === 'writing' ? `Compacting  writing ${compactStatus().section}/8` : 'Compacting  analyzing'
+                      : turnPhase() === 'thinking' ? 'Thinking' : turnPhase() === 'tools' ? 'Working' : 'Responding'}
+                  </Shimmer>
+                </box>
                 <text style={{ color: MUTED, overflow: 'truncate' }}>{`  ${elapsed}  esc to interrupt`}</text>
               </box>
             )
