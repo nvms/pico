@@ -2201,7 +2201,7 @@ export function App({ boot, controller: ctl }) {
       )}
 
       {combinedActivity && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: showComposerActions ? 0 : 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
           <AgentStripRow selected={!viewedShell && !viewedAgent} focused={fm.current() === 'activity-main'} onPress={() => { fm.focus('activity-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
             <text style={{ color: fm.current() === 'activity-main' ? 'black' : accent() }}>{'● '}</text>
             <text style={{ color: fm.current() === 'activity-main' ? 'black' : !viewedShell && !viewedAgent ? FG : MUTED }}>{'main'}</text>
