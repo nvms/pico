@@ -32,6 +32,7 @@ import { contextBar } from './context-bar.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { DeliberationExchange, Message } from './transcript.jsx'
 import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
+import { compactTranscriptRuns, transcriptWindow } from './transcript-window.js'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
@@ -173,31 +174,6 @@ function collapseSteerTools(items) {
   return collapsed
 }
 
-function compactTranscriptRuns(items, active = false) {
-  const result = []
-  for (let i = 0; i < items.length;) {
-    if (items[i].kind === 'tool' || items[i].kind === 'thoughts') {
-      let end = i + 1
-      while (end < items.length && (items[end].kind === 'tool' || items[end].kind === 'thoughts')) end++
-      const run = items.slice(i, end)
-      const tools = run.filter((item) => item.kind === 'tool')
-      result.push({ kind: 'tool-group', callId: tools.at(-1)?.callId, items: run, tools, active: active && end === items.length })
-      i = end
-      continue
-    }
-    if (items[i].kind === 'notice' && items[i].agentCompletion) {
-      let end = i + 1
-      while (end < items.length && items[end].kind === 'notice' && items[end].agentCompletion) end++
-      const run = items.slice(i, end)
-      result.push(run.length === 1 ? run[0] : { kind: 'agent-notice-group', notices: run })
-      i = end
-      continue
-    }
-    result.push(items[i++])
-  }
-  return result
-}
-
 export function App({ boot, controller: ctl }) {
   const { cwd, root, version, models, skills, mcp } = boot
   const state = ctl.state
@@ -292,6 +268,7 @@ export function App({ boot, controller: ctl }) {
   const [offset, setOffset] = createSignal(0)
   const [follow, setFollow] = createSignal(true)
   const [histWindow, setHistWindow] = createSignal(HISTORY_WINDOW)
+  const [transcriptMetrics, setTranscriptMetrics] = createSignal(null)
   const [steer, setSteer] = createSignal(null)
   const [steerText, setSteerText] = createSignal('')
 
@@ -1389,15 +1366,17 @@ export function App({ boot, controller: ctl }) {
   const transcriptSource = activeShell ? `shell:${activeShell.id}` : activeAgent ? `agent:${activeAgent.id}` : 'main'
   const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript)
   const deliberationView = activeAgent?.role === 'deliberation'
-  const hiddenCount = deliberationView ? 0 : Math.max(0, transcript.length - histWindow())
   const isolatedTranscript = activeAgent || activeShell
-  const visibleItems = isolatedTranscript ? transcript.slice(hiddenCount) : [...transcript.slice(hiddenCount), ...overlay()]
-  const groupedItems = steer()
-    ? collapseSteerTools(visibleItems)
+  const groupItems = (source, active = false) => steer()
+    ? collapseSteerTools(source)
     : compactToolHistory()
-      ? compactTranscriptRuns(visibleItems, activeAgent ? activeAgent.status === 'running' : activeShell ? false : turnPhase() === 'tools')
-      : visibleItems
-  const preparedConversation = conversationSearch.prepare(groupedItems)
+      ? compactTranscriptRuns(source, active)
+      : source
+  const transcriptItems = groupItems(transcript, activeAgent?.status === 'running')
+  const windowed = deliberationView ? { items: transcriptItems, hiddenItems: 0, hiddenCount: 0 } : transcriptWindow(transcriptItems, histWindow())
+  const hiddenCount = windowed.hiddenCount
+  const visibleItems = isolatedTranscript ? windowed.items : [...windowed.items, ...groupItems(overlay(), turnPhase() === 'tools')]
+  const preparedConversation = conversationSearch.prepare(visibleItems)
   conversationSearchMatches = preparedConversation.matches
   const items = preparedConversation.items
 
@@ -1520,6 +1499,14 @@ export function App({ boot, controller: ctl }) {
           followFocus={steer() ? steerListFocus : null}
           focusPadding={1}
           scrollOffset={follow() ? 1e9 : offset()}
+          onMetrics={(metrics) => {
+            const previous = transcriptMetrics()
+            if (previous?.visibleHeight === metrics.visibleHeight && previous?.contentHeight === metrics.contentHeight) return
+            setTranscriptMetrics(metrics)
+            if (hiddenCount > 0 && metrics.visibleHeight > 0 && metrics.contentHeight <= metrics.visibleHeight) {
+              setHistWindow((size) => size + HISTORY_WINDOW)
+            }
+          }}
           onScroll={(next, meta) => {
           setFollow(!!meta?.atBottom)
           // back at the bottom: loaded history is off-screen, so re-hiding
@@ -1528,7 +1515,7 @@ export function App({ boot, controller: ctl }) {
           if (next === 0 && hiddenCount > 0) {
             // keep the view anchored: estimate the rows the new batch adds
             // and scroll past them so the current top item stays in place
-            const added = Math.min(HISTORY_WINDOW, hiddenCount)
+            const added = Math.min(HISTORY_WINDOW, windowed.hiddenItems)
             const avgRows = Math.max(2, Math.round((meta?.maxOffset || 0) / Math.max(1, items.length)))
             setHistWindow((w) => w + HISTORY_WINDOW)
             setOffset(added * avgRows)
