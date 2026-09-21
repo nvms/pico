@@ -108,7 +108,7 @@ function ConfigModelField({ model, label, path, focused, onPick }) {
   )
 }
 
-export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onPickDeliberationModel, onPickParticipantModel, onClose }) {
+export function ConfigPanel({ values, focused, onChange, onPickResearchModel, onPickShellModel, onPickDeliberationModel, onPickParticipantModel, onClose }) {
   const fields = [
     { name: 'clouds', label: 'Cloud animation', desc: 'Show animated clouds on the empty screen', path: 'animation.clouds' },
     { name: 'compactTools', label: 'Compact tool history', desc: 'Summarize consecutive tool calls in one row', path: 'display.compactToolHistory' },
@@ -137,6 +137,9 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
           ))}
           <Field name="researchModel">
             {({ focused: fieldFocused }) => <ConfigModelField model={values.researchModel} label="Parallel worker model" path="models.researchWorker" focused={fieldFocused} onPick={onPickResearchModel} />}
+          </Field>
+          <Field name="shellModel">
+            {({ focused: fieldFocused }) => <ConfigModelField model={values.shellModel} label="Shell model" path="models.shell" focused={fieldFocused} onPick={onPickShellModel} />}
           </Field>
           {['participantA', 'participantB'].map((role) => (
             <Field name={`${role}Model`}>

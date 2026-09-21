@@ -258,6 +258,7 @@ export function App({ boot, controller: ctl }) {
   const [showResearchModelPanel, setShowResearchModelPanel] = createSignal(false)
   const [researchModelReturn, setResearchModelReturn] = createSignal(null)
   const [selectingDeliberationModel, setSelectingDeliberationModel] = createSignal(false)
+  const [selectingShellModel, setSelectingShellModel] = createSignal(false)
   const [participantModelTarget, setParticipantModelTarget] = createSignal(null)
   const [pendingResearch, setPendingResearch] = createSignal(null)
   const [pendingDeliberation, setPendingDeliberation] = createSignal(null)
@@ -1451,9 +1452,16 @@ export function App({ boot, controller: ctl }) {
   if (showConfigPanel()) {
     return (
       <ConfigPanel
-        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, deliberationModel: boot.deliberationModel, participantAModel: boot.participantAModel, participantBModel: boot.participantBModel, researchAgentLimit: researchAgentLimit() }}
+        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, shellModel: boot.shellModel, deliberationModel: boot.deliberationModel, participantAModel: boot.participantAModel, participantBModel: boot.participantBModel, researchAgentLimit: researchAgentLimit() }}
         focused
+        onPickShellModel={() => {
+          setSelectingShellModel(true)
+          setResearchModelReturn('config')
+          setShowConfigPanel(false)
+          setShowResearchModelPanel(true)
+        }}
         onPickResearchModel={() => {
+          setSelectingShellModel(false)
           setSelectingDeliberationModel(false)
           setResearchModelReturn('config')
           setShowConfigPanel(false)
@@ -1892,15 +1900,18 @@ export function App({ boot, controller: ctl }) {
       {showResearchModelPanel() && (
         <ModelPanel
           models={models.filter((m) => m.available !== false)}
-          current={participantModelTarget() ? boot[`${participantModelTarget()}Model`] : selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
+          current={participantModelTarget() ? boot[`${participantModelTarget()}Model`] : selectingShellModel() ? boot.shellModel : selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
           defaultName={null}
-          title={participantModelTarget() ? `Choose Participant ${participantModelTarget() === 'participantA' ? 'A' : 'B'} model` : selectingDeliberationModel() ? 'Choose synthesis model' : 'Choose parallel worker model'}
+          title={participantModelTarget() ? `Choose Participant ${participantModelTarget() === 'participantA' ? 'A' : 'B'} model` : selectingShellModel() ? 'Choose shell model' : selectingDeliberationModel() ? 'Choose synthesis model' : 'Choose parallel worker model'}
           hint="enter: save model  esc: cancel"
           focused={showResearchModelPanel()}
           onPick={(m) => {
             if (participantModelTarget()) {
               const method = participantModelTarget() === 'participantA' ? 'setParticipantAModel' : 'setParticipantBModel'
               ctl[method](m.name)
+            } else if (selectingShellModel()) {
+              ctl.setShellModel(m.name)
+              flash(`shell: ${m.name}`)
             } else if (selectingDeliberationModel()) {
               boot.deliberationModel = m.name
               writeConfig({ models: { deliberation: m.name } }).catch(() => {})
@@ -1911,6 +1922,7 @@ export function App({ boot, controller: ctl }) {
               flash(`parallel workers: ${m.name}`)
             }
             setParticipantModelTarget(null)
+            setSelectingShellModel(false)
             setSelectingDeliberationModel(false)
             setShowResearchModelPanel(false)
             const pending = pendingResearch()
@@ -1927,6 +1939,7 @@ export function App({ boot, controller: ctl }) {
           onClose={() => {
             setShowResearchModelPanel(false)
             setParticipantModelTarget(null)
+            setSelectingShellModel(false)
             setSelectingDeliberationModel(false)
             setPendingResearch(null)
             setPendingDeliberation(null)

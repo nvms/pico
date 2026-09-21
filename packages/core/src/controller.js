@@ -1129,6 +1129,13 @@ export function createController({ boot }) {
     changed()
   }
 
+  async function setShellModel(name) {
+    if (name && !modelAvailable(name)) return flash(`${name} is not available`)
+    boot.shellModel = name || null
+    await writeConfig({ models: { shell: name || null } })
+    changed()
+  }
+
   async function setParticipantAModel(name) {
     if (name && !modelAvailable(name)) return flash(`${name} is not available`)
     boot.participantAModel = name || null
@@ -1424,6 +1431,7 @@ export function createController({ boot }) {
     sendInit,
     setResearchModel,
     setDeliberationModel,
+    setShellModel,
     setParticipantAModel,
     setParticipantBModel,
     setProposerModel: setParticipantAModel,

@@ -3,10 +3,12 @@ export const USAGE = `pico - a coding agent in your terminal
 usage:
   pico                       interactive session in the current directory
   pico -p "prompt"           headless: run one agentic turn, print the answer
+  pico -s "request"          generate one shell command, without running it
   cat log | pico -p "..."    stdin is appended to the prompt as context
 
-headless flags:
-  -p, --print <prompt>       the prompt to run
+command flags:
+  -p, --print <prompt>       run one agentic turn and print the answer
+  -s, --shell <request>      print one generated shell command
   --json                     print a single JSON result object to stdout
   --stream-json              stream session events to stdout as jsonl
   -m, --model <name>         model to use (fuzzy matched, or raw provider/model)
@@ -30,7 +32,13 @@ export function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '-p' || arg === '--print') {
+      if (opts.mode !== 'interactive') throw new Error(`${arg} cannot be combined with another command mode`)
       opts.mode = 'headless'
+      opts.prompt = takeValue(arg, i)
+      i++
+    } else if (arg === '-s' || arg === '--shell') {
+      if (opts.mode !== 'interactive') throw new Error(`${arg} cannot be combined with another command mode`)
+      opts.mode = 'shell'
       opts.prompt = takeValue(arg, i)
       i++
     } else if (arg === '--json') opts.json = true
@@ -65,5 +73,10 @@ export function parseArgs(argv) {
   }
 
   if (opts.mode === 'headless' && !opts.prompt?.trim()) throw new Error('-p requires a non-empty prompt')
+  if (opts.mode === 'shell') {
+    if (!opts.prompt?.trim()) throw new Error('-s requires a non-empty request')
+    const incompatible = [opts.json && '--json', opts.streamJson && '--stream-json', opts.resume && '--resume', opts.maxToolCalls && '--max-tool-calls'].find(Boolean)
+    if (incompatible) throw new Error(`${incompatible} cannot be used with --shell`)
+  }
   return opts
 }

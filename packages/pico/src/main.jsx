@@ -70,6 +70,10 @@ if (cli.mode === 'headless') {
   const { runHeadless } = await import('./headless.js')
   process.exit(await runHeadless(cli))
 }
+if (cli.mode === 'shell') {
+  const { runShell } = await import('./shell.js')
+  process.exit(await runShell(cli))
+}
 
 const keys = discoverKeys()
 const chatgpt = await openaiConnected()
@@ -138,6 +142,7 @@ const boot = {
   providers,
   initialModel: configuredDefault || defaultModel(models),
   researchModel: config.models?.researchWorker || null,
+  shellModel: config.models?.shell || null,
   participantAModel: config.models?.participantA || null,
   participantBModel: config.models?.participantB || null,
   deliberationModel: config.models?.deliberation || config.models?.researchWorker || null,

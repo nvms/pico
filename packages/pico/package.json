@@ -14,7 +14,8 @@
   },
   "files": [
     "bin",
-    "dist"
+    "dist",
+    "integrations"
   ],
   "engines": {
     "node": ">=24"

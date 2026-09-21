@@ -17,8 +17,22 @@ test('parses headless flags', () => {
   assert.equal(opts.quiet, true)
 })
 
+test('parses shell flags', () => {
+  assert.deepEqual(parseArgs(['-s', 'list large files']), { mode: 'shell', prompt: 'list large files' })
+  assert.deepEqual(parseArgs(['--shell', 'list large files', '-m', 'terra', '--effort', 'low']), {
+    mode: 'shell',
+    prompt: 'list large files',
+    model: 'terra',
+    effort: 'low',
+  })
+})
+
 test('rejects bad input', () => {
   assert.throws(() => parseArgs(['-p']), /requires a value/)
+  assert.throws(() => parseArgs(['-s']), /requires a value/)
+  assert.throws(() => parseArgs(['-s', '  ']), /non-empty/)
+  assert.throws(() => parseArgs(['-s', 'go', '--json']), /cannot be used with --shell/)
+  assert.throws(() => parseArgs(['-s', 'go', '-p', 'stop']), /cannot be combined/)
   assert.throws(() => parseArgs(['-p', '  ']), /non-empty/)
   assert.throws(() => parseArgs(['--effort', 'extreme']), /invalid effort/)
   assert.throws(() => parseArgs(['--max-tool-calls']), /requires a value/)
