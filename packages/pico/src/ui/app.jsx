@@ -172,7 +172,6 @@ function AgentStripRow({ selected, focused, children, onPress }) {
 // batches when the user scrolls to the top. render cost is per-item, so this
 // keeps day-long sessions as fast as fresh ones
 const HISTORY_WINDOW = 50
-const RESUME_SCOPES = ['repository', 'checkout', 'everywhere']
 
 function collapseSteerTools(items) {
   const collapsed = []
@@ -267,6 +266,7 @@ export function App({ boot, controller: ctl }) {
   const [histScope, setHistScope] = createSignal(0)
   const [histPrompts, setHistPrompts] = createSignal([])
   const [showResumePanel, setShowResumePanel] = createSignal(false)
+  const [resumeScopes, setResumeScopes] = createSignal(['repository', 'everywhere'])
   const [resumeScope, setResumeScope] = createSignal(0)
   const [resumeSessions, setResumeSessions] = createSignal([])
   const [resumeLoading, setResumeLoading] = createSignal(false)
@@ -767,8 +767,7 @@ export function App({ boot, controller: ctl }) {
     }
     if (c.name === 'resume') {
       if (busy()) return flash('finish or interrupt the current turn before switching sessions')
-      setShowResumePanel(true)
-      refreshSessions(resumeScope())
+      openResumePanel()
       return
     }
     if (c.name === 'project') return openProjectPanel()
@@ -859,9 +858,19 @@ export function App({ boot, controller: ctl }) {
     flash('disconnected from ChatGPT')
   }
 
-  function refreshSessions(scopeIndex) {
+  async function openResumePanel() {
+    const projects = await ctl.listProjects()
+    const current = projects.find((project) => project.current)
+    const scopes = current?.checkouts.length > 1 ? ['repository', 'checkout', 'everywhere'] : ['repository', 'everywhere']
+    setResumeScopes(scopes)
+    setResumeScope(0)
+    setShowResumePanel(true)
+    refreshSessions(0, scopes)
+  }
+
+  function refreshSessions(scopeIndex, scopes = resumeScopes()) {
     setResumeLoading(true)
-    ctl.listResumeSessions(RESUME_SCOPES[scopeIndex])
+    ctl.listResumeSessions(scopes[scopeIndex])
       .then(setResumeSessions)
       .finally(() => setResumeLoading(false))
   }
@@ -1262,10 +1271,7 @@ export function App({ boot, controller: ctl }) {
     }
     if (event.ctrl && event.key === 's' && view() === 'chat' && !anyPanel()) {
       if (busy()) flash('finish or interrupt the current turn before switching sessions')
-      else {
-        setShowResumePanel(true)
-        refreshSessions(resumeScope())
-      }
+      else openResumePanel()
       event.stopPropagation()
       return
     }
@@ -1300,7 +1306,7 @@ export function App({ boot, controller: ctl }) {
       return
     }
     if (event.ctrl && event.key === 's' && showResumePanel()) {
-      const next = (resumeScope() + 1) % RESUME_SCOPES.length
+      const next = (resumeScope() + 1) % resumeScopes().length
       setResumeScope(next)
       refreshSessions(next)
       event.stopPropagation()
@@ -1469,7 +1475,7 @@ export function App({ boot, controller: ctl }) {
     return (
       <ResumePanel
         sessions={resumeSessions()}
-        scopes={RESUME_SCOPES}
+        scopes={resumeScopes()}
         scopeIndex={resumeScope()}
         loading={resumeLoading()}
         focused

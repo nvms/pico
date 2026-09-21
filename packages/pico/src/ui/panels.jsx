@@ -162,7 +162,7 @@ export function ScopeTabs({ scopes, active }) {
   return (
     <box style={{ flexDirection: 'row' }}>
       {scopes.map((s, i) => (
-        <text key={s} style={{ color: i === active ? accent() : MUTED, bold: i === active }}>{`${i > 0 ? '  ' : ''}${s}`}</text>
+        <text key={s} style={{ color: i === active ? accent() : MUTED, bold: i === active }}>{`${i > 0 ? '  ' : ''}${s === 'checkout' ? 'this checkout' : s}`}</text>
       ))}
     </box>
   )
