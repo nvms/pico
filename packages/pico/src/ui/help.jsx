@@ -20,6 +20,7 @@ In the MCP panel: enter enables/disables a server (disabled is sticky across res
 ## Composer
 
 - \`ctrl+v\`: Attach clipboard image
+- \`ctrl+o\`: Capture screen region (macOS)
 - \`ctrl+g\`: Record (macOS)
 - \`enter\`: Transcribe recording
 - \`esc\`: Cancel dictation

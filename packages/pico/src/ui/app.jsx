@@ -8,6 +8,8 @@ import { createDictation } from '../dictation.js'
 import { readClipboardImage } from '../clipboard.js'
 import { createClipboardInput } from './clipboard-input.js'
 import { createDictationInput } from './dictation-input.js'
+import { createScreenCaptureInput } from './screen-capture-input.js'
+import { captureRegion } from '../screen-capture.js'
 import { createComposerFiles } from './composer-files.js'
 import { dictationIndicator, appendLevel } from './dictation-indicator.js'
 import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
@@ -127,6 +129,20 @@ function MouseFocusRegion({ children, onPress, ...props }) {
     if (event.action === 'press' && event.button === 'left' && hitTest(event.x, event.y)) onPress()
   })
   return <box {...props}>{children}</box>
+}
+
+function ComposerAction({ icon, onPress }) {
+  const hitTest = useHitTest()
+  const [hovered, setHovered] = createSignal(false)
+  useMouse((event) => {
+    const inside = hitTest(event.x, event.y)
+    if (event.action === 'move') setHovered(inside)
+    if (inside && event.action === 'press' && event.button === 'left') {
+      onPress()
+      event.stopPropagation()
+    }
+  })
+  return <text style={{ bg: hovered() ? accent() : PANEL_BG, color: hovered() ? 'black' : MUTED }}>{` ${icon} `}</text>
 }
 
 function AgentStripRow({ selected, focused, children, onPress }) {
@@ -394,6 +410,13 @@ export function App({ boot, controller: ctl }) {
 
   refs.pasteImage ??= createClipboardInput({
     readImage: readClipboardImage,
+    getDraft: () => ({ value: input(), cursor: inputCursor(), session: state.session, revision: refs.draftRevision }),
+    attachImage: ctl.attachImage,
+    setInput,
+    onError: (message) => refs.ui.flash(message),
+  })
+  refs.captureImage ??= createScreenCaptureInput({
+    captureRegion,
     getDraft: () => ({ value: input(), cursor: inputCursor(), session: state.session, revision: refs.draftRevision }),
     attachImage: ctl.attachImage,
     setInput,
@@ -1419,6 +1442,7 @@ export function App({ boot, controller: ctl }) {
   const items = preparedConversation.items
 
   const wideLayout = wideSidebar() && terminalWidth() > 160
+  const showComposerActions = !steer() && !viewedAgent && !viewedShell && process.platform === 'darwin' && dictationStatus() === 'idle'
 
   if (showMemoryPanel()) {
     return (
@@ -1752,6 +1776,10 @@ export function App({ boot, controller: ctl }) {
               refs.dictationInput.start(e)
               return true
             }
+            if (e.ctrl && e.key === 'o') {
+              void refs.captureImage()
+              return true
+            }
             if (e.key === 'tab' && !e.ctrl && !e.meta && showFiles && matchedFiles.length > 0) {
               pickFile(matchedFiles[Math.min(fileIndex(), matchedFiles.length - 1)])
               return true
@@ -1835,6 +1863,15 @@ export function App({ boot, controller: ctl }) {
           cursor={{ blink: true, bg: accent(), color: 'black' }}
         />
       </MouseFocusRegion>}
+
+      {showComposerActions && (
+        <box style={{ flexDirection: 'row', justifyContent: 'center', height: 1 }}>
+          <box style={{ flexDirection: 'row' }}>
+            <ComposerAction icon="●" onPress={() => refs.dictationInput.start({ value: input(), cursor: inputCursor() })} />
+            <ComposerAction icon="+" onPress={() => void refs.captureImage()} />
+          </box>
+        </box>
+      )}
 
       {showCommands && (
         <box style={{ flexDirection: 'column', height: 6, minHeight: 6, paddingX: 2, marginTop: 1 }}>
@@ -2120,7 +2157,7 @@ export function App({ boot, controller: ctl }) {
       )}
 
       {combinedActivity && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: showComposerActions ? 0 : 1 }}>
           <AgentStripRow selected={!viewedShell && !viewedAgent} focused={fm.current() === 'activity-main'} onPress={() => { fm.focus('activity-main'); setViewedShellId(null); setViewedAgentId(null); setFollow(true); setHistWindow(HISTORY_WINDOW) }}>
             <text style={{ color: fm.current() === 'activity-main' ? 'black' : accent() }}>{'● '}</text>
             <text style={{ color: fm.current() === 'activity-main' ? 'black' : !viewedShell && !viewedAgent ? FG : MUTED }}>{'main'}</text>
@@ -2129,7 +2166,7 @@ export function App({ boot, controller: ctl }) {
       )}
 
       {visibleShells.length > 0 && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity || showComposerActions ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
             <text style={{ color: MUTED }}>{`${shellActionHint ? `${shellActionHint}  ` : ''}j/k move`}</text>
           </box>
@@ -2162,7 +2199,7 @@ export function App({ boot, controller: ctl }) {
       )}
 
       {visibleAgents.length > 0 && (
-        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity ? 0 : 1 }}>
+        <box style={{ flexDirection: 'column', paddingX: 2, marginTop: combinedActivity || showComposerActions ? 0 : 1 }}>
           <box style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
             <text style={{ color: MUTED }}>{`${agentActionHint ? `${agentActionHint}  ` : ''}j/k move`}</text>
           </box>
@@ -2242,7 +2279,7 @@ export function App({ boot, controller: ctl }) {
         </box>
       ) : (
         <box style={{ flexDirection: 'column' }}>
-          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: 1 }}>
+          <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, marginTop: showComposerActions && visibleShells.length === 0 && visibleAgents.length === 0 ? 0 : 1 }}>
             <box style={{ flexGrow: 1, height: 1 }}>
               {busy()
                 ? (
