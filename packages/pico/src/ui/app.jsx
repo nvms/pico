@@ -1938,8 +1938,8 @@ export function App({ boot, controller: ctl }) {
             activeIcon="●"
             active={dictationStatus() !== 'idle'}
             onHover={(hovered) => {
-              if (hovered) setComposerActionLabel('capture audio')
-              else if (composerActionLabel() === 'capture audio') setComposerActionLabel('')
+              if (hovered) setComposerActionLabel('capture audio (ctrl-g)')
+              else if (composerActionLabel() === 'capture audio (ctrl-g)') setComposerActionLabel('')
             }}
             onPress={() => dictationStatus() === 'recording'
               ? void refs.dictationInput.stop()
@@ -1950,8 +1950,8 @@ export function App({ boot, controller: ctl }) {
             activeIcon="■"
             active={captureStatus() === 'capturing'}
             onHover={(hovered) => {
-              if (hovered) setComposerActionLabel('capture image')
-              else if (composerActionLabel() === 'capture image') setComposerActionLabel('')
+              if (hovered) setComposerActionLabel('capture image (ctrl-o)')
+              else if (composerActionLabel() === 'capture image (ctrl-o)') setComposerActionLabel('')
             }}
             onPress={() => void refs.captureImage()}
           />
