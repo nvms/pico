@@ -22,16 +22,16 @@ export function mapCodexModels(entries) {
   }))
 }
 
-export async function loadCodexModels(credentials) {
+export async function loadCodexModels(credentials, { force = false, fetcher = fetch } = {}) {
   let cached = null
   try {
     cached = JSON.parse(await readFile(cacheFile(), 'utf-8'))
   } catch {}
-  if (cached && Date.now() - cached.at < TTL) return mapCodexModels(cached.models)
+  if (!force && cached && Date.now() - cached.at < TTL) return mapCodexModels(cached.models)
   if (!credentials) return mapCodexModels(cached?.models || [])
 
   try {
-    const response = await fetch(MODELS_URL, {
+    const response = await fetcher(MODELS_URL, {
       headers: {
         Authorization: `Bearer ${credentials.apiKey}`,
         ...credentials.headers,

@@ -45,6 +45,7 @@ import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT
 
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
+  { name: 'refresh-models', desc: 'Refresh available models from providers' },
   { name: 'connect', desc: 'Sign in with ChatGPT to use a Codex subscription' },
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
@@ -196,8 +197,10 @@ function collapseSteerTools(items) {
 }
 
 export function App({ boot, controller: ctl }) {
-  const { cwd, root, version, models, skills, mcp } = boot
+  const { cwd, root, version, skills, mcp } = boot
   const state = ctl.state
+  const [models, setModels] = createSignal(boot.models)
+  const [refreshingModels, setRefreshingModels] = createSignal(false)
 
   const [derived, setDerived] = createSignal(state.derived)
   const [terminalWidth, setTerminalWidth] = createSignal(process.stdout.columns || 80)
@@ -417,6 +420,24 @@ export function App({ boot, controller: ctl }) {
     toast(msg)
   }
 
+  async function refreshModels() {
+    if (refreshingModels()) return
+    setRefreshingModels(true)
+    flash('refreshing models')
+    const started = performance.now()
+    try {
+      const refreshed = await boot.refreshModels()
+      boot.models = refreshed
+      setModels(refreshed)
+      const elapsed = Math.round(performance.now() - started)
+      flash(`models refreshed  ${refreshed.length} models  ${elapsed}ms`)
+    } catch (err) {
+      flash(`model refresh failed: ${String(err.message || err).slice(0, 120)}`)
+    } finally {
+      setRefreshingModels(false)
+    }
+  }
+
   refs.pasteImage ??= createClipboardInput({
     readImage: readClipboardImage,
     getDraft: () => ({ value: input(), cursor: inputCursor(), session: state.session, revision: refs.draftRevision }),
@@ -472,7 +493,7 @@ export function App({ boot, controller: ctl }) {
     if (name === 'color') return Object.keys(SESSION_COLORS)
     if (name === 'theme') return [...paletteList().map((p) => p.key), 'auto']
     if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
-    if (name === 'model') return models.filter((m) => m.available !== false).map((m) => m.name)
+    if (name === 'model') return models().filter((m) => m.available !== false).map((m) => m.name)
     const cmd = allCommands.find((c) => c.name === name)
     if (cmd?.skill || cmd?.command) return fileList()
     return null
@@ -744,6 +765,7 @@ export function App({ boot, controller: ctl }) {
       if (!args) return setShowModelPanel(true)
       return ctl.switchModelByName(args)
     }
+    if (c.name === 'refresh-models') return refreshModels()
     if (c.name === 'effort') {
       if (!effortApplies()) return flash(`${model().name} does not support effort control`)
       if (!args) return setShowEffortPanel(true)
@@ -2034,7 +2056,7 @@ export function App({ boot, controller: ctl }) {
       <box style={{ flexDirection: 'column', width: wideLayout ? 64 : undefined, height: wideLayout ? '100%' : undefined }}>
       {showModelPanel() && (
         <ModelPanel
-          models={models}
+          models={models()}
           current={model().name}
           defaultName={defaultModel().name}
           focused={showModelPanel()}
@@ -2050,7 +2072,7 @@ export function App({ boot, controller: ctl }) {
 
       {showResearchModelPanel() && (
         <ModelPanel
-          models={models.filter((m) => m.available !== false)}
+          models={models().filter((m) => m.available !== false)}
           current={participantModelTarget() ? boot[`${participantModelTarget()}Model`] : selectingShellModel() ? boot.shellModel : selectingDeliberationModel() ? boot.deliberationModel : boot.researchModel}
           defaultName={null}
           title={participantModelTarget() ? `Choose Participant ${participantModelTarget() === 'participantA' ? 'A' : 'B'} model` : selectingShellModel() ? 'Choose shell model' : selectingDeliberationModel() ? 'Choose synthesis model' : 'Choose parallel worker model'}

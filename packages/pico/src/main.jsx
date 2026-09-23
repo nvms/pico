@@ -78,24 +78,27 @@ if (cli.mode === 'shell') {
 const keys = discoverKeys()
 const chatgpt = await openaiConnected()
 const providers = [...applyKeys(keys), ...(chatgpt ? ['codex'] : [])]
-const catalogData = await loadCatalog()
-const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
-const models = [
-  ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
-    ...m,
-    available: providers.includes(m.provider),
-    keyHint: keyHint(m.provider),
-  })),
-  ...(await loadCodexModels(codexCreds)).map((m) => ({
-    ...m,
-    context: m.context
-      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.input
-      ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context
-      ?? null,
-    available: chatgpt,
-    keyHint: '/connect',
-  })),
-]
+async function fetchModels({ force = false } = {}) {
+  const catalogData = await loadCatalog({ force })
+  const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
+  return [
+    ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
+      ...m,
+      available: providers.includes(m.provider),
+      keyHint: keyHint(m.provider),
+    })),
+    ...(await loadCodexModels(codexCreds, { force })).map((m) => ({
+      ...m,
+      context: m.context
+        ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.input
+        ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context
+        ?? null,
+      available: chatgpt,
+      keyHint: '/connect',
+    })),
+  ]
+}
+const models = await fetchModels()
 
 if (providers.length === 0) {
   console.error('pico: no credentials found.')
@@ -168,6 +171,7 @@ const boot = {
   setWakeupsNotify: (fn) => { wakeupsNotify = fn },
   setWakeupsFire: (fn) => { wakeupsFire = fn },
   rebuild: bootProject,
+  refreshModels: () => fetchModels({ force: true }),
 }
 
 git.retarget(boot.root)

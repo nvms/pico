@@ -36,7 +36,8 @@ export async function refreshCatalog({ fetcher = fetch } = {}) {
   return providers
 }
 
-export async function loadCatalog({ fetcher = fetch } = {}) {
+export async function loadCatalog({ fetcher = fetch, force = false } = {}) {
+  if (force) return refreshCatalog({ fetcher })
   const cached = await readCache()
   if (cached && Date.now() - cached.at < TTL) return cached.providers
   refreshCatalog({ fetcher }).catch(() => {})

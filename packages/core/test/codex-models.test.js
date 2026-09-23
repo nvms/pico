@@ -20,6 +20,22 @@ test('maps backend entries to picker models', () => {
   assert.match(models[1].desc, /GPT-5.3-Codex-Spark/)
 })
 
+test('forced load bypasses a fresh codex cache', async () => {
+  process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
+  const { writeFile, mkdir } = await import('node:fs/promises')
+  await mkdir(process.env.PICO_HOME, { recursive: true })
+  await writeFile(
+    join(process.env.PICO_HOME, 'codex-models-cache.json'),
+    JSON.stringify({ at: Date.now(), models: [{ slug: 'cached' }] }),
+  )
+  const models = await loadCodexModels(
+    { apiKey: 'token', headers: {} },
+    { force: true, fetcher: async () => ({ ok: true, json: async () => ({ models: [{ slug: 'fresh' }] }) }) },
+  )
+  assert.deepEqual(models.map((model) => model.name), ['codex/fresh'])
+  delete process.env.PICO_HOME
+})
+
 test('no credentials and no cache means no codex rows, cache serves offline', async () => {
   process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
   assert.deepEqual(await loadCodexModels(null), [])
