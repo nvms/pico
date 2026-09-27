@@ -1,11 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { mount } from '@trendr/core'
 import { parseArgs, USAGE } from './cli-args.js'
-import { discoverKeys, applyKeys, keyHint } from 'picocode-core/keys.js'
 import { defaultModel } from 'picocode-core/models.js'
-import { loadCatalog, extractModels } from 'picocode-core/catalog.js'
-import { loadCodexModels } from 'picocode-core/codex-models.js'
-import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
+import { loadModelRuntime } from './model-runtime.js'
 import { readConfig } from 'picocode-core/config.js'
 import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
 import { buildProjectBoot } from 'picocode-core/boot.js'
@@ -75,34 +72,11 @@ if (cli.mode === 'shell') {
   process.exit(await runShell(cli))
 }
 
-const keys = discoverKeys()
-const chatgpt = await openaiConnected()
-const providers = [...applyKeys(keys), ...(chatgpt ? ['codex'] : [])]
-async function fetchModels({ force = false } = {}) {
-  const catalogData = await loadCatalog({ force })
-  const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
-  return [
-    ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
-      ...m,
-      available: providers.includes(m.provider),
-      keyHint: keyHint(m.provider),
-    })),
-    ...(await loadCodexModels(codexCreds, { force })).map((m) => ({
-      ...m,
-      context: m.context
-        ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.input
-        ?? catalogData.openai?.models?.[m.name.split('/')[1]]?.limit?.context
-        ?? null,
-      available: chatgpt,
-      keyHint: '/connect',
-    })),
-  ]
-}
-const models = await fetchModels()
+const { providers, models, loadModels } = await loadModelRuntime()
 
 if (providers.length === 0) {
   console.error('pico: no credentials found.')
-  console.error('set one of: GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY')
+  console.error('set one of: GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY')
   console.error('or sign in with a ChatGPT plan: pico --connect')
   process.exit(1)
 }
@@ -171,7 +145,7 @@ const boot = {
   setWakeupsNotify: (fn) => { wakeupsNotify = fn },
   setWakeupsFire: (fn) => { wakeupsFire = fn },
   rebuild: bootProject,
-  refreshModels: () => fetchModels({ force: true }),
+  refreshModels: () => loadModels({ force: true }),
 }
 
 git.retarget(boot.root)

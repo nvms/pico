@@ -6,7 +6,8 @@ export function defaultModel(models) {
   return models.find((m) => m.available !== false) || null
 }
 
-export function estimateCost(model, usage) {
+export function usageCost(model, usage) {
+  if (usage?.cost != null) return usage.cost
   if (!model?.price || !usage) return 0
   const inCost = (usage.promptTokens || 0) * model.price.in
   const outCost = (usage.completionTokens || 0) * model.price.out

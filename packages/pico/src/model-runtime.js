@@ -1,23 +1,48 @@
-import { discoverKeys, applyKeys } from 'picocode-core/keys.js'
+import { discoverKeys, applyKeys, keyHint } from 'picocode-core/keys.js'
 import { loadCatalog, extractModels, adhocModel } from 'picocode-core/catalog.js'
 import { loadCodexModels } from 'picocode-core/codex-models.js'
+import { loadOpenRouterModels } from 'picocode-core/openrouter-models.js'
 import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
 import { defaultModel } from 'picocode-core/models.js'
 import { fuzzyScore } from 'picocode-core/fuzzy.js'
 
+const CATALOG_PROVIDERS = ['google', 'anthropic', 'openai', 'xai']
+
+function codexContext(catalogData, model) {
+  const entry = catalogData.openai?.models?.[model.name.split('/')[1]]
+  return model.context ?? entry?.limit?.input ?? entry?.limit?.context ?? null
+}
+
+async function buildModels({ providers, force }) {
+  const has = (provider) => providers.includes(provider)
+  const codexCredentials = has('codex') ? await openaiCredentials().catch(() => null) : null
+  const [catalogData, codex, openrouter] = await Promise.all([
+    loadCatalog({ force }),
+    loadCodexModels(codexCredentials, { force }),
+    has('openrouter') ? loadOpenRouterModels({ force }) : [],
+  ])
+  return [
+    ...extractModels(catalogData, CATALOG_PROVIDERS).map((model) => ({
+      ...model,
+      available: has(model.provider),
+      keyHint: keyHint(model.provider),
+    })),
+    ...codex.map((model) => ({
+      ...model,
+      context: codexContext(catalogData, model),
+      available: has('codex'),
+      keyHint: '/connect',
+    })),
+    ...openrouter.map((model) => ({ ...model, available: true, keyHint: keyHint('openrouter') })),
+  ]
+}
+
 export async function loadModelRuntime() {
   const chatgpt = await openaiConnected()
   const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : [])]
-  const catalogData = await loadCatalog()
   const codexCredentials = chatgpt ? await openaiCredentials().catch(() => null) : null
-  const models = [
-    ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((model) => ({
-      ...model,
-      available: providers.includes(model.provider),
-    })),
-    ...(await loadCodexModels(codexCredentials)).map((model) => ({ ...model, available: chatgpt })),
-  ]
-  return { providers, models, codexCredentials }
+  const loadModels = ({ force = false } = {}) => buildModels({ providers, force })
+  return { providers, models: await loadModels(), codexCredentials, loadModels }
 }
 
 export function resolveModel(models, providers, name) {

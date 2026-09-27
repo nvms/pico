@@ -24,7 +24,7 @@ import { revertEdits, reapplyEdits } from './rewind.js'
 import { buildSystemPrompt } from './system-prompt.js'
 import { memoryIndex } from './memory.js'
 import { transcriptToMarkdown } from './export.js'
-import { findModel, estimateCost } from './models.js'
+import { findModel, usageCost } from './models.js'
 import { adhocModel } from './catalog.js'
 import { writeConfig } from './config.js'
 import { connectOpenAI, openaiCredentials, disconnectOpenAI } from './openai-auth.js'
@@ -1290,7 +1290,7 @@ export function createController({ boot }) {
     const entries = Object.entries(current.usageByModel)
     if (entries.length === 0) return null
     const costOf = (byModel) =>
-      Object.entries(byModel).reduce((sum, [name, usage]) => sum + estimateCost(findModel(boot.models, name), usage), 0)
+      Object.entries(byModel).reduce((sum, [name, usage]) => sum + usageCost(findModel(boot.models, name), usage), 0)
     return {
       spent: costOf(current.usageByModel),
       active: costOf(current.usageActiveByModel),

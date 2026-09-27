@@ -5,6 +5,7 @@ const PROVIDERS = [
   { id: 'anthropic', label: 'Claude', env: ['ANTHROPIC_API_KEY'] },
   { id: 'openai', label: 'OpenAI', env: ['OPENAI_API_KEY'] },
   { id: 'xai', label: 'Grok', env: ['XAI_API_KEY'] },
+  { id: 'openrouter', label: 'OpenRouter', env: ['OPENROUTER_API_KEY'] },
 ]
 
 export function discoverKeys(env = process.env) {

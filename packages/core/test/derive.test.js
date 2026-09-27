@@ -128,6 +128,15 @@ test('spent usage survives rewinds, active usage rolls back', () => {
   assert.equal(restored.usageActive.promptTokens, 30)
 })
 
+test('reported cost sums per model and stays absent when never reported', () => {
+  const or = (cost) => makeEvent('usage', { model: 'openrouter/a/b', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2, cost } })
+  const plain = makeEvent('usage', { model: 'google/gemini-2.5-pro', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } })
+  const state = deriveState([user('q'), or(0.25), or(0.5), plain, assistant('a')])
+  assert.equal(state.usageByModel['openrouter/a/b'].cost, 0.75)
+  assert.equal(state.usageActiveByModel['openrouter/a/b'].cost, 0.75)
+  assert.equal('cost' in state.usageByModel['google/gemini-2.5-pro'], false)
+})
+
 test('effort events track session effort, absent means unset', () => {
   assert.equal(deriveState([user('hi')]).effort, undefined)
   const set = deriveState([user('hi'), makeEvent('effort', { to: 'high' })])

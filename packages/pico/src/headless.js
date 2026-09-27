@@ -1,9 +1,5 @@
 import { join } from 'node:path'
-import { discoverKeys, applyKeys } from 'picocode-core/keys.js'
-import { loadCatalog, extractModels, adhocModel } from 'picocode-core/catalog.js'
-import { loadCodexModels } from 'picocode-core/codex-models.js'
-import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
-import { findModel, defaultModel, estimateCost } from 'picocode-core/models.js'
+import { findModel, usageCost } from 'picocode-core/models.js'
 import { readConfig } from 'picocode-core/config.js'
 import { buildProjectBoot } from 'picocode-core/boot.js'
 import { createShellManager } from 'picocode-core/shells.js'
@@ -15,21 +11,8 @@ import { createToolset } from 'picocode-core/tools/index.js'
 import { runTurn } from 'picocode-core/agent.js'
 import { buildSystemPrompt } from 'picocode-core/system-prompt.js'
 import { memoryIndex } from 'picocode-core/memory.js'
-import { fuzzyScore } from 'picocode-core/fuzzy.js'
 import { finalizeUserContent } from 'picocode-core/attachments.js'
-
-function resolveModel(models, providers, name) {
-  if (!name) return null
-  const exact = models.find((m) => m.name === name)
-  if (exact) return exact
-  if (name.includes('/')) return adhocModel(name, providers)
-  const scored = models
-    .filter((m) => m.available !== false)
-    .map((m) => [fuzzyScore(name, m.name), m])
-    .filter(([score]) => score >= 0)
-    .sort((a, b) => b[0] - a[0])
-  return scored[0]?.[1] || null
-}
+import { loadModelRuntime, selectModel } from './model-runtime.js'
 
 async function readStdin() {
   if (process.stdin.isTTY) return ''
@@ -47,26 +30,14 @@ export async function runHeadless(opts) {
 
   onSessionWriteError((err, file) => process.stderr.write(`pico: could not write ${file}: ${err.message}\n`))
 
-  const chatgpt = await openaiConnected()
-  const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : [])]
+  const { providers, models, codexCredentials: codexCreds } = await loadModelRuntime()
   if (providers.length === 0) {
     process.stderr.write('pico: no credentials found (set a provider key or run pico --connect)\n')
     return 1
   }
-  const catalogData = await loadCatalog()
-  const codexCreds = chatgpt ? await openaiCredentials().catch(() => null) : null
-  const models = [
-    ...extractModels(catalogData, ['google', 'anthropic', 'openai', 'xai']).map((m) => ({
-      ...m,
-      available: providers.includes(m.provider),
-    })),
-    ...(await loadCodexModels(codexCreds)).map((m) => ({ ...m, available: chatgpt })),
-  ]
   const config = await readConfig()
 
-  const model = resolveModel(models, providers, opts.model)
-    || (config.defaultModel && models.find((m) => m.name === config.defaultModel && m.available))
-    || defaultModel(models)
+  const model = selectModel({ models, providers, requested: opts.model, configured: config.defaultModel })
   if (!model || model.available === false) {
     process.stderr.write(`pico: no usable model${opts.model ? ` matching "${opts.model}"` : ''}\n`)
     return 1
@@ -171,7 +142,7 @@ export async function runHeadless(opts) {
     sessionFile: session.file,
     model: model.name,
     usage: result.usage,
-    cost: estimateCost(findModel(models, model.name), result.usage),
+    cost: usageCost(findModel(models, model.name), result.usage),
     toolCalls: recorder.entries.length,
     interrupted: result.interrupted,
     durationMs: Date.now() - startedAt,

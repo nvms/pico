@@ -57,6 +57,7 @@ function addUsageInto(total, usage) {
   total.totalTokens += usage.totalTokens || 0
   total.cachedTokens += usage.cachedTokens || 0
   total.thoughtTokens += usage.thoughtTokens || 0
+  if (usage.cost != null) total.cost = (total.cost || 0) + usage.cost
 }
 
 function emptyUsage() {

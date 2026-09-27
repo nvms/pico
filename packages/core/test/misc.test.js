@@ -7,7 +7,7 @@ import { parseLine, parseLines, makeEvent } from '../src/events.js'
 import { createMcpTransport, parseCommand, parseServerSpec, redactServerSpec } from '../src/mcp.js'
 import { parseFrontmatter, createSkillIndex } from '../src/skills.js'
 import { discoverKeys } from '../src/keys.js'
-import { defaultModel, estimateCost, findModel } from '../src/models.js'
+import { defaultModel, usageCost, findModel } from '../src/models.js'
 import { extractModels, adhocModel } from '../src/catalog.js'
 import { fuzzyScore } from '../src/fuzzy.js'
 
@@ -178,8 +178,14 @@ test('extractModels filters, sorts by release, and maps fields', () => {
   assert.equal(older.price, null)
   assert.equal(gpt.desc, 'GPT Z')
   assert.equal(defaultModel(models).name, 'google/gemini-x')
-  assert.equal(estimateCost(findModel(models, 'google/gemini-x'), { promptTokens: 1e6, completionTokens: 1e6 }), 5)
-  assert.equal(estimateCost(findModel(models, 'google/gemini-old'), { promptTokens: 1e6, completionTokens: 1e6 }), 0)
+  assert.equal(usageCost(findModel(models, 'google/gemini-x'), { promptTokens: 1e6, completionTokens: 1e6 }), 5)
+  assert.equal(usageCost(findModel(models, 'google/gemini-old'), { promptTokens: 1e6, completionTokens: 1e6 }), 0)
+})
+
+test('usageCost prefers the cost a provider reported over the price estimate', () => {
+  const model = { name: 'openrouter/a/b', price: { in: 1, out: 4 } }
+  assert.equal(usageCost(model, { promptTokens: 1e6, completionTokens: 1e6, cost: 0.25 }), 0.25)
+  assert.equal(usageCost(null, { promptTokens: 1, completionTokens: 1, cost: 0.1 }), 0.1)
 })
 
 test('adhocModel accepts raw names for live providers only', () => {
