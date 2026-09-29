@@ -457,3 +457,22 @@ test('web tools are supplied exclusively by external tools', async () => {
   assert.deepEqual(calls, names.map((name) => ({ name, args: { input: 'query' } })))
   assert.deepEqual(createToolset({ cwd, mcpTools, allowNames: ['web_fetch'] }).tools.map((tool) => tool.name), ['web_fetch'])
 })
+
+test('peer tools are absent without an explicitly connected session', () => {
+  const { tools } = createToolset({ cwd: process.cwd() })
+  assert.equal(tools.some((tool) => tool.name.startsWith('peer_')), false)
+})
+
+test('peer tools delegate discovery and asynchronous message delivery', async () => {
+  const calls = []
+  const peers = {
+    list: async () => ({ self: { id: 'one', name: 'foo' }, peers: [{ id: 'two', name: 'bar' }] }),
+    send: async (args) => { calls.push(args); return { status: 'delivered' } },
+  }
+  const { tools } = createToolset({ cwd: process.cwd(), peers })
+  const list = tools.find((tool) => tool.name === 'peer_list')
+  const send = tools.find((tool) => tool.name === 'peer_send')
+  assert.equal((await list.execute({ description: 'Listing peer sessions' })).peers[0].name, 'bar')
+  assert.deepEqual(await send.execute({ description: 'Sending findings', to: 'two', message: 'Verified bug' }), { status: 'delivered' })
+  assert.deepEqual(calls, [{ to: 'two', message: 'Verified bug' }])
+})

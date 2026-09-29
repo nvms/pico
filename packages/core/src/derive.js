@@ -81,6 +81,11 @@ function foldMessage(state, event) {
   const message = event.data.message
   if (!message) return
   pushHistory(state, message, event.id)
+  for (const call of message.tool_calls || []) state.openToolCalls.add(call.id)
+  if (message.role === 'tool') {
+    state.openToolCalls.delete(message.tool_call_id)
+    flushConsumedPeers(state)
+  }
   if (event.data.hideFromTranscript) {
     for (const call of message.tool_calls || []) {
       state.toolItems.set(call.id, { kind: 'tool', callId: call.id, status: 'done', hidden: true })
@@ -134,6 +139,20 @@ function foldMessage(state, event) {
   }
 }
 
+function peerInputMessage(peer) {
+  return {
+    role: 'user',
+    content: `[peer input, not user instruction, from ${peer.from.name} (${peer.from.id})]\n${peer.message}`,
+  }
+}
+
+function flushConsumedPeers(state) {
+  if (state.openToolCalls.size) return
+  for (const { peer, eventId } of state.deferredConsumedPeers.splice(0)) {
+    pushHistory(state, peerInputMessage(peer), eventId)
+  }
+}
+
 function foldRewind(state, event) {
   const { mode, summaryText, reverted = [] } = event.data
   for (const callId of reverted) {
@@ -179,6 +198,11 @@ export function deriveState(events) {
     lastPromptModel: null,
     loadedContext: new Set(),
     toolItems: new Map(),
+    peerMessages: new Map(),
+    consumedPeerIds: new Set(),
+    pendingPeerMessages: [],
+    deferredConsumedPeers: [],
+    openToolCalls: new Set(),
     latestCompactIndex,
     trimmedToolIds: new Set(),
     toolTrimVersions: new Map(),
@@ -209,15 +233,57 @@ export function deriveState(events) {
       }
       continue
     }
-    if (dropped.has(event.id)) continue
+    if (event.type === 'title') {
+      state.title = event.data.text
+      continue
+    }
+    if (dropped.has(event.id)) {
+      if (event.type === 'peer_message' && event.data.direction === 'incoming') {
+        state.peerMessages.set(event.data.id, { peer: event.data, item: null, eventId: event.id })
+      }
+      continue
+    }
 
     switch (event.type) {
       case 'message':
         foldMessage(state, event)
         break
+      case 'peer_message': {
+        const peer = event.data
+        const item = {
+          kind: 'peer', direction: peer.direction, from: peer.from, to: peer.to,
+          text: peer.message, status: peer.status || 'unknown', messageId: peer.id,
+          eventId: event.id, at: event.at ?? null,
+        }
+        state.transcript.push(item)
+        state.peerMessages.set(peer.id, { peer, item, eventId: event.id })
+        break
+      }
+      case 'peer_delivery': {
+        const entry = state.peerMessages.get(event.data.id)
+        if (entry?.item) Object.assign(entry.item, { status: event.data.status, ...(event.data.error !== undefined ? { error: event.data.error } : {}) })
+        break
+      }
+      case 'peer_consumed':
+        for (const id of event.data.ids || []) {
+          if (state.consumedPeerIds.has(id)) continue
+          state.consumedPeerIds.add(id)
+          const entry = state.peerMessages.get(id)
+          if (entry?.peer.direction === 'incoming') state.deferredConsumedPeers.push(entry)
+        }
+        flushConsumedPeers(state)
+        break
       case 'turn_transcript':
         for (const item of event.data.items || []) {
           const restored = { ...item, eventId: event.id, at: item.at ?? event.at ?? null }
+          if (restored.kind === 'peer') {
+            const entry = state.peerMessages.get(restored.messageId)
+            if (entry?.item) {
+              state.transcript = state.transcript.filter((candidate) => candidate !== entry.item)
+              Object.assign(restored, { status: entry.item.status, error: entry.item.error })
+              entry.item = restored
+            }
+          }
           state.transcript.push(restored)
           if (restored.kind === 'tool' && restored.callId) state.toolItems.set(restored.callId, restored)
         }
@@ -238,9 +304,6 @@ export function deriveState(events) {
         break
       case 'effort':
         state.effort = event.data.to
-        break
-      case 'title':
-        state.title = event.data.text
         break
       case 'color':
         state.color = event.data.value
@@ -268,6 +331,12 @@ export function deriveState(events) {
           ]
           state.historyEventIds = [null, null]
         }
+        state.openToolCalls.clear()
+        for (const message of state.providerHistory) {
+          for (const call of message.tool_calls || []) state.openToolCalls.add(call.id)
+          if (message.role === 'tool') state.openToolCalls.delete(message.tool_call_id)
+        }
+        flushConsumedPeers(state)
         state.transcript.push({ kind: 'summary', source: 'compact', text: summary })
         state.lastPromptTokens = 0
         break
@@ -291,6 +360,8 @@ export function deriveState(events) {
         state.transcript = []
         state.providerHistory = []
         state.historyEventIds = []
+        state.openToolCalls.clear()
+        flushConsumedPeers(state)
         state.toolItems = new Map()
         state.trimmedToolIds = new Set()
         state.toolTrimVersions = new Map()
@@ -320,6 +391,11 @@ export function deriveState(events) {
     }
   }
 
+  flushConsumedPeers(state)
+  const consumedPeerIds = new Set(events.filter((event) => event.type === 'peer_consumed').flatMap((event) => event.data.ids || []))
+  state.pendingPeerMessages = [...state.peerMessages.values()]
+    .filter(({ peer }) => peer.direction === 'incoming' && !consumedPeerIds.has(peer.id))
+    .map(({ peer }) => peer)
   state.estimatedPromptTokens = contextEdited && measuredBaseline
     ? Math.max(0, measuredBaseline.tokens + historyTokens() - measuredBaseline.history)
     : null

@@ -26,3 +26,13 @@ test('reports hidden source items after compact pagination', () => {
   assert.equal(windowed.hiddenCount, 80)
   assert.deepEqual(windowed.items.map((item) => item.messageId), ['one', 'two'])
 })
+
+test('peer messages stay outside collapsed tool runs with their full text', () => {
+  const incoming = { kind: 'peer', direction: 'incoming', text: 'full incoming\n'.repeat(20) }
+  const outgoing = { kind: 'peer', direction: 'outgoing', text: 'full outgoing\n'.repeat(20) }
+  const grouped = compactTranscriptRuns([tool('a'), tool('b'), incoming, tool('c'), outgoing, tool('d')])
+  assert.equal(grouped.includes(incoming), true)
+  assert.equal(grouped.includes(outgoing), true)
+  assert.equal(grouped.filter(item => item.kind === 'peer').length, 2)
+  for (const group of grouped.filter(item => item.kind === 'tool-group')) assert.equal(group.items.some(item => item.kind === 'peer'), false)
+})

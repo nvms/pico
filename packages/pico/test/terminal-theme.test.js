@@ -44,7 +44,7 @@ test('every palette declares the full color set and a shiki theme', () => {
   for (const key of keys) {
     setPalette(key)
     assert.equal(paletteName(), key)
-    for (const value of [theme.FG, theme.FG_SOFT, theme.MUTED, theme.PANEL_BG, theme.SELECT_BG, theme.RED, theme.HIGHLIGHT, theme.DEFAULT_ACCENT]) {
+    for (const value of [theme.FG, theme.FG_SOFT, theme.MUTED, theme.PANEL_BG, theme.SELECT_BG, theme.RED, theme.PEER, theme.HIGHLIGHT, theme.DEFAULT_ACCENT]) {
       assert.match(value, /^#[0-9a-fA-F]{6}$/)
     }
     assert.equal(typeof theme.shikiTheme(), 'string')
@@ -71,4 +71,17 @@ test('secondary text maintains readable contrast on theme surfaces', () => {
   } finally {
     setPalette('dark')
   }
+})
+
+
+test('peer color is independent of session accent', () => {
+  for (const { key } of theme.paletteList()) {
+    setPalette(key)
+    const color = theme.PEER
+    theme.setAccent('#123456')
+    assert.equal(theme.PEER, color)
+    assert.notEqual(theme.PEER, theme.accent())
+  }
+  theme.setAccent(null)
+  setPalette('dark')
 })

@@ -3,6 +3,9 @@ export function transcriptToMarkdown(transcript, { title = 'pico session' } = {}
   for (const item of transcript) {
     if (item.kind === 'user') {
       parts.push('## You', '', item.text, '')
+    } else if (item.kind === 'peer') {
+      const status = item.direction === 'outgoing' ? ` [${item.status || 'unknown'}]` : ''
+      parts.push(`## @${item.from.name} → @${item.to.name}${status}`, '', item.text, '')
     } else if (item.kind === 'assistant') {
       parts.push(item.interrupted ? `${item.text}\n\n*(interrupted)*` : item.text, '')
     } else if (item.kind === 'tool') {

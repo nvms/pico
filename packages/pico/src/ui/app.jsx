@@ -50,7 +50,7 @@ const COMMANDS = [
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
-  { name: 'fork', desc: 'Fork this conversation into a named session: /fork <label>' },
+  { name: 'fork', desc: 'Fork conversation' },
   { name: 'delete', desc: 'Permanently delete the current session and start fresh' },
   { name: 'project', desc: 'Switch projects: jump to another project, same as ctrl+p' },
   { name: 'cwd', desc: 'Show the current working directory and project root' },
@@ -313,7 +313,10 @@ export function App({ boot, controller: ctl }) {
   const mirror = (get, set, value) => {
     if (get() !== value) set(value)
   }
+  const [peerStatus, setPeerStatus] = createSignal('')
+
   function syncFromController() {
+    setPeerStatus(state.peerError ? `peer disconnected: ${state.peerError}` : state.peerPaused && state.peerConnection ? 'peer responses paused' : '')
     mirror(derived, setDerived, state.derived)
     mirror(overlay, setOverlay, state.overlay)
     mirror(streaming, setStreaming, state.streaming)
@@ -1466,7 +1469,8 @@ export function App({ boot, controller: ctl }) {
     { kind: 'shell-output', text: shellOutput?.output || 'no output yet' },
   ] : null
   const transcriptSource = activeShell ? `shell:${activeShell.id}` : activeAgent ? `agent:${activeAgent.id}` : 'main'
-  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript)
+  const livePeerIds = new Set(overlay().filter((item) => item.kind === 'peer').map((item) => item.messageId))
+  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript.filter((item) => item.kind !== 'peer' || !livePeerIds.has(item.messageId)))
   const deliberationView = activeAgent?.role === 'deliberation'
   const isolatedTranscript = activeAgent || activeShell
   const groupItems = (source, active = false) => steer()
@@ -1809,6 +1813,7 @@ export function App({ boot, controller: ctl }) {
         </box>
       )}
 
+      {peerStatus() && <text style={{ color: MUTED }}>{peerStatus()}</text>}
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>

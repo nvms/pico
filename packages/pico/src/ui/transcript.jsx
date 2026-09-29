@@ -1,5 +1,5 @@
 import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
-import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
+import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN, PEER } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
 
 export { defaultTitle as uiTitle } from 'picocode-core/tools/recorder.js'
@@ -456,6 +456,23 @@ export function Message({ item, verbose, showLocked = false }) {
         <text style={{ color: MUTED, bold: true }}>{'output'}</text>
         <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
           {item.text.split('\n').map((line, i) => <text key={i} style={{ color: FG_SOFT }}>{line || ' '}</text>)}
+        </box>
+      </box>
+    )
+  }
+
+  if (item.kind === 'peer') {
+    const status = item.direction === 'outgoing' ? `  ${item.status || 'unknown'}` : ''
+    return (
+      <box style={{ flexDirection: 'column' }}>
+        <text> </text>
+        <box style={{ flexDirection: 'row' }}>
+          <box style={{ width: 1, flexShrink: 0, bg: PEER }} />
+          <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: 1, paddingY: 1, bg: PANEL_BG }}>
+            <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${status}`}</text>
+            <text style={{ color: PEER }}>{item.text}</text>
+            {item.error && <text style={{ color: RED }}>{item.error}</text>}
+          </box>
         </box>
       </box>
     )

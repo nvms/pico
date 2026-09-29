@@ -27,26 +27,33 @@ test('session round trip: create, append, load', async () => {
   delete process.env.PICO_HOME
 })
 
-test('forkSession copies the current event log into an independently named session', async () => {
+test('forkSession copies the conversation and clears its name without renaming the source', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
   const source = createSession({ cwd: root, root })
   const events = [
     makeEvent('message', { message: { role: 'user', content: 'source prompt' } }),
     makeEvent('message', { message: { role: 'assistant', content: 'source answer' } }),
+    makeEvent('title', { text: 'source name' }),
   ]
   for (const event of events) source.append(event)
 
-  const fork = await forkSession({ source, cwd: root, root, events, label: 'alternate' })
+  const fork = await forkSession({ source, cwd: root, root, events })
   const loaded = await loadSession(fork.session.file)
   assert.notEqual(fork.session.id, source.id)
   assert.equal(loaded.header.forkedFrom, source.id)
   assert.deepEqual(loaded.events.slice(0, -1), events)
-  assert.deepEqual(loaded.events.at(-1).data, { text: 'alternate' })
+  assert.deepEqual(loaded.events.at(-1).data, { text: null })
 
   source.append(makeEvent('message', { message: { role: 'user', content: 'source continues' } }))
   await source.flush()
-  assert.equal((await loadSession(fork.session.file)).events.length, 3)
+  assert.equal((await loadSession(fork.session.file)).events.length, 4)
+  const sessions = await listSessions({ scope: 'project', root })
+  const forkEntry = sessions.find((entry) => entry.header.id === fork.session.id)
+  const sourceEntry = sessions.find((entry) => entry.header.id === source.id)
+  assert.equal(forkEntry.customTitle, null)
+  assert.equal(forkEntry.title, 'source prompt')
+  assert.equal(sourceEntry.customTitle, 'source name')
   delete process.env.PICO_HOME
 })
 
@@ -333,6 +340,24 @@ test('a failed append is reported and does not wedge later appends', async () =>
   delete process.env.PICO_HOME
 })
 
+test('strict append preserves its failure even when a later append succeeds', async () => {
+  await isolatedHome()
+  const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
+  const session = createSession({ cwd: root, root })
+  await session.flush()
+  await rm(session.file)
+  await mkdir(session.file)
+  const failed = session.append(makeEvent('peer_message', { id: 'lost' }), { strict: true })
+  await assert.rejects(failed, { code: 'EISDIR' })
+  await rm(session.file, { recursive: true })
+  await writeFile(session.file, `${JSON.stringify(session.header)}\n`)
+  await session.append(makeEvent('title', { text: 'recovered' }), { strict: true })
+  assert.equal((await loadSession(session.file)).events.at(-1).data.text, 'recovered')
+  await assert.rejects(failed, { code: 'EISDIR' })
+  await session.flush().catch(() => {})
+  delete process.env.PICO_HOME
+})
+
 test('a failed header write remains visible after a later successful append', async () => {
   await isolatedHome()
   const root = await mkdtemp(join(tmpdir(), 'pico-proj-'))
@@ -362,8 +387,9 @@ test('an ephemeral session writes nothing to disk and forks stay ephemeral', asy
   await assert.rejects(access(sessionsDir(root)))
   assert.deepEqual(await listSessions({ scope: 'project', root }), [])
 
-  const fork = await forkSession({ source: session, cwd: root, root, events, label: 'still temporary' })
+  const fork = await forkSession({ source: session, cwd: root, root, events })
   assert.equal(fork.session.ephemeral, true)
+  assert.deepEqual(fork.events.at(-1).data, { text: null })
   assert.equal(fork.session.header.forkedFrom, session.id)
   assert.deepEqual(await listSessions({ scope: 'project', root }), [])
   delete process.env.PICO_HOME

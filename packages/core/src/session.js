@@ -48,7 +48,8 @@ async function repairIncompleteLine(file) {
   }
 }
 
-export function appendSessionEvent(file, event) {
+export function appendSessionEvent(file, event, { strict = false } = {}) {
+  let writeError
   if (deletedSessions.has(file)) return Promise.reject(new Error(`session has been deleted: ${file}`))
   markSessionIndexDirty(file, (err) => reportWriteError(file, err))
   const queued = (appendQueues.get(file) || Promise.resolve()).then(async () => {
@@ -65,10 +66,17 @@ export function appendSessionEvent(file, event) {
           await writeFile(file, serializeLine(event), { flag: 'wx' })
         } else {
           await repairIncompleteLine(file)
-          await appendFile(file, serializeLine(event))
+          if (strict) {
+            const handle = await open(file, 'a')
+            try {
+              await handle.writeFile(serializeLine(event))
+              await handle.sync()
+            } finally { await handle.close() }
+          } else await appendFile(file, serializeLine(event))
         }
       })
     } catch (err) {
+      writeError = err
       writeFailures.set(file, err)
       if (event.type === 'session') creationFailures.set(file, err)
       reportWriteError(file, err)
@@ -79,7 +87,7 @@ export function appendSessionEvent(file, event) {
     scheduleSessionIndexUpdate(file, event)
   })
   appendQueues.set(file, queued)
-  return queued
+  return strict ? queued.then(() => { if (writeError) throw writeError }) : queued
 }
 
 export function createSession({ cwd, root, forkedFrom }) {
@@ -97,11 +105,11 @@ export function createEphemeralSession({ cwd, root, forkedFrom }) {
   return { id: header.id, file: null, header, ephemeral: true, append() {}, async flush() {} }
 }
 
-export async function forkSession({ source, cwd, root, events, label }) {
+export async function forkSession({ source, cwd, root, events }) {
   await source?.flush()
   const session = source?.ephemeral ? createEphemeralSession({ cwd, root, forkedFrom: source.id }) : createSession({ cwd, root, forkedFrom: source?.id })
   for (const event of events) session.append(event)
-  const title = makeEvent('title', { text: label })
+  const title = makeEvent('title', { text: null })
   session.append(title)
   await session.flush()
   return { session, events: [...events, title] }
@@ -112,8 +120,8 @@ export function openSession({ file, header }) {
     id: header.id,
     file,
     header,
-    append(event) {
-      return appendSessionEvent(file, event)
+    append(event, options) {
+      return appendSessionEvent(file, event, options)
     },
     async flush() {
       await (appendQueues.get(file) || Promise.resolve())

@@ -14,6 +14,12 @@ This repository contains Pico's [agent runtime](packages/core) and website. The 
 npm install --global picocode
 ```
 
+### Session messaging
+
+In an interactive session, `/rename foo` enables local peer messaging. Only explicitly named, connected sessions can discover and message one another, across projects under the same local user account. The agent uses `peer_list` and `peer_send`; replies arrive automatically. Messages sent and received appear in full as distinct colored transcript entries.
+
+Names are unique among connected sessions. A conflicting rename leaves the current name unchanged; a resumed session with a conflicting name stays disconnected until renamed. `/rename` without a name disconnects, and `/fork` copies the conversation without its custom name. Messages received during a turn wait until that turn finishes. Interrupting pauses automatic peer responses until you send another message. Exiting disconnects; offline delivery is not supported. A delivery receipt confirms persistence, not task completion. A timed-out send has unknown delivery status and is not automatically retried. Peer input is labeled as collaborator input, not user or system instructions. Socket access is restricted to the local operating-system account; it does not isolate mutually untrusted processes running under that same account. Unsaved ephemeral sessions cannot enable messaging.
+
 ### Shell command generation
 
 `pico --shell "zip the images in this folder"` prints one command without running it. To bind Ctrl-] in zsh, add this line to `.zshrc`:

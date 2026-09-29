@@ -10,6 +10,7 @@ import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
 import { createAgentManager } from './agents.js'
+import { createPeers } from './peers.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
@@ -99,7 +100,7 @@ function errorText(err, limit) {
   return String(err?.message || err).slice(0, limit)
 }
 
-export function createController({ boot }) {
+export function createController({ boot, run = runTurn, peerDirectory } = {}) {
   if (!Object.hasOwn(boot, 'participantAModel')) boot.participantAModel = boot.proposerModel ?? null
   if (!Object.hasOwn(boot, 'participantBModel')) boot.participantBModel = boot.reviewerModel ?? null
   const { on, emit } = createEmitter()
@@ -132,6 +133,9 @@ export function createController({ boot }) {
     imageCount: 0,
     activityVersion: 0,
     held: false,
+    peerPaused: false,
+    peerConnection: null,
+    peerError: null,
   }
 
   let abort = null
@@ -140,8 +144,129 @@ export function createController({ boot }) {
   let pendingSystemNotes = []
   const warnedTools = new Set()
 
-  const changed = () => emit('change', state)
+  const changed = () => {
+    peers.setStatus(state.held || state.peerPaused ? 'paused' : state.busy ? 'busy' : 'idle')
+    emit('change', state)
+  }
   const flash = (message) => emit('flash', message)
+
+  let preparingTurn = false
+  let preparation = Promise.resolve()
+  let peerTransition = false
+  let peerOperations = Promise.resolve()
+  let shuttingDown = false
+  let peerWakeScheduled = false
+  const peerWrites = new Set()
+  const incomingPeers = new Map()
+  const peers = createPeers({
+    directory: peerDirectory,
+    onMessage: async (message) => {
+      const session = state.session
+      if (shuttingDown || peerTransition || !session || session.id !== message.to.id || peers.identity?.id !== session.id) throw new Error('recipient session is disconnected')
+      if (boot.ephemeral) throw new Error('peer delivery requires a saved session')
+      const duplicate = state.events.find((event) => event.type === 'peer_message' && event.data.id === message.id)
+      if (duplicate) {
+        if (duplicate.data.from.id !== message.from.id || duplicate.data.message !== message.message) throw new Error('message ID reused with different content')
+        return
+      }
+      const incoming = incomingPeers.get(message.id)
+      if (incoming) {
+        if (incoming.from.id !== message.from.id || incoming.message !== message.message) throw new Error('message ID reused with different content')
+        return incoming.write
+      }
+      if (pendingPeers().length + peerWrites.size >= 100) throw new Error('recipient inbox is full')
+      const write = appendPeer(message, 'incoming', 'delivered')
+      incomingPeers.set(message.id, { ...message, write })
+      try { await write } finally { incomingPeers.delete(message.id) }
+      schedulePeerWake()
+    },
+    onSend: async (message) => {
+      if (peerTransition || state.session?.id !== message.from.id) throw new Error('sender session changed')
+      await appendPeer(message, 'outgoing', 'sending')
+    },
+    onDelivery: async (delivery) => {
+      const event = makeEvent('peer_delivery', delivery)
+      await state.session.append(event, { strict: true })
+      state.events.push(event)
+      state.persisted = state.events.length
+      state.overlay = state.overlay.map((item) => item.kind === 'peer' && item.messageId === delivery.id ? { ...item, ...delivery } : item)
+      reDerive()
+      await state.session?.flush()
+    },
+  })
+
+  async function appendPeer(message, direction, status) {
+    const session = state.session
+    const event = makeEvent('peer_message', { ...message, direction, status })
+    const write = (async () => {
+      await session.append(event, { strict: true })
+      if (state.session !== session) return
+      state.events.push(event)
+      state.persisted = state.events.length
+      reDerive()
+      if (state.busy && !state.compacting) {
+        const items = [...state.overlay]
+        flushStream(items)
+        items.push(state.derived.transcript.findLast((item) => item.kind === 'peer' && item.messageId === message.id))
+        set({ overlay: items })
+      }
+    })()
+    peerWrites.add(write)
+    try { await write } finally { peerWrites.delete(write) }
+  }
+
+  function pendingPeers() {
+    return state.derived.pendingPeerMessages.filter((message) => message.to.id === state.session?.id)
+  }
+
+  function schedulePeerWake() {
+    if (peerWakeScheduled || shuttingDown) return
+    peerWakeScheduled = true
+    setImmediate(() => {
+      peerWakeScheduled = false
+      if (shuttingDown || peerTransition || peerWrites.size || preparingTurn || state.busy || state.held || state.peerPaused || !peers.identity || !pendingPeers().length) return
+      runAgentTurn().catch((error) => { abort = null; set({ busy: false, turnPhase: 'idle', peerPaused: true }); flash(`peer response failed: ${errorText(error, 120)}`) })
+    })
+  }
+
+  function transitionPeerSession(action) {
+    return (...args) => {
+      const result = peerOperations.then(async () => {
+        if (preparingTurn) {
+          if (action !== shutdown) return flash('finish or interrupt the current turn first')
+          shuttingDown = true
+          await preparation
+        }
+        peerTransition = true
+        try {
+          await Promise.allSettled(peerWrites)
+          return await action(...args)
+        } finally {
+          peerTransition = false
+          flushSystemNotes()
+        }
+      })
+      peerOperations = result.catch(() => {})
+      return result
+    }
+  }
+
+  async function disconnectPeers() {
+    await Promise.allSettled(peerWrites)
+    await peers.disconnect()
+    set({ peerConnection: null, peerError: null })
+  }
+
+  async function reconnectPeers() {
+    if (!state.derived.title || !state.session) return
+    try {
+      const identity = await peers.connect({ id: state.session.id, name: state.derived.title, cwd: boot.cwd })
+      set({ peerConnection: identity, peerError: null })
+    } catch (error) {
+      set({ peerConnection: null, peerError: error.message })
+      flash(`peer disconnected: ${error.message}`)
+    }
+  }
 
   function set(patch) {
     Object.assign(state, patch)
@@ -381,7 +506,8 @@ export function createController({ boot }) {
   }
 
   function flushSystemNotes() {
-    if (!pendingSystemNotes.length || state.busy || state.held || !state.session) return
+    schedulePeerWake()
+    if (!pendingSystemNotes.length || state.busy || state.held || peerTransition || shuttingDown || !state.session) return
     pendingSystemNotes = pendingSystemNotes.filter((note) => !note.agentId || !agents.get(note.agentId)?.collectedAt)
     const currentSessionId = state.session.id
     const current = pendingSystemNotes.filter((note) => !note.sessionId || note.sessionId === currentSessionId)
@@ -400,6 +526,7 @@ export function createController({ boot }) {
   function hold(held) {
     set({ held })
     if (!held) flushSystemNotes()
+    schedulePeerWake()
   }
 
   function flushStream(items) {
@@ -417,10 +544,28 @@ export function createController({ boot }) {
   }
 
   async function executeTurn(text, { views = [] } = {}) {
-    for (const view of views) await persistUserMessage(view, { viewed: true })
-    if (text) await persistUserMessage(text)
-    reDerive()
-    await runAgentTurn()
+    preparingTurn = true
+    let prepared
+    preparation = new Promise(resolve => { prepared = resolve })
+    const session = state.session
+    try {
+      for (const view of views) await persistUserMessage(view, { viewed: true })
+      if (text) await persistUserMessage(text)
+      reDerive()
+      preparingTurn = false
+      prepared()
+      await runAgentTurn()
+    } catch (error) {
+      if (!session || session === state.session) {
+        abort = null
+        set({ busy: false, turnPhase: 'idle', peerPaused: true })
+        flash(`error: ${errorText(error, 120)}`)
+      }
+    } finally {
+      preparingTurn = false
+      prepared()
+      schedulePeerWake()
+    }
   }
 
   function takePending() {
@@ -430,7 +575,7 @@ export function createController({ boot }) {
   }
 
   async function compact(instructions = '') {
-    if (state.busy || state.compacting) return flash('finish or interrupt the current turn first')
+    if (state.busy || state.compacting || peerTransition) return flash('finish or interrupt the current turn first')
     const current = state.derived
     if (current.providerHistory.length < 4) return flash('nothing to compact yet')
 
@@ -603,20 +748,29 @@ export function createController({ boot }) {
   }
 
   async function runAgentTurn() {
+    try { await performAgentTurn() } catch (error) {
+      abort = null
+      set({ busy: false, turnPhase: 'idle', peerPaused: true })
+      flash(`error: ${errorText(error, 120)}`)
+    }
+  }
+
+  async function performAgentTurn() {
+    if (state.busy || peerTransition || shuttingDown) return
     const researchAgentLimit = nextResearchAgentLimit || null
     nextResearchAgentLimit = null
+    const controller = new AbortController()
+    abort = controller
     emit('turn', 'start')
     set({ busy: true, turnPhase: 'responding', startedAt: Date.now(), liveUsage: null })
 
     const { auth, ok } = await codexAuth()
     if (!ok) {
-      set({ turnPhase: 'idle', busy: false })
+      set({ turnPhase: 'idle', busy: false, peerPaused: true })
       flushSystemNotes()
       return
     }
 
-    const controller = new AbortController()
-    abort = controller
     const { tracker } = boot
     const loadedBefore = new Set(tracker.loaded)
     const userToolScan = await refreshProjectIndexes()
@@ -627,6 +781,7 @@ export function createController({ boot }) {
       sessionId: state.session?.id,
       sessionFile: state.session?.file,
       wakeups: boot.wakeups,
+      peers: peers.identity ? peers : null,
       agents: boot.researchModel ? agents : null,
       deliberations: boot.deliberationModel || (boot.participantAModel && boot.participantBModel) ? deliberations : null,
       onAgentsCollected: discardCollectedAgentNotes,
@@ -639,10 +794,24 @@ export function createController({ boot }) {
       viewer: state.model.vision === false ? null : { deliver: deliverImage },
     })
 
+    await Promise.allSettled(peerWrites)
+    if (controller.signal.aborted || shuttingDown) {
+      abort = null
+      set({ busy: false, turnPhase: 'idle', peerPaused: true })
+      return
+    }
+    const pendingPeerIds = state.peerPaused ? [] : pendingPeers().map((message) => message.id)
+    if (pendingPeerIds.length) {
+      const event = makeEvent('peer_consumed', { ids: pendingPeerIds })
+      await state.session.append(event, { strict: true })
+      state.events.push(event)
+      state.persisted = state.events.length
+      reDerive()
+    }
     sendAfterToolTriggered = false
     let result
     try {
-      result = await runTurn({
+      result = await run({
         history: state.derived.providerHistory,
         tools,
         recorder,
@@ -656,6 +825,7 @@ export function createController({ boot }) {
     } catch (err) {
       abort = null
       set({ overlay: [], streaming: null, liveUsage: null, turnPhase: 'idle', busy: false })
+      set({ peerPaused: true })
       flash(`error: ${errorText(err, 120)}`)
       return
     }
@@ -676,6 +846,7 @@ export function createController({ boot }) {
     state.streaming = null
     state.turnPhase = 'idle'
     state.busy = false
+    if ((result.interrupted && !sendAfterToolTriggered) || result.stalled || result.error) state.peerPaused = true
     reDerive()
     set({ liveUsage: null })
     boot.git.refresh()
@@ -710,11 +881,13 @@ export function createController({ boot }) {
   }
 
   function send(text) {
+    if (peerTransition || shuttingDown) return flash('session is switching')
     const value = text.trim()
     if (!value) return
+    state.peerPaused = false
     state.sent = [...state.sent, { text: value, at: Date.now() }]
     appendPrompt(boot.root, value).catch(() => {})
-    if (state.busy) {
+    if (state.busy || preparingTurn) {
       set({ queued: [...state.queued, value] })
       return
     }
@@ -723,6 +896,7 @@ export function createController({ boot }) {
   }
 
   function interrupt() {
+    set({ peerPaused: true })
     if (!state.busy) return
     sendAfterToolTriggered = false
     cancelQuestion()
@@ -766,12 +940,14 @@ export function createController({ boot }) {
     state.expedited = []
     state.views = []
     state.sent = []
+    state.peerPaused = false
     state.model = model ?? state.defaultModel
     state.effort = effort === undefined ? state.defaultEffort : effort
   }
 
-  function newSession() {
+  async function newSession() {
     if (state.busy) return flash('finish or interrupt the current turn first')
+    await disconnectPeers()
     resetConversation()
     agents.clear()
     reDerive()
@@ -793,6 +969,7 @@ export function createController({ boot }) {
       flash(`delete failed: ${errorText(err, 80)}`)
       return false
     }
+    await disconnectPeers()
     resetConversation()
     reDerive()
     emit('session', state.session)
@@ -800,13 +977,15 @@ export function createController({ boot }) {
     return true
   }
 
-  async function fork(label) {
-    if (!label) return flash('usage: /fork <label>')
+  async function fork(args = '') {
+    if (args.trim()) return flash('usage: /fork')
     if (state.busy) return flash('finish or interrupt the current turn first')
     ensureSession()
-    const forked = await forkSession({ source: state.session, cwd: boot.cwd, root: boot.root, events: state.events, label })
+    const forked = await forkSession({ source: state.session, cwd: boot.cwd, root: boot.root, events: state.events })
+    await disconnectPeers()
     state.session = forked.session
     state.events = forked.events
+    state.peerPaused = false
     state.persisted = forked.events.length
     state.rewindUndo = null
     state.queued = []
@@ -816,17 +995,38 @@ export function createController({ boot }) {
     agents.restore(forked.events)
     reDerive()
     emit('session', state.session)
-    flash(`forked session as "${label}"`)
+    flash('session forked')
   }
 
-  function rename(text) {
-    const automaticTitle = userEntries(state.derived)[0]?.text.trim().slice(0, 200)
-    persist(makeEvent('title', { text: text || null }))
+  async function rename(text = '') {
+    const name = text.trim()
+    if (boot.ephemeral && name) return flash('peer messaging requires a saved session')
     ensureSession()
-    reDerive()
-    if (text) flash(`session renamed to "${text}"`)
-    else if (automaticTitle) flash(`session name reset to "${automaticTitle}"`)
-    else flash('session name reset')
+    const previous = peers.identity
+    try {
+      await state.session.flush()
+      if (name) await peers.connect({ id: state.session.id, name, cwd: boot.cwd })
+      const event = makeEvent('title', { text: name || null })
+      await state.session.append(event, { strict: true })
+      state.events.push(event)
+      state.persisted = state.events.length
+      if (!name) await disconnectPeers()
+      set({ peerConnection: peers.identity, peerError: null })
+      reDerive()
+      flash(name ? `session renamed to "${name}"` : 'session name reset')
+      return true
+    } catch (error) {
+      try {
+        if (previous) await peers.connect(previous)
+        else await disconnectPeers()
+        set({ peerConnection: peers.identity })
+      } catch (rollbackError) {
+        await disconnectPeers().catch(() => {})
+        set({ peerConnection: null, peerError: rollbackError.message })
+      }
+      flash(`rename failed: ${error.message}`)
+      return false
+    }
   }
 
   function setColor(input = '') {
@@ -965,10 +1165,14 @@ export function createController({ boot }) {
     if (meta.header.root !== boot.root) return switchProject(meta)
     try {
       const { header, events } = await loadSession(meta.file)
+      await disconnectPeers()
       state.session = openSession({ file: meta.file, header })
       state.events = [...events]
       state.persisted = events.length
       state.rewindUndo = null
+      state.peerPaused = false
+      const unfinished = deriveState(events).transcript.filter((item) => item.kind === 'peer' && item.direction === 'outgoing' && item.status === 'sending')
+      for (const item of unfinished) persist(makeEvent('peer_delivery', { id: item.messageId, status: 'unknown' }))
       agents.restore(events)
       reDerive()
       restoreModelFromSession()
@@ -976,6 +1180,7 @@ export function createController({ boot }) {
       state.sent = userEntries(state.derived).map((e) => ({ text: recallText(e), at: header.createdAt }))
       changed()
       emit('session', state.session)
+      await reconnectPeers()
       emit('resumed', meta)
     } catch (err) {
       flash(`resume failed: ${errorText(err, 80)}`)
@@ -1051,6 +1256,7 @@ export function createController({ boot }) {
     boot.git.retarget(next.root)
     next.mcp.connectAll()
     emit('mcp', next.mcp.list())
+    await disconnectPeers()
     resetConversation()
     agents.clear()
     reDerive()
@@ -1314,6 +1520,7 @@ export function createController({ boot }) {
       skills: boot.skills,
       shells: boot.shells,
       wakeups: boot.wakeups,
+      peers: peers.identity ? peers : null,
       memory: boot.memory,
       ...extra,
     })
@@ -1451,6 +1658,9 @@ export function createController({ boot }) {
   }
 
   async function shutdown() {
+    shuttingDown = true
+    abort?.abort()
+    await disconnectPeers()
     await state.session?.flush()
     boot.shells.killAll()
     boot.mcp.terminateAll()
@@ -1473,19 +1683,19 @@ export function createController({ boot }) {
     holdExpedited,
     hold,
     noteSystem,
-    newSession,
-    deleteCurrentSession,
-    fork,
-    rename,
+    newSession: transitionPeerSession(newSession),
+    deleteCurrentSession: transitionPeerSession(deleteCurrentSession),
+    fork: transitionPeerSession(fork),
+    rename: transitionPeerSession(rename),
     setColor,
     clear,
-    resume,
+    resume: transitionPeerSession(resume),
     listResumeSessions,
     listProjects,
     addWorktree,
     deleteWorktree,
-    switchToWorktree,
-    switchProject,
+    switchToWorktree: transitionPeerSession(switchToWorktree),
+    switchProject: transitionPeerSession(switchProject),
     resolveModel,
     switchModel,
     switchModelByName,
@@ -1530,6 +1740,6 @@ export function createController({ boot }) {
     dismissDeliberation,
     shellRows,
     cancelWakeup,
-    shutdown,
+    shutdown: transitionPeerSession(shutdown),
   }
 }
