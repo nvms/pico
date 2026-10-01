@@ -136,16 +136,17 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     if (request.type !== 'deliver') throw fail('unknown peer request type')
     if (typeof request.messageId !== 'string' || request.messageId.length > 100 || !request.messageId) throw fail('invalid message ID')
     validateMessage(request.message)
+    validateUrgency(request.urgent)
     const sender = (await readRegistry()).find(record => record.id === request.fromId && record.instance === request.fromInstance)
     if (!sender || !processAlive(sender.pid)) throw fail('sender is disconnected')
     if (sender.id === self.id) throw fail('cannot message yourself')
     if (identity?.instance !== self.instance) throw fail('peer session changed')
-    const envelope = { id: request.messageId, from: messageIdentity(sender), to: messageIdentity(self), message: request.message }
+    const envelope = { id: request.messageId, from: messageIdentity(sender), to: messageIdentity(self), message: request.message, urgent: request.urgent ?? false }
     const key = `${sender.instance}:${envelope.id}`
     let delivery = deliveries.get(key)
-    if (delivery && delivery.message !== envelope.message) throw fail('message ID reused with different content')
+    if (delivery && (delivery.message !== envelope.message || delivery.urgent !== envelope.urgent)) throw fail('message ID reused with different content')
     if (!delivery) {
-      delivery = { message: envelope.message, promise: Promise.resolve().then(() => onMessage(envelope)) }
+      delivery = { message: envelope.message, urgent: envelope.urgent, promise: Promise.resolve().then(() => onMessage(envelope)) }
       deliveries.set(key, delivery)
       activeDeliveries.add(delivery.promise)
     }
@@ -248,19 +249,20 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     return { self: publicIdentity(self), peers }
   }
 
-  async function send({ to, message }) {
+  async function send({ to, message, urgent = false }) {
     const self = identity
     if (!self) throw fail('peer session is not connected')
     if (typeof to !== 'string' || !to) throw fail('message target is required')
     validateMessage(message)
+    validateUrgency(urgent)
     const records = await readRegistry()
     const matches = records.filter(record => processAlive(record.pid) && (record.id === to || record.name === to))
     if (!matches.length) throw fail(`peer "${to}" is offline`)
     if (matches.length > 1) throw fail(`peer "${to}" is ambiguous; use a session ID`)
     const peer = matches[0]
     if (peer.id === self.id) throw fail('cannot message yourself')
-    const envelope = { id: randomUUID(), from: messageIdentity(self), to: messageIdentity(peer), message }
-    const request = { v: VERSION, type: 'deliver', to: peer.id, instance: peer.instance, fromId: self.id, fromInstance: self.instance, messageId: envelope.id, message }
+    const envelope = { id: randomUUID(), from: messageIdentity(self), to: messageIdentity(peer), message, urgent }
+    const request = { v: VERSION, type: 'deliver', to: peer.id, instance: peer.instance, fromId: self.id, fromInstance: self.instance, messageId: envelope.id, message, urgent }
     packet(request)
     await onSend?.(envelope)
     try {
@@ -286,4 +288,8 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
 function validateMessage(message) {
   if (typeof message !== 'string' || !message.trim()) throw fail('message must be nonempty text')
   if (Buffer.byteLength(message) > MAX_MESSAGE) throw fail('peer message exceeds 64 KiB')
+}
+
+function validateUrgency(urgent) {
+  if (urgent !== undefined && typeof urgent !== 'boolean') throw fail('urgent must be a boolean')
 }

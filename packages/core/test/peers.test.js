@@ -173,3 +173,14 @@ test('escaped messages within the advertised size limit are deliverable', async 
   await connect(a, 'a'); await connect(b, 'b')
   assert.equal((await a.send({ to: 'b', message: '\0'.repeat(65536) })).status, 'delivered')
 })
+
+test('urgency defaults to false, crosses the socket, and rejects non-booleans', async t => {
+  const { make } = await fixture(t)
+  const received = []
+  const a = make(), b = make({ onMessage: value => received.push(value) })
+  await connect(a, 'a'); await connect(b, 'b')
+  await a.send({ to: 'b', message: 'routine' })
+  await a.send({ to: 'b', message: 'stop', urgent: true })
+  assert.deepEqual(received.map(value => value.urgent), [false, true])
+  await assert.rejects(a.send({ to: 'b', message: 'bad', urgent: 'yes' }), /boolean/)
+})

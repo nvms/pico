@@ -273,3 +273,49 @@ test('reload restores unprocessed peer messages and processes them once after re
   assert.match(calls[0].history.at(-1).content, /pending across reload/)
   assert.equal(ctl.state.derived.pendingPeerMessages.length, 0)
 })
+
+for (const urgent of [false, true]) test(`peer urgency ${urgent} controls interruption at the next tool boundary`, async t => {
+  let boundary, finish
+  const { controller: ctl, remote, calls } = await fixture(t, async ({ onStream, signal }) => {
+    if (calls.length === 1) {
+      await new Promise(resolve => { finish = resolve; boundary = () => onStream({ type: 'tool_complete', call: { id: 'tool-1' } }) })
+      return { messages: [{ role: 'assistant', content: 'first turn' }], interrupted: signal.aborted }
+    }
+    return { messages: [{ role: 'assistant', content: 'peer handled' }] }
+  })
+  await ctl.rename('foo')
+  ctl.send('work')
+  await waitFor(() => !!boundary)
+  await remote.send({ to: 'foo', message: 'change course', urgent })
+  assert.equal(calls[0].signal.aborted, false)
+  boundary()
+  assert.equal(calls[0].signal.aborted, urgent)
+  finish()
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /change course/)
+  assert.equal(ctl.state.peerPaused, false)
+  assert.equal(ctl.state.derived.transcript.find(item => item.kind === 'peer').urgent, urgent)
+})
+
+test('urgent peer messages respect a held session at tool boundaries', async t => {
+  let boundary, finish
+  const { controller: ctl, remote, calls } = await fixture(t, async ({ onStream, signal }) => {
+    if (calls.length === 1) {
+      await new Promise(resolve => { finish = resolve; boundary = () => onStream({ type: 'tool_complete', call: { id: 'tool-1' } }) })
+      return { messages: [{ role: 'assistant', content: 'done' }], interrupted: signal.aborted }
+    }
+    return { messages: [{ role: 'assistant', content: 'handled' }] }
+  })
+  await ctl.rename('foo')
+  ctl.send('work')
+  await waitFor(() => !!boundary)
+  ctl.hold(true)
+  await remote.send({ to: 'foo', message: 'urgent but held', urgent: true })
+  boundary()
+  assert.equal(calls[0].signal.aborted, false)
+  finish()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  ctl.hold(false)
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+})

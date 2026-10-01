@@ -469,7 +469,7 @@ export function Message({ item, verbose, showLocked = false }) {
         <box style={{ flexDirection: 'row' }}>
           <box style={{ width: 1, flexShrink: 0, bg: PEER }} />
           <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: 1, paddingY: 1, bg: PANEL_BG }}>
-            <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${status}`}</text>
+            <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${item.urgent ? '  urgent' : ''}${status}`}</text>
             <text style={{ color: PEER }}>{item.text}</text>
             {item.error && <text style={{ color: RED }}>{item.error}</text>}
           </box>
