@@ -16,7 +16,7 @@ export function createClipboardInput({ readImage, getDraft, attachImage, setInpu
         onError('Clipboard image not attached: the draft changed')
         return
       }
-      const label = attachImage(image.path)
+      const label = await attachImage(image.path)
       if (!label) {
         await image.dispose()
         throw new Error('image attachment failed')

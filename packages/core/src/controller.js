@@ -476,7 +476,9 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     },
   }
 
-  onSessionWriteError((err) => flash(`session not saved: ${errorText(err, 80)}`))
+  const unsubscribeWriteError = onSessionWriteError((err, file) => {
+    if (state.session?.file === file) flash(`session not saved: ${errorText(err, 80)}`)
+  })
   boot.setMcpNotify(() => emit('mcp', boot.mcp.list()))
   boot.setShellsNotify(() => emit('shells'))
   boot.setWakeupsNotify(() => emit('shells'))
@@ -566,6 +568,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
   }
 
   async function executeTurn(text, { views = [] } = {}) {
+    if (shuttingDown) return
     preparingTurn = true
     let prepared
     preparation = new Promise(resolve => { prepared = resolve })
@@ -975,13 +978,14 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     state.speed = speed ?? defaultSpeed(state.model)
   }
 
-  async function newSession() {
+  async function newSession(name = '') {
     if (state.busy) return flash('finish or interrupt the current turn first')
     await disconnectPeers()
     resetConversation()
     agents.clear()
     reDerive()
     emit('session', state.session)
+    if (typeof name === 'string' && name.trim()) return rename(name)
     flash('new session')
   }
 
@@ -1709,16 +1713,34 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
 
   async function shutdown() {
     shuttingDown = true
+    unsubscribeWriteError()
+    cancelQuestion()
     abort?.abort()
+    agents.cancelAll()
+    boot.wakeups?.cancelAll?.()
+    boot.shells.killAll()
+    await preparation
+    if (state.busy) {
+      await new Promise(resolve => {
+        const unsubscribe = on('change', () => {
+          if (state.busy) return
+          unsubscribe()
+          resolve()
+        })
+        abort?.abort()
+      })
+    }
+    await agents.collect(agents.list().filter(agent => ['queued', 'running'].includes(agent.status)).map(agent => agent.id))
     await disconnectPeers()
     await state.session?.flush()
-    boot.shells.killAll()
-    boot.mcp.terminateAll()
+    await boot.mcp.terminateAll()
+    boot.git?.dispose?.()
   }
 
   return {
     state,
     boot,
+    isWorking: () => state.busy || preparingTurn,
     on,
     agents,
     send,

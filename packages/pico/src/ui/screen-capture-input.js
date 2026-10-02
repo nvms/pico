@@ -14,7 +14,7 @@ export function createScreenCaptureInput({ captureRegion, getDraft, attachImage,
         onError('Screen capture not attached: the draft changed')
         return
       }
-      const label = attachImage(image.path)
+      const label = await attachImage(image.path)
       if (!label) {
         await image.dispose()
         throw new Error('image attachment failed')

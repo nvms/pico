@@ -1,15 +1,12 @@
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { ensureDaemon } from 'picocode-core/daemon-transport.js'
+import { createRemoteController } from 'picocode-core/remote-controller.js'
 import { mount } from '@trendr/core'
 import { parseArgs, USAGE } from './cli-args.js'
-import { defaultModel } from 'picocode-core/models.js'
 import { loadModelRuntime } from './model-runtime.js'
 import { readConfig } from 'picocode-core/config.js'
 import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
-import { buildProjectBoot } from 'picocode-core/boot.js'
-import { createShellManager } from 'picocode-core/shells.js'
-import { createWakeupManager } from 'picocode-core/wakeups.js'
-import { createGitService } from 'picocode-core/git.js'
-import { createController } from 'picocode-core/controller.js'
 import { App } from './ui/app.jsx'
 import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
 
@@ -72,7 +69,7 @@ if (cli.mode === 'shell') {
   process.exit(await runShell(cli))
 }
 
-const { providers, models, loadModels } = await loadModelRuntime()
+const { providers } = await loadModelRuntime()
 
 if (providers.length === 0) {
   console.error('pico: no credentials found.')
@@ -81,79 +78,24 @@ if (providers.length === 0) {
   process.exit(1)
 }
 
-let mcpNotify = () => {}
-let shellsNotify = () => {}
-let shellsExit = () => {}
-const shells = createShellManager({
-  onChange: () => shellsNotify(),
-  onExit: (shell) => shellsExit(shell),
-})
-process.on('exit', () => shells.killAll())
-
-let wakeupsNotify = () => {}
-let wakeupsFire = () => {}
-const wakeups = createWakeupManager({
-  onChange: () => wakeupsNotify(),
-  onFire: (wakeup) => wakeupsFire(wakeup),
-})
-
-let gitNotify = () => {}
-const git = createGitService({ onChange: () => gitNotify() })
-process.on('exit', () => git.dispose())
-
-const bootProject = (cwd) => buildProjectBoot(cwd, { onMcpChange: () => mcpNotify() })
-
 const config = await readConfig()
-const configuredDefault = config.defaultModel && models.find((m) => m.name === config.defaultModel)
 
 const detectedTheme = await detectTerminalTheme()
 const themeOverride = paletteList().some((p) => p.key === config.theme) ? config.theme : null
 setPalette(themeOverride || detectedTheme)
 const theme = { accent: DEFAULT_ACCENT, muted: MUTED }
 
-const boot = {
-  ...(await bootProject(process.cwd())),
-  theme,
-  version: pkg.version,
-  models,
-  providers,
-  initialModel: configuredDefault || defaultModel(models),
-  researchModel: config.models?.researchWorker || null,
-  shellModel: config.models?.shell || null,
-  participantAModel: config.models?.participantA || null,
-  participantBModel: config.models?.participantB || null,
-  deliberationModel: config.models?.deliberation || config.models?.researchWorker || null,
-  researchAgentLimit: Number.isInteger(config.research?.agentLimit) && config.research.agentLimit >= 1 && config.research.agentLimit <= 100
-    ? config.research.agentLimit
-    : 10,
-  detectedTheme,
-  themePref: themeOverride || 'auto',
-  initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
-  speedDefaults: config.speedDefaults,
-  autoCompact: config.autoCompact !== false,
-  clouds: config.animation?.clouds === true,
-  compactToolHistory: config.display?.compactToolHistory === true,
-  gitFooter: config.display?.gitStatus !== false,
-  wideSidebar: config.display?.wideSidebar !== false,
-  refs: {},
-  shells,
-  wakeups,
-  git,
-  setMcpNotify: (fn) => { mcpNotify = fn },
-  setGitNotify: (fn) => { gitNotify = fn },
-  setShellsNotify: (fn) => { shellsNotify = fn },
-  setShellsExit: (fn) => { shellsExit = fn },
-  setWakeupsNotify: (fn) => { wakeupsNotify = fn },
-  setWakeupsFire: (fn) => { wakeupsFire = fn },
-  rebuild: bootProject,
-  refreshModels: () => loadModels({ force: true }),
-}
-
-git.retarget(boot.root)
-git.setEnabled(boot.gitFooter)
-
-const controller = createController({ boot })
-if (cli.speed) controller.speedCommand(cli.speed)
+const connection = await ensureDaemon({ entry: fileURLToPath(new URL('./daemon.js', import.meta.url)) })
+const controller = await createRemoteController(connection, {
+  options: { cwd: process.cwd(), version: pkg.version, theme, detectedTheme, themePref: themeOverride || 'auto' },
+  localBoot: { refs: {} },
+})
+const boot = controller.boot
+if (cli.speed) await controller.speedCommand(cli.speed)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => {
+  connection.close()
+  process.exit(0)
+})
+process.on('exit', () => connection.close())
 const app = mount(() => <App boot={boot} controller={controller} />, { title: `pico  ${boot.root.split('/').pop()}`, theme })
 boot.setTheme = app.setTheme
-boot.mcp.connectAll()

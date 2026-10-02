@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild'
 
 await esbuild.build({
-  entryPoints: ['./src/main.jsx'],
+  entryPoints: { pico: './src/main.jsx', daemon: './src/daemon.js' },
   bundle: true,
   packages: 'external',
   platform: 'node',
@@ -9,6 +9,6 @@ await esbuild.build({
   target: 'node24',
   jsx: 'automatic',
   jsxImportSource: '@trendr/core',
-  outfile: 'dist/pico.js',
+  outdir: 'dist',
   sourcemap: 'inline',
 })

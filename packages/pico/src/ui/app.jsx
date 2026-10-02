@@ -1,3 +1,5 @@
+import { WorkspaceSidebar } from './workspace-sidebar.jsx'
+import { workspaceGroups, workspaceSelection, workspaceNavigate, workspaceAction, emptyWorkspaceComposer } from './workspace-sidebar.js'
 import { readFile } from 'node:fs/promises'
 import { parseFrontmatter } from 'picocode-core/skills.js'
 import { expandCommand, parseCommandArguments } from 'picocode-core/commands.js'
@@ -12,7 +14,7 @@ import { createScreenCaptureInput } from './screen-capture-input.js'
 import { captureRegion } from '../screen-capture.js'
 import { createComposerFiles } from './composer-files.js'
 import { dictationIndicator, appendLevel } from './dictation-indicator.js'
-import { createSignal, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
+import { createSignal, useInterval, onCleanup, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
 import { listSessions, deleteSession, deleteProjectData } from 'picocode-core/session.js'
 import { userEntries, rewindStats } from 'picocode-core/derive.js'
@@ -200,6 +202,40 @@ function collapseSteerTools(items) {
 export function App({ boot, controller: ctl }) {
   const { cwd, root, version, skills, mcp } = boot
   const state = ctl.state
+  const [workspaceOpen, setWorkspaceOpen] = createSignal(false)
+  const [workspaceRows, setWorkspaceRows] = createSignal([])
+  const [workspaceSelected, setWorkspaceSelected] = createSignal(null)
+  const [workspaceLoading, setWorkspaceLoading] = createSignal(false)
+  const [workspaceError, setWorkspaceError] = createSignal('')
+  const [workspaceHeight, setWorkspaceHeight] = createSignal(20)
+  const [workspacePending, setWorkspacePending] = createSignal(false)
+  const workspaceGroupsNow = workspaceGroups(workspaceRows())
+  const workspaceSessions = workspaceGroupsNow.flatMap((group) => group.sessions)
+  async function refreshWorkspace() {
+    if (!boot.workspace || boot.refs.workspaceRefreshing) return
+    boot.refs.workspaceRefreshing = true
+    try {
+      const rows = await boot.workspace.list()
+      const next = workspaceGroups(rows).flatMap((group) => group.sessions)
+      const selected = workspaceSelection(next, workspaceSelected(), workspaceSessions)
+      setWorkspaceSelected(selected)
+      setWorkspaceRows(rows)
+      setWorkspaceError('')
+      if (workspaceOpen()) await boot.workspace.preview(selected)
+    } catch (error) {
+      setWorkspaceError(`sessions failed: ${error.message}`)
+    } finally {
+      boot.refs.workspaceRefreshing = false
+      setWorkspaceLoading(false)
+    }
+  }
+  boot.refs.refreshWorkspace = refreshWorkspace
+  useInterval(() => { if (workspaceOpen()) void boot.refs.refreshWorkspace() }, 1000)
+  if (boot.workspace && !boot.refs.workspaceSubscribed) {
+    boot.refs.workspaceSubscribed = true
+    const cleanup = boot.workspace.subscribe?.(() => void boot.refs.refreshWorkspace())
+    onCleanup(() => { cleanup?.(); boot.refs.workspaceSubscribed = false })
+  }
   const [models, setModels] = createSignal(boot.models)
   const [refreshingModels, setRefreshingModels] = createSignal(false)
 
@@ -758,14 +794,14 @@ export function App({ boot, controller: ctl }) {
     if (c.name === 'init') return ctl.sendInit(args)
     if (c.name === 'parallel') {
       const task = args.trim()
-      if (ctl.sendParallel(task)) return
+      if (await ctl.sendParallel(task)) return
       setPendingResearch({ task })
       setShowResearchModelPanel(true)
       return
     }
     if (c.name === 'deliberate') {
       const decision = args.trim()
-      if (ctl.sendDeliberate(decision)) return
+      if (await ctl.sendDeliberate(decision)) return
       setPendingDeliberation({ decision })
       setSelectingDeliberationModel(true)
       setShowResearchModelPanel(true)
@@ -835,7 +871,7 @@ export function App({ boot, controller: ctl }) {
       setInfoPanel({ title: `Tools${mcpCount ? `  plus ${mcpCount} MCP (see /mcp)` : ''}`, rows })
       return
     }
-    if (c.name === 'new') return ctl.newSession()
+    if (c.name === 'new') return ctl.newSession(args)
     if (c.name === 'delete') {
       if (busy()) return flash('finish or interrupt the current turn first')
       if (!state.session) return flash('no current session to delete')
@@ -1075,8 +1111,8 @@ export function App({ boot, controller: ctl }) {
     ctl.cancelAgent(agent.id)
   }
 
-  function dismissAgent(agent) {
-    if (!ctl.dismissAgent(agent.id)) return
+  async function dismissAgent(agent) {
+    if (!await ctl.dismissAgent(agent.id)) return
     if (viewedAgentId() === agent.id) setViewedAgentId(null)
   }
 
@@ -1139,7 +1175,12 @@ export function App({ boot, controller: ctl }) {
       fm.focus('input')
     }
   }
-  useFocusTrap(anyPanel() || view() === 'help')
+  if (workspaceOpen()) { fm.item('workspace'); fm.focus('workspace') }
+  else if (refs.focusComposerAfterWorkspace) {
+    refs.focusComposerAfterWorkspace = false
+    fm.focus(questionRequest() ? 'question' : 'input')
+  }
+  useFocusTrap(workspaceOpen() || anyPanel() || view() === 'help')
   useSelection({
     onCopy: (text) => flash(`copied ${text.length} ${text.length === 1 ? 'character' : 'characters'}`),
   })
@@ -1192,6 +1233,57 @@ export function App({ boot, controller: ctl }) {
   }
 
   useInput(async (event) => {
+    if (workspaceOpen()) {
+      event.stopPropagation()
+      if (event.key === 'escape') {
+        setWorkspacePending(true)
+        try {
+          await boot.workspace.cancelPreview()
+          refs.focusComposerAfterWorkspace = true
+          setWorkspaceOpen(false)
+        } catch (error) {
+          setWorkspaceError(`return failed: ${error.message}`)
+        } finally { setWorkspacePending(false) }
+        return
+      }
+      if (workspacePending()) return
+      const next = workspaceNavigate(workspaceSessions, workspaceSelected(), event, workspaceHeight())
+      if (next !== undefined) {
+        setWorkspaceSelected(next)
+        void boot.workspace.preview(next).catch(error => setWorkspaceError(`preview failed: ${error.message}`))
+        return
+      }
+      const row = workspaceSessions.find((row) => row.id === workspaceSelected())
+      if (!row) return
+      const attach = !event.ctrl && !event.meta && !event.alt && (event.key === 'right' || event.key === 'l')
+      const action = event.ctrl && event.key === 'x' ? workspaceAction(row) : null
+      if (!attach && !action) return
+      setWorkspacePending(true)
+      try {
+        if (attach) {
+          await boot.workspace.select(row.id)
+          setInput('')
+          setHistIdx(-1)
+          setOffset(0)
+          setTranscriptMetrics(null)
+          setCmdCycle(null)
+          dismissCompletion()
+          setFilesDismissed(false)
+          conversationSearch.close()
+          refs.ui.session()
+          refs.ui.sync()
+          refs.ui.derived(state.derived)
+          refs.focusComposerAfterWorkspace = true
+          setWorkspaceOpen(false)
+        } else {
+          await boot.workspace[action](row.id)
+          await refreshWorkspace()
+        }
+      } catch (error) {
+        setWorkspaceError(`${attach ? 'attach' : action} failed: ${error.message}`)
+      } finally { setWorkspacePending(false) }
+      return
+    }
     if (refs.dictationInput.handle(event)) {
       event.stopPropagation()
       return
@@ -1389,10 +1481,10 @@ export function App({ boot, controller: ctl }) {
         .map(([, f]) => f)
     : []
 
-  function pickFile(f) {
+  async function pickFile(f) {
     const v = input()
     const at = v.lastIndexOf('@')
-    const placeholder = ctl.attachProjectFile(f)
+    const placeholder = await ctl.attachProjectFile(f)
     if (placeholder) {
       setInput(v.slice(0, at) + placeholder + ' ')
     } else {
@@ -1501,7 +1593,8 @@ export function App({ boot, controller: ctl }) {
   conversationSearchMatches = preparedConversation.matches
   const items = preparedConversation.items
 
-  const wideLayout = wideSidebar() && terminalWidth() > 160
+  const workspaceWidth = Math.min(38, Math.max(18, Math.floor(terminalWidth() / 3)))
+  const wideLayout = wideSidebar() && terminalWidth() - (workspaceOpen() ? workspaceWidth : 0) > 160
   const showComposerActions = !steer() && !viewedAgent && !viewedShell && !anyPanel() && process.platform === 'darwin'
 
   if (showMemoryPanel()) {
@@ -1620,15 +1713,18 @@ export function App({ boot, controller: ctl }) {
           } else if (name === 'gitStatus') {
             setGitFooter(value)
             boot.gitFooter = value
+            ctl.configure?.({ gitFooter: value })
             boot.git.setEnabled(value)
             writeConfig({ display: { gitStatus: value } })
           } else if (name === 'wideSidebar') {
             setWideSidebar(value)
             boot.wideSidebar = value
+            ctl.configure?.({ wideSidebar: value })
             writeConfig({ display: { wideSidebar: value } })
           } else if (name === 'researchAgentLimit') {
             setResearchAgentLimit(value)
             boot.researchAgentLimit = value
+            ctl.configure?.({ researchAgentLimit: value })
             writeConfig({ research: { agentLimit: value } })
           } else {
             setCompactToolHistory(value)
@@ -1641,7 +1737,9 @@ export function App({ boot, controller: ctl }) {
   }
 
   return (
-    <box style={{ flexDirection: wideLayout ? 'row' : 'column', height: '100%' }}>
+    <box style={{ flexDirection: 'row', height: '100%' }}>
+      {workspaceOpen() && <WorkspaceSidebar groups={workspaceGroupsNow} selected={workspaceSelected()} width={workspaceWidth} loading={workspaceLoading()} error={workspaceError()} onHeight={(height) => { if (workspaceHeight() !== height) setWorkspaceHeight(height) }} />}
+      <box style={{ flexDirection: wideLayout ? 'row' : 'column', flexGrow: 1, flexBasis: 0, height: '100%' }}>
       <box style={{ flexDirection: 'column', flexGrow: 1 }}>
       <box style={{ flexDirection: 'row', paddingX: 2, gap: 1, bg: PANEL_BG }}>
         <box style={{ flexGrow: 1, height: 1 }}>
@@ -1782,7 +1880,7 @@ export function App({ boot, controller: ctl }) {
       {questionRequest() && (
         <QuestionForm
           request={questionRequest()}
-          focused={fm.is('question') && !anyPanel()}
+          focused={!workspaceOpen() && fm.is('question') && !anyPanel()}
           onSubmit={(answers) => {
             refs.focusComposerAfterQuestion = true
             ctl.answerQuestion(answers)
@@ -1828,7 +1926,7 @@ export function App({ boot, controller: ctl }) {
       )}
 
       {peerStatus() && <text style={{ color: MUTED }}>{peerStatus()}</text>}
-      {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => fm.focus('input')} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
+      {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => { if (!workspaceOpen()) fm.focus('input') }} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
         {(state.session?.header.forkedFrom || derived().title) && (
@@ -1841,7 +1939,7 @@ export function App({ boot, controller: ctl }) {
           color={FG}
           lineCounter
           scrollbar
-          focused={fm.is('input') && !anyPanel() && !questionRequest()}
+          focused={!workspaceOpen() && fm.is('input') && !anyPanel() && !questionRequest()}
           value={input()}
           cursorOffset={inputCursor()}
           onCursorChange={(cursor) => {
@@ -1875,9 +1973,21 @@ export function App({ boot, controller: ctl }) {
           }}
           onSubmit={send}
           onKeyDown={(e) => {
+            if (e.key === 'left' && !e.ctrl && !e.meta && !e.alt && boot.workspace && fm.is('input') && view() === 'chat' && !anyPanel() && emptyWorkspaceComposer({
+              text: e.value, attachments: state.attachments.size, dictation: dictationStatus(), capture: captureStatus(), pending: refs.commandExpansion || refs.workspacePastePending,
+              history: histIdx(), completion: completing(), command: commandForm(), question: questionRequest(), steer: steer(), queued: queued().length, expedited: expedited().length,
+            })) {
+              setWorkspaceSelected(boot.workspace.currentId())
+              setWorkspaceOpen(true)
+              setWorkspaceLoading(true)
+              fm.focus('workspace')
+              void refreshWorkspace()
+              return true
+            }
             if (refs.dictationInput.handle(e)) return true
             if (e.ctrl && e.key === 'v') {
-              void refs.pasteImage()
+              refs.workspacePastePending = true
+              void refs.pasteImage().finally(() => { refs.workspacePastePending = false })
               return true
             }
             if (e.ctrl && e.key === 'g') {
@@ -1911,9 +2021,13 @@ export function App({ boot, controller: ctl }) {
             if (e.key === 'paste' && e.text) {
               const paths = extractImagePaths(e.text)
               if (paths.length > 0) {
-                const placeholders = paths.map((path) => ctl.attachImage(path))
-                const at = e.cursor ?? e.value.length
-                setInput(e.value.slice(0, at) + placeholders.join(' ') + e.value.slice(at))
+                const draft = e.value
+                const at = e.cursor ?? draft.length
+                const sessionId = ctl.id
+                Promise.all(paths.map(path => ctl.attachImage(path))).then(placeholders => {
+                  if (ctl.id !== sessionId || input() !== draft) return
+                  setInput(draft.slice(0, at) + placeholders.join(' ') + draft.slice(at))
+                }).catch(error => flash(error.message))
                 return true
               }
               return false
@@ -1942,7 +2056,7 @@ export function App({ boot, controller: ctl }) {
             }
             if (e.ctrl || e.meta || showCommands || showFiles) return false
             if (e.key === 'up' && e.value === '' && (expedited().length > 0 || queued().length > 0)) {
-              setInput(ctl.recallPending())
+              ctl.recallPending().then(setInput).catch(error => flash(error.message))
               return true
             }
             if (e.key === 'right' && e.value === '' && queued().length > 0 && busy() && !compacting()) {
@@ -2079,11 +2193,11 @@ export function App({ boot, controller: ctl }) {
           current={model().name}
           defaultName={defaultModel().name}
           focused={showModelPanel()}
-          onPick={(m) => {
-            if (ctl.switchModel(m)) setShowModelPanel(false)
+          onPick={async (m) => {
+            if (await ctl.switchModel(m)) setShowModelPanel(false)
           }}
-          onPickDefault={(m) => {
-            if (ctl.switchModel(m, { asDefault: true })) setShowModelPanel(false)
+          onPickDefault={async (m) => {
+            if (await ctl.switchModel(m, { asDefault: true })) setShowModelPanel(false)
           }}
           onClose={() => setShowModelPanel(false)}
         />
@@ -2106,10 +2220,12 @@ export function App({ boot, controller: ctl }) {
               flash(`shell: ${m.name}`)
             } else if (selectingDeliberationModel()) {
               boot.deliberationModel = m.name
+              ctl.configure?.({ deliberationModel: m.name })
               writeConfig({ models: { deliberation: m.name } }).catch(() => {})
               flash(`deliberation: ${m.name}`)
             } else {
               boot.researchModel = m.name
+              ctl.configure?.({ researchModel: m.name })
               writeConfig({ models: { researchWorker: m.name } }).catch(() => {})
               flash(`parallel workers: ${m.name}`)
             }
@@ -2411,7 +2527,8 @@ export function App({ boot, controller: ctl }) {
         </box>
       )}
       </box>
-      <DictationKeys input={refs.dictationInput} />
+      {!workspaceOpen() && <DictationKeys input={refs.dictationInput} />}
+      </box>
     </box>
   )
 }

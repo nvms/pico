@@ -10,18 +10,20 @@ const writeFailures = new Map()
 const creationFailures = new Map()
 const deletedSessions = new Set()
 
-let onWriteError = () => {}
+const writeErrorListeners = new Set()
 
 // appends are chained so they cannot interleave. a rejected link would poison
 // every later append on that file, so failures are reported and absorbed here
 // instead of propagating: one bad write must not silently end the log
 export function onSessionWriteError(handler) {
-  onWriteError = handler || (() => {})
+  if (!handler) { writeErrorListeners.clear(); return () => {} }
+  writeErrorListeners.add(handler)
+  return () => writeErrorListeners.delete(handler)
 }
 
 function reportWriteError(file, err) {
   try {
-    onWriteError(err, file)
+    for (const handler of writeErrorListeners) handler(err, file)
   } catch {}
 }
 
