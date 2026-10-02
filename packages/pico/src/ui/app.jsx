@@ -1654,9 +1654,14 @@ export function App({ boot, controller: ctl }) {
           <EmptyState version={version} clouds={clouds()} />
         </box>
       ) : <box style={{ flexGrow: 1, flexDirection: 'column' }}>
+        {deliberationView && items.filter((item) => item.kind === 'user').map((item, i) => (
+          <box key={`${transcriptSource}:prompt:${item.messageId || i}`} style={{ flexDirection: 'column', paddingLeft: 2, paddingRight: 4, paddingBottom: 1, flexShrink: 0 }}>
+            <Message item={item} verbose={verbose()} />
+          </box>
+        ))}
         <ScrollBox
           style={{ flexGrow: 1, dim: dimmingPanel() }}
-          focused={fm.is('feed') || fm.is('conversation-search')}
+          focused={!deliberationView && (fm.is('feed') || fm.is('conversation-search'))}
           followFocus={steer() ? steerListFocus : null}
           focusPadding={1}
           scrollOffset={follow() ? 1e9 : offset()}
@@ -1694,10 +1699,7 @@ export function App({ boot, controller: ctl }) {
         )}
         {deliberationView ? (
           <>
-            {items.filter((item) => item.kind === 'user').map((item, i) => (
-              <Message key={`${transcriptSource}:prompt:${item.messageId || i}`} item={item} verbose={verbose()} />
-            ))}
-            <DeliberationExchange turns={items.filter((item) => item.kind === 'deliberation-turn')} verbose={verbose()} wide={terminalWidth() >= 110} />
+            <DeliberationExchange turns={items.filter((item) => item.kind === 'deliberation-turn')} verbose={verbose()} wide={terminalWidth() >= 110} compactToolHistory={compactToolHistory()} viewportHeight={transcriptMetrics()?.visibleHeight} focused={fm.is('feed')} onFocus={() => fm.focus('feed')} />
             {items.filter((item) => item.kind !== 'user' && item.kind !== 'deliberation-turn').map((item, i) => (
               <Message key={`${transcriptSource}:tail:${item.messageId || item.callId || i}`} item={item} verbose={verbose()} />
             ))}

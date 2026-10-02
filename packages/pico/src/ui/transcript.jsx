@@ -1,6 +1,7 @@
-import { Diff, ease, HorizontalScrollBox, linear, Markdown, Spinner, useAnimated } from '@trendr/core'
+import { createSignal, Diff, ease, HorizontalScrollBox, linear, Markdown, ScrollBox, Spinner, useAnimated, useHitTest, useInput, useMouse } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN, PEER } from './theme.js'
 import { highlight, langForPath } from './highlight.js'
+import { compactTranscriptRuns } from './transcript-window.js'
 
 export { defaultTitle as uiTitle } from 'picocode-core/tools/recorder.js'
 
@@ -275,18 +276,45 @@ function ToolCard({ name, title, titleLang, description, status, diff, revert, f
   )
 }
 
-function DeliberationTurn({ item, verbose, compact = false }) {
+function DeliberationTurn({ item, verbose, compactToolHistory = false, paired = false, border = true, paneHeight, focused = false, onFocus }) {
   const participantA = item.role === 'participant-a' || item.role === 'proposer'
   const synthesis = item.role === 'synthesis'
   const label = synthesis ? 'Synthesis' : `${participantA ? 'Participant A' : 'Participant B'}  round ${item.round}`
   const text = item.interrupted ? `${item.text} *(interrupted)*` : item.text
+  const [offset, setOffset] = createSignal(0)
+  const [follow, setFollow] = createSignal(true)
+  const hitTest = useHitTest()
+  useMouse((event) => {
+    if (paneHeight && hitTest(event.x, event.y) && (event.action === 'scroll' || event.action === 'press')) onFocus?.()
+  })
+  const tools = compactToolHistory ? compactTranscriptRuns(item.tools || [], !!item.active && !item.text) : item.tools || []
   return (
-    <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: compact ? 0 : 2, bg: compact ? PANEL_BG : undefined }}>
-      <box style={{ flexDirection: 'row' }}>
-        <box style={{ width: 1, flexShrink: 0, bg: synthesis || participantA ? accent() : MUTED }} />
-        <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: compact ? 2 : 2, paddingY: 1, bg: synthesis ? SELECT_BG : participantA || compact ? PANEL_BG : undefined }}>
-          <text style={{ color: synthesis || participantA ? accent() : MUTED, bold: true }}>{label}</text>
-          {item.tools?.map((tool) => <ToolCard key={tool.callId} {...tool} verbose={verbose} />)}
+    <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: paired ? 0 : 2, height: paneHeight, bg: paired ? PANEL_BG : undefined }}>
+      <box style={{ flexDirection: 'row', flexGrow: paneHeight ? 1 : undefined }}>
+        {border && <box style={{ width: 1, flexShrink: 0, bg: synthesis || participantA ? accent() : MUTED }} />}
+        <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: 2, paddingY: 1, bg: synthesis ? SELECT_BG : participantA || paired ? PANEL_BG : undefined }}>
+          <text style={{ color: focused || synthesis || participantA ? accent() : MUTED, bold: true }}>{label}</text>
+          {paneHeight ? (
+            <ScrollBox
+              style={{ flexGrow: 1 }}
+              focused={focused}
+              scrollOffset={follow() ? 1e9 : offset()}
+              onScroll={(next, meta) => { setOffset(next); setFollow(!!meta?.atBottom) }}
+              scrollbar
+            >
+              <DeliberationContent tools={tools} text={text} verbose={verbose} />
+            </ScrollBox>
+          ) : <DeliberationContent tools={tools} text={text} verbose={verbose} />}
+        </box>
+      </box>
+    </box>
+  )
+}
+
+function DeliberationContent({ tools, text, verbose }) {
+  return <box style={{ flexDirection: 'column' }}>
+          {tools.map((tool) => <Message key={tool.callId} item={tool} verbose={verbose} />)}
+          {text && tools.length > 0 && <text> </text>}
           {text && (
             <Markdown
               text={text}
@@ -297,10 +325,7 @@ function DeliberationTurn({ item, verbose, compact = false }) {
               tableRowHoverBg={PANEL_BG}
             />
           )}
-        </box>
-      </box>
-    </box>
-  )
+  </box>
 }
 
 function deliberationRows(turns) {
@@ -317,19 +342,32 @@ function deliberationRows(turns) {
   return rows
 }
 
-export function DeliberationExchange({ turns, verbose, wide }) {
+export function DeliberationExchange({ turns, verbose, wide, compactToolHistory = false, viewportHeight, focused = false, onFocus }) {
+  const [selected, setSelected] = createSignal(null)
+  const id = turn => `${turn.role}:${turn.round ?? 'synthesis'}`
+  const selectedId = selected() || (turns[0] && id(turns[0]))
+  const focusTurn = turn => { setSelected(id(turn)); onFocus?.() }
+  useInput(event => {
+    if (!focused || (event.key !== 'left' && event.key !== 'right')) return
+    const index = turns.findIndex(turn => id(turn) === selectedId)
+    const next = Math.max(0, Math.min(turns.length - 1, index + (event.key === 'left' ? -1 : 1)))
+    if (turns[next]) focusTurn(turns[next])
+    event.stopPropagation()
+  })
+  const paneHeight = viewportHeight ? Math.max(6, Math.floor(viewportHeight * (turns.some(turn => turn.role === 'synthesis') ? 0.6 : 1)) - 1) : undefined
+  const paneProps = turn => ({ paneHeight: turn.role === 'synthesis' && viewportHeight ? Math.max(6, Math.floor(viewportHeight * 0.35)) : paneHeight, focused: focused && selectedId === id(turn), onFocus: () => focusTurn(turn) })
   return (
     <box style={{ flexDirection: 'column', gap: 1, marginTop: 1 }}>
       {deliberationRows(turns).map((row, index) => {
         const synthesis = row[0]?.role === 'synthesis'
-        if (!wide || synthesis) return row.map((turn) => <DeliberationTurn key={`${turn.role}:${turn.round ?? 'synthesis'}`} item={turn} verbose={verbose} />)
+        if (!wide || synthesis) return row.map((turn) => <DeliberationTurn key={`${turn.role}:${turn.round ?? 'synthesis'}`} item={turn} verbose={verbose} compactToolHistory={compactToolHistory} {...paneProps(turn)} />)
         const left = row.find((turn) => turn.role === 'participant-a' || turn.role === 'proposer')
         const right = row.find((turn) => turn.role === 'participant-b' || turn.role === 'reviewer')
         return (
-          <box key={row[0]?.parallelGroup || `${row[0]?.role}:${row[0]?.round}:${index}`} style={{ flexDirection: 'row', width: '100%', overflow: 'clip', bg: PANEL_BG }}>
-            <box style={{ width: '50%', minWidth: 0, overflow: 'clip' }}>{left && <DeliberationTurn item={left} verbose={verbose} compact />}</box>
-            <box style={{ width: 1, flexShrink: 0, bg: PANEL_BG }} />
-            <box style={{ flexGrow: 1, minWidth: 0, overflow: 'clip' }}>{right && <DeliberationTurn item={right} verbose={verbose} compact />}</box>
+          <box key={row[0]?.parallelGroup || `${row[0]?.role}:${row[0]?.round}:${index}`} style={{ flexDirection: 'row', width: '100%', overflow: 'clip', paddingX: 2 }}>
+            <box style={{ width: '50%', minWidth: 0, overflow: 'clip' }}>{left && <DeliberationTurn item={left} verbose={verbose} compactToolHistory={compactToolHistory} paired border={false} {...paneProps(left)} />}</box>
+            <box style={{ width: 1, flexShrink: 0 }} />
+            <box style={{ flexGrow: 1, minWidth: 0, overflow: 'clip' }}>{right && <DeliberationTurn item={right} verbose={verbose} compactToolHistory={compactToolHistory} paired border={false} {...paneProps(right)} />}</box>
           </box>
         )
       })}
