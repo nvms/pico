@@ -11,7 +11,6 @@ import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
 import { createAgentManager } from './agents.js'
 import { createPeers } from './peers.js'
-import { streamTranscript } from './stream-transcript.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
@@ -205,11 +204,11 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       state.events.push(event)
       state.persisted = state.events.length
       reDerive()
-      if (state.busy && !state.compacting) {
+      if (state.busy && !state.compacting && direction === 'outgoing') {
         const items = [...state.overlay]
-        if (direction === 'outgoing') flushStream(items)
+        flushStream(items)
         const item = state.derived.transcript.findLast((item) => item.kind === 'peer' && item.messageId === message.id)
-        items.push({ ...item, ...(direction === 'incoming' && state.streaming !== null ? { streamPending: true } : {}) })
+        items.push(item)
         set({ overlay: items })
       }
     })()
@@ -302,10 +301,6 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
 
   function reDerive() {
     state.derived = deriveState(state.events)
-    const peerItems = new Map(state.derived.transcript.filter(item => item.kind === 'peer').map(item => [item.messageId, item]))
-    state.overlay = state.overlay.map(item => item.kind === 'peer' && item.direction === 'incoming'
-      ? { ...item, read: peerItems.get(item.messageId)?.read ?? item.read }
-      : item)
     emit('derived', state.derived)
     changed()
   }
@@ -545,8 +540,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
   }
 
   function flushStream(items) {
-    const flushed = streamTranscript(items, state.streaming)
-    items.splice(0, items.length, ...flushed)
+    if (state.streaming) items.push({ kind: 'assistant', text: state.streaming })
     state.streaming = null
   }
 

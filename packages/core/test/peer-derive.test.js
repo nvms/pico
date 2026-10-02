@@ -57,7 +57,7 @@ test('clear and compaction preserve unconsumed incoming peers', () => {
   assert.equal(compactState.pendingPeerMessages[0].id, 'p2')
 })
 
-test('live peer snapshots move rather than duplicate the persisted message', () => {
+test('unread peers stay pinned despite live snapshots', () => {
   const incoming = peer('p1')
   const initial = deriveState([incoming]).transcript[0]
   const state = deriveState([
@@ -65,8 +65,8 @@ test('live peer snapshots move rather than duplicate the persisted message', () 
     makeEvent('peer_delivery', { id: 'p1', status: 'delivered' }),
     makeEvent('turn_transcript', { items: [{ kind: 'assistant', text: 'before' }, initial, { kind: 'assistant', text: 'after' }] }),
   ])
-  assert.deepEqual(state.transcript.map(item => item.kind), ['assistant', 'peer', 'assistant'])
-  assert.equal(state.transcript[1].status, 'delivered')
+  assert.deepEqual(state.transcript.map(item => item.kind), ['assistant', 'assistant', 'peer'])
+  assert.equal(state.transcript.at(-1).status, 'delivered')
 })
 
 test('consumption is idempotent with hidden tool messages', () => {
@@ -121,4 +121,30 @@ test('restored live snapshots retain derived read state rather than stale unread
   ])
   assert.equal(state.transcript.length, 1)
   assert.equal(state.transcript[0].read, true)
+})
+
+test('incoming peers settle between the completed response and the response that reads them', () => {
+  const incoming = peer('p1')
+  const response = makeEvent('turn_transcript', { items: [{ kind: 'assistant', text: 'No changes made.' }] })
+  const pending = deriveState([incoming, response])
+  assert.deepEqual(pending.transcript.map(item => item.kind), ['assistant', 'peer'])
+  assert.equal(pending.transcript[1].read, false)
+  const state = deriveState([
+    incoming, response,
+    makeEvent('peer_consumed', { ids: ['p1'] }),
+    makeEvent('turn_transcript', { items: [{ kind: 'assistant', text: 'Understood.' }] }),
+  ])
+  assert.deepEqual(state.transcript.map(item => item.kind), ['assistant', 'peer', 'assistant'])
+  assert.equal(state.transcript[1].read, true)
+})
+
+test('read peers cannot be moved by stale turn snapshots', () => {
+  const incoming = peer('p1')
+  const snapshot = deriveState([incoming]).transcript[0]
+  const state = deriveState([
+    incoming,
+    makeEvent('peer_consumed', { ids: ['p1'] }),
+    makeEvent('turn_transcript', { items: [{ kind: 'assistant', text: 'Acknowledged' }, snapshot] }),
+  ])
+  assert.deepEqual(state.transcript.map(item => item.kind), ['peer', 'assistant'])
 })

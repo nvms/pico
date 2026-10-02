@@ -6,7 +6,6 @@ import { createController } from '../src/controller.js'
 import { createPeers } from '../src/peers.js'
 import { loadSession } from '../src/session.js'
 import { createContextTracker } from '../src/context.js'
-import { streamTranscript } from '../src/stream-transcript.js'
 
 const waitFor = async predicate => {
   for (let i = 0; i < 200; i++) {
@@ -95,7 +94,8 @@ test('messages during a turn are visible immediately and processed after it', as
   await waitFor(() => !!finish)
   await remote.send({ to: 'foo', message: 'upstream fixed' })
   assert.equal(calls.length, 1)
-  assert.equal(ctl.state.overlay.at(-1).kind, 'peer')
+  assert.equal(ctl.state.overlay.some(item => item.kind === 'peer'), false)
+  assert.equal(ctl.state.derived.transcript.at(-1).kind, 'peer')
   assert.equal(ctl.state.derived.pendingPeerMessages.length, 1)
   finish()
   await waitFor(() => calls.length === 2 && !ctl.state.busy)
@@ -427,7 +427,7 @@ for (const urgent of [false, true]) test(`incoming ${urgent ? 'urgent' : 'normal
   await remote.send({ to: 'foo', message: 'first update', urgent })
   await remote.send({ to: 'foo', message: 'second update', urgent })
   assert.equal(ctl.state.streaming, 'Published with ')
-  const live = streamTranscript(ctl.state.overlay, ctl.state.streaming)
+  const live = [...ctl.state.overlay, { kind: 'assistant', text: ctl.state.streaming }, ...ctl.state.derived.transcript.filter(item => item.kind === 'peer' && !item.read)]
   assert.deepEqual(live.map(item => item.kind), ['assistant', 'peer', 'peer'])
   assert.equal(live[1].read, false)
   resume()

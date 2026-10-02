@@ -150,7 +150,11 @@ function flushConsumedPeers(state) {
   if (state.openToolCalls.size) return
   for (const { peer, eventId } of state.deferredConsumedPeers.splice(0)) {
     const entry = state.peerMessages.get(peer.id)
-    if (entry?.item) entry.item.read = true
+    if (entry?.item) {
+      entry.item.read = true
+      state.transcript = state.transcript.filter(item => item !== entry.item)
+      state.transcript.push(entry.item)
+    }
     pushHistory(state, peerInputMessage(peer), eventId)
   }
 }
@@ -281,9 +285,10 @@ export function deriveState(events) {
           const restored = { ...item, eventId: event.id, at: item.at ?? event.at ?? null }
           if (restored.kind === 'peer') {
             const entry = state.peerMessages.get(restored.messageId)
+            if (entry?.peer.direction === 'incoming') continue
             if (entry?.item) {
               state.transcript = state.transcript.filter((candidate) => candidate !== entry.item)
-              Object.assign(restored, { status: entry.item.status, error: entry.item.error, ...(entry.peer.direction === 'incoming' ? { read: entry.item.read } : {}) })
+              Object.assign(restored, { status: entry.item.status, error: entry.item.error })
               entry.item = restored
             }
           }
@@ -399,6 +404,9 @@ export function deriveState(events) {
   state.pendingPeerMessages = [...state.peerMessages.values()]
     .filter(({ peer }) => peer.direction === 'incoming' && !consumedPeerIds.has(peer.id))
     .map(({ peer }) => peer)
+  const unread = state.transcript.filter(item => item.kind === 'peer' && item.direction === 'incoming' && !item.read)
+  const unreadItems = new Set(unread)
+  state.transcript = [...state.transcript.filter(item => !unreadItems.has(item)), ...unread]
   state.estimatedPromptTokens = contextEdited && measuredBaseline
     ? Math.max(0, measuredBaseline.tokens + historyTokens() - measuredBaseline.history)
     : null

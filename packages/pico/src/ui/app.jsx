@@ -24,7 +24,6 @@ import { writeConfig } from 'picocode-core/config.js'
 import { openaiStatus } from 'picocode-core/openai-auth.js'
 import { EFFORT_LEVELS, SESSION_COLORS } from 'picocode-core/controller.js'
 import { agentTranscript } from 'picocode-core/agent-transcript.js'
-import { streamTranscript } from 'picocode-core/stream-transcript.js'
 import { fuzzyScore } from 'picocode-core/fuzzy.js'
 import { completionContext, applyCompletion } from 'picocode-core/completion.js'
 import { extractImagePaths, placeholderizeImagePaths } from 'picocode-core/attachments.js'
@@ -1471,7 +1470,9 @@ export function App({ boot, controller: ctl }) {
   ] : null
   const transcriptSource = activeShell ? `shell:${activeShell.id}` : activeAgent ? `agent:${activeAgent.id}` : 'main'
   const livePeerIds = new Set(overlay().filter((item) => item.kind === 'peer').map((item) => item.messageId))
-  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript.filter((item) => item.kind !== 'peer' || !livePeerIds.has(item.messageId)))
+  const unreadPeers = decoratedTranscript.filter(item => item.kind === 'peer' && item.direction === 'incoming' && !item.read)
+  const unreadPeerIds = new Set(unreadPeers.map(item => item.messageId))
+  const transcript = shellTranscript || (activeAgent ? agentTranscript(activeAgent) : decoratedTranscript.filter((item) => item.kind !== 'peer' || (!livePeerIds.has(item.messageId) && !unreadPeerIds.has(item.messageId))))
   const deliberationView = activeAgent?.role === 'deliberation'
   const isolatedTranscript = activeAgent || activeShell
   const groupItems = (source, active = false) => steer()
@@ -1482,7 +1483,7 @@ export function App({ boot, controller: ctl }) {
   const transcriptItems = groupItems(transcript, activeAgent?.status === 'running')
   const windowed = deliberationView ? { items: transcriptItems, hiddenItems: 0, hiddenCount: 0 } : transcriptWindow(transcriptItems, histWindow())
   const hiddenCount = windowed.hiddenCount
-  const visibleItems = isolatedTranscript ? windowed.items : [...windowed.items, ...groupItems(streamTranscript(overlay(), streaming() ? `${streaming()}▋` : null), turnPhase() === 'tools')]
+  const visibleItems = isolatedTranscript ? windowed.items : [...windowed.items, ...groupItems(overlay(), turnPhase() === 'tools'), ...(streaming() ? [{ kind: 'assistant', text: `${streaming()}▋` }] : []), ...unreadPeers]
   const preparedConversation = conversationSearch.prepare(visibleItems)
   conversationSearchMatches = preparedConversation.matches
   const items = preparedConversation.items

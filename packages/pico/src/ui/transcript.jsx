@@ -502,22 +502,17 @@ export function Message({ item, verbose, showLocked = false }) {
   if (item.kind === 'peer') {
     const incoming = item.direction === 'incoming'
     const unread = incoming && !item.read
-    const border = incoming && item.read ? MUTED : PEER
+    const color = incoming && item.read ? MUTED : PEER
     const status = incoming ? `  ${unread ? 'unread' : 'read'}` : `  ${item.status || 'unknown'}`
     return (
       <box style={{ flexDirection: 'column' }}>
         <text> </text>
         <box style={{ flexDirection: 'row' }}>
-          <box style={{ width: 1, flexShrink: 0, bg: border }} />
-          <box style={{ flexDirection: 'column', flexGrow: 1, minWidth: 0, paddingX: 1, paddingY: 1, bg: PANEL_BG }}>
-            <box style={{ flexDirection: 'row' }}>
-              <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${item.urgent ? '  urgent' : ''}`}</text>
-              <text style={{ color: border, bold: unread }}>{status}</text>
-            </box>
-            <text style={{ color: PEER }}>{item.text}</text>
-            {item.error && <text style={{ color: RED }}>{item.error}</text>}
-          </box>
+          <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${item.urgent ? '  urgent' : ''}`}</text>
+          <text style={{ color, bold: unread }}>{status}</text>
         </box>
+        <text style={{ color }}>{item.text}</text>
+        {item.error && <text style={{ color: RED }}>{item.error}</text>}
       </box>
     )
   }
