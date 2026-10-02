@@ -105,7 +105,7 @@ function errorText(err, limit) {
   return String(err?.message || err).slice(0, limit)
 }
 
-export function createController({ boot, run = runTurn, peerDirectory } = {}) {
+export function createController({ boot, run = runTurn, compactRun = compactHistory, peerDirectory } = {}) {
   if (!Object.hasOwn(boot, 'participantAModel')) boot.participantAModel = boot.proposerModel ?? null
   if (!Object.hasOwn(boot, 'participantBModel')) boot.participantBModel = boot.reviewerModel ?? null
   const { on, emit } = createEmitter()
@@ -599,7 +599,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     return next
   }
 
-  async function compact(instructions = '') {
+  async function compact(instructions = '', { automatic = false } = {}) {
     if (state.busy || state.compacting || peerTransition) return flash('finish or interrupt the current turn first')
     const current = state.derived
     if (current.providerHistory.length < 4) return flash('nothing to compact yet')
@@ -618,7 +618,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     const keepFrom = compactionKeepFrom(current, state.model.context)
     let streamed = ''
     try {
-      const raw = await compactHistory({
+      const raw = await compactRun({
         history: current.providerHistory,
         modelName: state.model.name,
         ...(state.model.provider === 'codex' && { speed: speedApplies() ? state.speed : 'standard' }),
@@ -631,6 +631,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
           set({ compactStatus: compactProgress(streamed) })
         },
       })
+      controller.signal.throwIfAborted()
       const summary = formatCompactSummary(raw)
       if (!summary) throw new Error('empty summary')
       if (summarySections(summary) < 5) throw new Error('malformed summary, conversation left untouched')
@@ -638,6 +639,12 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       reDerive()
       set({ compactOutcome: 'done' })
       flash('compacted · recent messages kept verbatim')
+      if (automatic) {
+        noteSystem(
+          '[system notification] this conversation was automatically compacted to free context. Continue any unfinished work from where you left off. If the task is already complete or you are waiting for user input, stop. Do not recap or acknowledge the compaction.',
+          { wake: true },
+        )
+      }
     } catch (err) {
       set({ compactOutcome: controller.signal.aborted ? 'cancelled' : 'failed' })
       if (controller.signal.aborted) flash('compaction cancelled')
@@ -667,7 +674,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     const ratio = used / limit
     if (ratio >= 0.85) {
       flash(`context ${Math.round(ratio * 100)}% full · auto-compacting`)
-      compact()
+      compact('', { automatic: true })
     }
   }
 
