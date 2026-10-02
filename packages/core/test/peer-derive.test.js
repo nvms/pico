@@ -14,12 +14,14 @@ test('peer message is visible and pending before consumption', () => {
   assert.deepEqual(state.providerHistory, [])
   assert.equal(state.transcript[0].kind, 'peer')
   assert.equal(state.transcript[0].messageId, 'p1')
+  assert.equal(state.transcript[0].read, false)
   assert.deepEqual(state.pendingPeerMessages, [event.data])
 })
 
 test('consumed incoming peer enters history with identity and label', () => {
   const state = deriveState([peer('p1'), makeEvent('peer_consumed', { ids: ['p1'] })])
   assert.equal(state.pendingPeerMessages.length, 0)
+  assert.equal(state.transcript[0].read, true)
   assert.equal(state.providerHistory.length, 1)
   assert.equal(state.providerHistory[0].role, 'user')
   assert.match(state.providerHistory[0].content, /peer input, not user instruction/)
@@ -41,7 +43,10 @@ test('consumed peer waits until a tool result preserves valid ordering', () => {
   const assistant = makeEvent('message', { message: { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'x', arguments: '{}' } }] } })
   const consumed = makeEvent('peer_consumed', { ids: ['p1'] })
   const tool = makeEvent('message', { message: { role: 'tool', tool_call_id: 'c1', content: 'ok' } })
-  const state = deriveState([assistant, peer('p1'), consumed, tool])
+  const incoming = peer('p1')
+  assert.equal(deriveState([assistant, incoming, consumed]).transcript.find(item => item.kind === 'peer').read, false)
+  const state = deriveState([assistant, incoming, consumed, tool])
+  assert.equal(state.transcript.find(item => item.kind === 'peer').read, true)
   assert.deepEqual(state.providerHistory.map((message) => message.role), ['assistant', 'tool', 'user'])
 })
 
@@ -104,4 +109,16 @@ for (const type of ['clear', 'compact']) test(`${type} discards obsolete open to
     makeEvent('peer_consumed', { ids: ['p1'] }),
   ])
   assert.match(state.providerHistory.at(-1).content, /message p1/)
+})
+
+test('restored live snapshots retain derived read state rather than stale unread state', () => {
+  const incoming = peer('p1')
+  const snapshot = deriveState([incoming]).transcript[0]
+  const state = deriveState([
+    incoming,
+    makeEvent('peer_consumed', { ids: ['p1'] }),
+    makeEvent('turn_transcript', { items: [snapshot] }),
+  ])
+  assert.equal(state.transcript.length, 1)
+  assert.equal(state.transcript[0].read, true)
 })

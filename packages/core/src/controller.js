@@ -11,6 +11,7 @@ import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
 import { createAgentManager } from './agents.js'
 import { createPeers } from './peers.js'
+import { streamTranscript } from './stream-transcript.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
@@ -206,8 +207,9 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       reDerive()
       if (state.busy && !state.compacting) {
         const items = [...state.overlay]
-        flushStream(items)
-        items.push(state.derived.transcript.findLast((item) => item.kind === 'peer' && item.messageId === message.id))
+        if (direction === 'outgoing') flushStream(items)
+        const item = state.derived.transcript.findLast((item) => item.kind === 'peer' && item.messageId === message.id)
+        items.push({ ...item, ...(direction === 'incoming' && state.streaming !== null ? { streamPending: true } : {}) })
         set({ overlay: items })
       }
     })()
@@ -300,6 +302,10 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
 
   function reDerive() {
     state.derived = deriveState(state.events)
+    const peerItems = new Map(state.derived.transcript.filter(item => item.kind === 'peer').map(item => [item.messageId, item]))
+    state.overlay = state.overlay.map(item => item.kind === 'peer' && item.direction === 'incoming'
+      ? { ...item, read: peerItems.get(item.messageId)?.read ?? item.read }
+      : item)
     emit('derived', state.derived)
     changed()
   }
@@ -539,7 +545,8 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
   }
 
   function flushStream(items) {
-    if (state.streaming) items.push({ kind: 'assistant', text: state.streaming })
+    const flushed = streamTranscript(items, state.streaming)
+    items.splice(0, items.length, ...flushed)
     state.streaming = null
   }
 

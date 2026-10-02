@@ -149,6 +149,8 @@ function peerInputMessage(peer) {
 function flushConsumedPeers(state) {
   if (state.openToolCalls.size) return
   for (const { peer, eventId } of state.deferredConsumedPeers.splice(0)) {
+    const entry = state.peerMessages.get(peer.id)
+    if (entry?.item) entry.item.read = true
     pushHistory(state, peerInputMessage(peer), eventId)
   }
 }
@@ -253,6 +255,7 @@ export function deriveState(events) {
         const item = {
           kind: 'peer', direction: peer.direction, from: peer.from, to: peer.to,
           text: peer.message, urgent: peer.urgent ?? false, status: peer.status || 'unknown', messageId: peer.id,
+          ...(peer.direction === 'incoming' ? { read: false } : {}),
           eventId: event.id, at: event.at ?? null,
         }
         state.transcript.push(item)
@@ -280,7 +283,7 @@ export function deriveState(events) {
             const entry = state.peerMessages.get(restored.messageId)
             if (entry?.item) {
               state.transcript = state.transcript.filter((candidate) => candidate !== entry.item)
-              Object.assign(restored, { status: entry.item.status, error: entry.item.error })
+              Object.assign(restored, { status: entry.item.status, error: entry.item.error, ...(entry.peer.direction === 'incoming' ? { read: entry.item.read } : {}) })
               entry.item = restored
             }
           }

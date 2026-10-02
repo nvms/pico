@@ -6,6 +6,7 @@ import { createController } from '../src/controller.js'
 import { createPeers } from '../src/peers.js'
 import { loadSession } from '../src/session.js'
 import { createContextTracker } from '../src/context.js'
+import { streamTranscript } from '../src/stream-transcript.js'
 
 const waitFor = async predicate => {
   for (let i = 0; i < 200; i++) {
@@ -407,4 +408,38 @@ test('shell exits from another session stay outside the active conversation', as
   await waitFor(() => !ctl.state.busy)
   assert.equal(calls.length, 1)
   assert.equal(ctl.state.events.filter(e => e.type === 'system_note').length, 0)
+})
+
+for (const urgent of [false, true]) test(`incoming ${urgent ? 'urgent' : 'normal'} peers stay below a continuous stream through replay`, async t => {
+  let resume, started
+  const ready = new Promise(resolve => { started = resolve })
+  const { controller: ctl, remote } = await fixture(t, async ({ onStream }) => {
+    onStream({ type: 'content', content: 'Published with ' })
+    started()
+    await new Promise(resolve => { resume = resolve })
+    onStream({ type: 'content', content: 'the hook.' })
+    return { messages: [{ role: 'assistant', content: 'Published with the hook.' }] }
+  })
+  await ctl.rename('foo')
+  ctl.send('start')
+  await ready
+  ctl.hold(true)
+  await remote.send({ to: 'foo', message: 'first update', urgent })
+  await remote.send({ to: 'foo', message: 'second update', urgent })
+  assert.equal(ctl.state.streaming, 'Published with ')
+  const live = streamTranscript(ctl.state.overlay, ctl.state.streaming)
+  assert.deepEqual(live.map(item => item.kind), ['assistant', 'peer', 'peer'])
+  assert.equal(live[1].read, false)
+  resume()
+  await waitFor(() => !ctl.state.busy)
+  const transcript = ctl.state.derived.transcript.filter(item => item.kind !== 'user')
+  assert.deepEqual(transcript.map(item => item.kind), ['assistant', 'peer', 'peer'])
+  assert.equal(transcript[0].text, 'Published with the hook.')
+  assert.equal(transcript[1].read, false)
+  assert.equal(transcript.some(item => 'streamPending' in item), false)
+  await ctl.state.session.flush()
+  const { events } = await loadSession(ctl.state.session.file)
+  const replay = (await import('../src/derive.js')).deriveState(events).transcript.filter(item => item.kind !== 'user')
+  assert.deepEqual(replay.map(item => item.kind), ['assistant', 'peer', 'peer'])
+  assert.equal(replay[0].text, 'Published with the hook.')
 })
