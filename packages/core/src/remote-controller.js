@@ -1,3 +1,4 @@
+import { applyPatches } from './daemon-patch.js'
 import { deriveState } from './derive.js'
 
 export async function createRemoteController(connection, { id, options = {}, localBoot = {} } = {}) {
@@ -6,16 +7,21 @@ export async function createRemoteController(connection, { id, options = {}, loc
   const state = {}
   const boot = { refs: {}, ...localBoot }
   const listeners = new Map()
+  const sequences = new Map([[id, initial.sequence]])
+  let recovering = false
   let current
   let previewId = null
   let previewQueue = Promise.resolve()
   const displayedId = () => previewId || id
   const emit = (type, value) => { for (const fn of listeners.get(type) || []) fn(value) }
-  const call = async (target, method, ...args) => {
-    const reply = await connection.request('call', id, [target, method, ...args])
-    apply(reply.snapshot)
-    emit('change', state)
-    return reply.result
+  const call = (target, method, ...args) => {
+    const result = connection.request('call', id, [target, method, ...args]).then(reply => {
+      if (reply.snapshot) apply(reply.snapshot)
+      emit('change', state)
+      return reply.result
+    })
+    result.catch(error => emit('flash', error.message))
+    return result
   }
   function apply(snapshot) {
     current = snapshot
@@ -61,6 +67,7 @@ export async function createRemoteController(connection, { id, options = {}, loc
       if (previousPreview && previousPreview !== nextId) await connection.request('detach', previousPreview)
       id = next.id
       controller.id = id
+      sequences.set(next.id, next.sequence)
       apply(next.snapshot)
       await connection.request('detach', previous)
       emit('project', boot)
@@ -74,6 +81,7 @@ export async function createRemoteController(connection, { id, options = {}, loc
     const next = await connection.request('switch', id, [method, value])
     id = next.id
     controller.id = id
+    sequences.set(next.id, next.sequence)
     apply(next.snapshot)
     if (method === 'newSession' && typeof value === 'string' && value.trim() && state.derived?.title !== value.trim()) {
       const renamed = await call('controller', 'rename', value.trim())
@@ -96,6 +104,7 @@ export async function createRemoteController(connection, { id, options = {}, loc
     const previous = previewId
     const original = await connection.request('attach', id)
     previewId = null
+    sequences.set(id, original.sequence)
     show(original.snapshot)
     await connection.request('detach', previous)
   }
@@ -106,6 +115,7 @@ export async function createRemoteController(connection, { id, options = {}, loc
       const next = await connection.request('attach', nextId)
       const previous = previewId
       previewId = nextId
+      sequences.set(nextId, next.sequence)
       show(next.snapshot)
       if (previous) await connection.request('detach', previous)
     })
@@ -125,7 +135,26 @@ export async function createRemoteController(connection, { id, options = {}, loc
   const unsubscribe = connection.on(message => {
     if (message.type === 'disconnect') { state.busy = false; state.streaming = null; emit('flash', 'daemon disconnected; work was not restarted'); emit('change', state); return }
     if (message.type !== 'update' || message.id !== displayedId()) return
-    apply(message.snapshot)
+    if (message.patches) {
+      if (recovering) return
+      if (sequences.get(message.id) !== message.baseSequence) {
+        recovering = true
+        const recoveringId = displayedId()
+        connection.request('snapshot', recoveringId).then(reply => {
+          if (displayedId() !== recoveringId) return
+          sequences.set(recoveringId, reply.sequence)
+          apply(reply.snapshot)
+          emit('change', state)
+        }).catch(error => emit('flash', error.message)).finally(() => { recovering = false })
+        return
+      }
+      apply(applyPatches(current, message.patches))
+      sequences.set(message.id, message.sequence)
+      emit('derived', state.derived)
+    } else {
+      apply(message.snapshot)
+      emit('derived', state.derived)
+    }
     for (const event of message.events) {
       if (previewId && ['input', 'question', 'resumed', 'flash'].includes(event.type)) continue
       emit(event.type, event.type === 'project' ? boot : event.payload)

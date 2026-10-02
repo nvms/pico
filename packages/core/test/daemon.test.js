@@ -159,3 +159,24 @@ test('live previews retain original owner, stream selected state, cancel and ent
     await ctl.shutdown()
   } finally { connection.close(); await server.close(); await rm(directory, { recursive: true, force: true }) }
 })
+
+test('accepted user messages publish immediately as patches rather than full histories', async () => {
+  const fake = factory()
+  const runtime = createDaemonRuntime({ ...fake, batchMs: 10000 })
+  const updates = []
+  const viewer = { send: update => updates.push(update) }
+  try {
+    const owner = await runtime.dispatch(viewer, { op: 'create' })
+    const reply = await runtime.dispatch(viewer, { op: 'call', id: owner.id, args: ['controller', 'send', 'hello immediately'] })
+    assert.equal(reply.snapshot, undefined)
+    const update = updates.find(update => update.type === 'update')
+    assert.ok(update)
+    assert.equal(update.snapshot, undefined)
+    assert.equal(update.baseSequence, owner.sequence)
+    assert.equal(update.sequence, owner.sequence + 1)
+    assert.ok(update.patches.some(patch => patch.path.join('.') === 'state.text' && patch.value === 'hello immediately'))
+    const recovered = await runtime.dispatch(viewer, { op: 'snapshot', id: owner.id })
+    assert.equal(recovered.snapshot.state.text, 'hello immediately')
+    assert.ok(recovered.sequence > update.sequence)
+  } finally { await runtime.close() }
+})

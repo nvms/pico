@@ -35,6 +35,7 @@ import { ownerRoot } from 'picocode-core/paths.js'
 import { highlightVersion } from './highlight.js'
 import { compactNumber } from 'picocode-core/format.js'
 import { contextBar } from './context-bar.js'
+import { activityRows, activityStripSizes, stripWindowStart } from './activity-strip.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { DeliberationExchange, Message } from './transcript.jsx'
 import { ConversationSearchBar, ConversationScrollAnchor, ConversationSearchMessage, createConversationSearch } from './conversation-search-view.jsx'
@@ -84,18 +85,6 @@ const COMMANDS = [
 
 const HISTORY_SCOPES = ['session', 'project', 'everywhere']
 const MEMORY_SCOPES = ['all', 'project', 'global']
-const SHELL_STRIP_MAX = 5
-const AGENT_STRIP_MAX = 5
-const STRIP_SCROLLOFF = 1
-
-function stripWindowStart(current, target, length, size) {
-  const max = Math.max(0, length - size)
-  const start = Math.max(0, Math.min(current, max))
-  if (target < 0) return start
-  if (target < start + STRIP_SCROLLOFF) return Math.max(0, target - STRIP_SCROLLOFF)
-  if (target >= start + size - STRIP_SCROLLOFF) return Math.min(max, target - size + STRIP_SCROLLOFF + 1)
-  return start
-}
 
 
 function agentElapsed(agent, now = Date.now()) {
@@ -241,7 +230,8 @@ export function App({ boot, controller: ctl }) {
 
   const [derived, setDerived] = createSignal(state.derived)
   const [terminalWidth, setTerminalWidth] = createSignal(process.stdout.columns || 80)
-  useResize(({ width }) => setTerminalWidth(width))
+  const [terminalHeight, setTerminalHeight] = createSignal(process.stdout.rows || 24)
+  useResize(({ width, height }) => { setTerminalWidth(width); setTerminalHeight(height) })
   const [overlay, setOverlay] = createSignal(state.overlay)
   const [streaming, setStreaming] = createSignal(state.streaming)
   const [liveUsage, setLiveUsage] = createSignal(state.liveUsage)
@@ -1156,9 +1146,12 @@ export function App({ boot, controller: ctl }) {
   conversationSearch.registerFocus()
   let conversationSearchMatches = []
   agentsVersion()
-  const agentRows = ctl.activity()
+  const agentRows = activityRows(ctl.activity())
   shellsVersion()
-  const shellRows = ctl.shellRows()
+  const shellRows = activityRows(ctl.shellRows())
+  const showComposerActions = !steer() && !viewedAgentId() && !viewedShellId() && !anyPanel() && process.platform === 'darwin'
+  const activityMargin = (shellRows.length > 0 && agentRows.length > 0) || !showComposerActions ? 1 : 0
+  const [shellStripSize, agentStripSize] = activityStripSizes(terminalHeight(), [shellRows.length, agentRows.length], activityMargin)
   if (questionRequest()) {
     fm.item('question')
     if (!fm.is('question')) fm.focus('question')
@@ -1188,11 +1181,12 @@ export function App({ boot, controller: ctl }) {
   function navigateActivityStrip(event) {
     const items = ['activity-main', ...shellRows.map((shell) => `shell-${shell.id}`), ...agentRows.map((agent) => `agent-${agent.id}`)]
     const current = items.indexOf(fm.current())
+    const pageSize = fm.current().startsWith('shell-') ? shellStripSize : agentStripSize
     let next = current
     if (!event.ctrl && event.key === 'g') next = 0
     else if (!event.ctrl && event.key === 'G') next = items.length - 1
-    else if (event.ctrl && event.key === 'd') next = Math.min(items.length - 1, current + Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
-    else if (event.ctrl && event.key === 'u') next = Math.max(0, current - Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
+    else if (event.ctrl && event.key === 'd') next = Math.min(items.length - 1, current + Math.max(1, Math.floor(pageSize / 2)))
+    else if (event.ctrl && event.key === 'u') next = Math.max(0, current - Math.max(1, Math.floor(pageSize / 2)))
     else if (event.key === 'j' || event.key === 'down') next = (current + 1 + items.length) % items.length
     else if (event.key === 'k' || event.key === 'up') next = (current - 1 + items.length) % items.length
     else return false
@@ -1212,8 +1206,8 @@ export function App({ boot, controller: ctl }) {
     let next = current
     if (!event.ctrl && event.key === 'g') next = 0
     else if (!event.ctrl && event.key === 'G') next = items.length - 1
-    else if (event.ctrl && event.key === 'd') next = Math.min(items.length - 1, current + Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
-    else if (event.ctrl && event.key === 'u') next = Math.max(0, current - Math.max(1, Math.floor(AGENT_STRIP_MAX / 2)))
+    else if (event.ctrl && event.key === 'd') next = Math.min(items.length - 1, current + Math.max(1, Math.floor((prefix === 'shell' ? shellStripSize : agentStripSize) / 2)))
+    else if (event.ctrl && event.key === 'u') next = Math.max(0, current - Math.max(1, Math.floor((prefix === 'shell' ? shellStripSize : agentStripSize) / 2)))
     else if (event.key === 'j' || event.key === 'down') next = (current + 1 + items.length) % items.length
     else if (event.key === 'k' || event.key === 'up') next = (current - 1 + items.length) % items.length
     else return false
@@ -1528,9 +1522,9 @@ export function App({ boot, controller: ctl }) {
   const hintedShell = focusedShell || viewedShell
   const shellActionHint = hintedShell ? `ctrl+x ${hintedShell.status === 'running' ? 'kill' : 'dismiss'}` : ''
   const shellWindowTarget = shellStripFocus === 'shell-main' ? 0 : visibleShells.findIndex((s) => s.id === (focusedShellId || viewedShellId()))
-  const shellWindowStart = stripWindowStart(shellWindowOffset(), shellWindowTarget, visibleShells.length, SHELL_STRIP_MAX)
+  const shellWindowStart = stripWindowStart(shellWindowOffset(), shellWindowTarget, visibleShells.length, shellStripSize)
   if (shellWindowStart !== shellWindowOffset()) setShellWindowOffset(shellWindowStart)
-  const shellWindow = visibleShells.slice(shellWindowStart, shellWindowStart + SHELL_STRIP_MAX)
+  const shellWindow = visibleShells.slice(shellWindowStart, shellWindowStart + shellStripSize)
   agentsVersion()
   const visibleAgents = agentRows
   const viewedAgent = viewedAgentId() ? agentRows.find((row) => row.id === viewedAgentId()) : null
@@ -1544,9 +1538,9 @@ export function App({ boot, controller: ctl }) {
   const agentWindowTarget = agentStripFocus === 'agent-main'
     ? 0
     : visibleAgents.findIndex((a) => a.id === (focusedAgentId || viewedAgentId()))
-  const agentWindowStart = stripWindowStart(agentWindowOffset(), agentWindowTarget, visibleAgents.length, AGENT_STRIP_MAX)
+  const agentWindowStart = stripWindowStart(agentWindowOffset(), agentWindowTarget, visibleAgents.length, agentStripSize)
   if (agentWindowStart !== agentWindowOffset()) setAgentWindowOffset(agentWindowStart)
-  const agentWindow = visibleAgents.slice(agentWindowStart, agentWindowStart + AGENT_STRIP_MAX)
+  const agentWindow = visibleAgents.slice(agentWindowStart, agentWindowStart + agentStripSize)
   const pendingWakeups = boot.wakeups.pending()
   gitVersion()
   const gitInfo = gitFooter() ? boot.git.status() : null
@@ -1595,7 +1589,6 @@ export function App({ boot, controller: ctl }) {
 
   const workspaceWidth = Math.min(38, Math.max(18, Math.floor(terminalWidth() / 3)))
   const wideLayout = wideSidebar() && terminalWidth() - (workspaceOpen() ? workspaceWidth : 0) > 160
-  const showComposerActions = !steer() && !viewedAgent && !viewedShell && !anyPanel() && process.platform === 'darwin'
 
   if (showMemoryPanel()) {
     return (
@@ -2425,7 +2418,7 @@ export function App({ boot, controller: ctl }) {
               </AgentStripRow>
             )
           })}
-          {visibleShells.length > SHELL_STRIP_MAX && (
+          {visibleShells.length > shellStripSize && (
             <text style={{ color: MUTED }}>{`  ${shellWindowStart > 0 ? `↑ ${shellWindowStart}` : ''}${shellWindowStart > 0 && shellWindowStart + shellWindow.length < visibleShells.length ? '  ' : ''}${shellWindowStart + shellWindow.length < visibleShells.length ? `↓ ${visibleShells.length - shellWindowStart - shellWindow.length}` : ''} more`}</text>
           )}
         </box>
@@ -2459,7 +2452,7 @@ export function App({ boot, controller: ctl }) {
               </AgentStripRow>
             )
           })}
-          {visibleAgents.length > AGENT_STRIP_MAX && (
+          {visibleAgents.length > agentStripSize && (
             <text style={{ color: MUTED }}>{`  ${agentWindowStart > 0 ? `↑ ${agentWindowStart}` : ''}${agentWindowStart > 0 && agentWindowStart + agentWindow.length < visibleAgents.length ? '  ' : ''}${agentWindowStart + agentWindow.length < visibleAgents.length ? `↓ ${visibleAgents.length - agentWindowStart - agentWindow.length}` : ''} more`}</text>
           )}
         </box>

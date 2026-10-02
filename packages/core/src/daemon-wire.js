@@ -32,12 +32,45 @@ export function wire(socket, receive, fail = () => {}) {
     } catch (error) { fail(error); socket.destroy() }
   })
   socket.on('error', fail)
-  return message => {
+  const updates = new Map()
+  let workspacePending = false
+  function write(message) {
+    if (socket.destroyed) return false
     const body = serialize(plain(message))
-    if (body.length > limit || socket.writableLength > limit) { socket.destroy(); return false }
+    if (body.length > limit) {
+      const error = new Error(`daemon frame exceeds limit (${body.length} bytes)`)
+      fail(error)
+      socket.destroy(error)
+      return false
+    }
     const header = Buffer.alloc(4)
     header.writeUInt32BE(body.length)
     socket.write(Buffer.concat([header, body]))
     return true
+  }
+  socket.on('drain', () => {
+    for (const [id, update] of updates) {
+      if (socket.writableNeedDrain || socket.destroyed) break
+      updates.delete(id)
+      write(update)
+    }
+    if (workspacePending && !socket.writableNeedDrain && !socket.destroyed) {
+      workspacePending = false
+      write({ type: 'workspace' })
+    }
+  })
+  socket.on('close', () => updates.clear())
+  return message => {
+    if (socket.destroyed) return false
+    if (socket.writableNeedDrain && message.type === 'update') {
+      const previous = updates.get(message.id)
+      updates.set(message.id, { ...message, ...(message.patches && previous?.patches ? { baseSequence: previous.baseSequence, patches: [...previous.patches, ...message.patches] } : {}), events: [...(previous?.events || []), ...(message.events || [])] })
+      return true
+    }
+    if (socket.writableNeedDrain && message.type === 'workspace') {
+      workspacePending = true
+      return true
+    }
+    return write(message)
   }
 }

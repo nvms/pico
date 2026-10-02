@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { plain } from './daemon-wire.js'
+import { diffSnapshot } from './daemon-patch.js'
 import { forkSession, loadSession } from './session.js'
 
 const events = ['change', 'derived', 'flash', 'input', 'question', 'turn', 'session', 'resumed', 'mcp', 'shells', 'git', 'project', 'image']
@@ -37,19 +38,35 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
   async function createRecord(client, options) {
     const created = await createSession(options)
     const ctl = created.controller || created
-    const record = { id: randomUUID(), ctl, dispose: created.dispose, views: new Set([client]), events: [], timer: null, unsub: [] }
+    const record = { id: randomUUID(), ctl, dispose: created.dispose, views: new Set([client]), events: [], timer: null, unsub: [], baselines: new Map() }
     sessions.set(record.id, record)
     for (const type of events) record.unsub.push(ctl.on(type, payload => publish(record, type, payload)))
     return record
   }
+  function fullSnapshot(record, client) {
+    const value = snapshot(record.ctl)
+    const sequence = (record.baselines.get(client)?.sequence || 0) + 1
+    record.baselines.set(client, { snapshot: value, sequence })
+    return { snapshot: value, sequence }
+  }
+  function flush(record) {
+    clearTimeout(record.timer)
+    record.timer = null
+    const next = snapshot(record.ctl)
+    const notifications = record.events.splice(0)
+    for (const client of record.views) {
+      const baseline = record.baselines.get(client)
+      if (!baseline) continue
+      const sequence = baseline.sequence + 1
+      const patches = diffSnapshot(baseline.snapshot, next)
+      record.baselines.set(client, { snapshot: next, sequence })
+      client.send({ type: 'update', id: record.id, patches, baseSequence: baseline.sequence, sequence, events: notifications })
+    }
+    for (const client of clients) client.send({ type: 'workspace' })
+  }
   function publish(record, type, payload) {
-    if (type !== 'change') record.events.push({ type, payload: plain(type === 'project' ? null : payload) })
-    if (!record.timer) record.timer = setTimeout(() => {
-      record.timer = null
-      const update = { type: 'update', id: record.id, snapshot: snapshot(record.ctl), events: record.events.splice(0) }
-      for (const client of record.views) client.send(update)
-      for (const client of clients) client.send({ type: 'workspace' })
-    }, batchMs)
+    if (!['change', 'derived'].includes(type)) record.events.push({ type, payload: plain(type === 'project' ? null : payload) })
+    if (!record.timer) record.timer = setTimeout(() => flush(record), batchMs)
   }
   async function dispose(record) {
     if (!sessions.delete(record.id)) return
@@ -63,6 +80,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
     const record = sessions.get(id)
     if (!record) return
     record.views.delete(client)
+    record.baselines.delete(client)
     if (!record.views.size && !named(record.ctl)) await dispose(record)
   }
   return {
@@ -88,11 +106,12 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
       })
       if (op === 'create') {
         const record = await createRecord(client, args[0] || {})
-        return { id: record.id, snapshot: snapshot(record.ctl) }
+        return { id: record.id, ...fullSnapshot(record, client) }
       }
       const record = sessions.get(id)
       if (!record) throw new Error('session is no longer running')
-      if (op === 'attach') { record.views.add(client); return { id, snapshot: snapshot(record.ctl) } }
+      if (op === 'attach') { record.views.add(client); return { id, ...fullSnapshot(record, client) } }
+      if (op === 'snapshot') { if (!record.views.has(client)) throw new Error('attach first'); return fullSnapshot(record, client) }
       if (op === 'switch') {
         const [method, value] = args
         if (!record.views.has(client)) throw new Error('attach to the session first')
@@ -102,7 +121,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
           if (existing) {
             existing.views.add(client)
             if (existing !== record) await detach(client, id)
-            return { id: existing.id, snapshot: snapshot(existing.ctl) }
+            return { id: existing.id, ...fullSnapshot(existing, client) }
           }
           const saved = await loadSession(meta.file)
           meta = { ...meta, header: saved.header }
@@ -125,7 +144,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
             if (renamed === false || next.ctl.state.derived?.title !== name) throw new Error(`could not create session named "${name}"`)
           }
           await detach(client, id)
-          return { id: next.id, snapshot: snapshot(next.ctl) }
+          return { id: next.id, ...fullSnapshot(next, client) }
         } catch (error) { await dispose(next); throw error }
       }
       if (op === 'detach') { await detach(client, id); return }
@@ -150,11 +169,12 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
         if (target === 'controller' && method === 'compact') {
           Promise.resolve(object[method](...values)).catch(error => publish(record, 'flash', error.message))
           publish(record, 'change')
-          return { result: undefined, snapshot: snapshot(record.ctl) }
+          return { result: undefined, incremental: true }
         }
         const result = await object[method](...values)
         publish(record, 'change')
-        return { result, snapshot: snapshot(record.ctl) }
+        flush(record)
+        return { result, incremental: true }
       }
       if (op === 'configure') {
         const allowed = ['researchModel', 'shellModel', 'deliberationModel', 'participantAModel', 'participantBModel', 'researchAgentLimit', 'clouds', 'compactToolHistory', 'gitFooter', 'wideSidebar']
