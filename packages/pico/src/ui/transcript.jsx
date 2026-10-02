@@ -505,7 +505,7 @@ export function Message({ item, verbose, showLocked = false }) {
     const color = incoming && item.read ? MUTED : PEER
     const status = incoming ? `  ${unread ? 'unread' : 'read'}` : `  ${item.status || 'unknown'}`
     return (
-      <box style={{ flexDirection: 'column' }}>
+      <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
         <text> </text>
         <box style={{ flexDirection: 'row' }}>
           <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${item.urgent ? '  urgent' : ''}`}</text>
