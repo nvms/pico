@@ -12,6 +12,7 @@ command flags:
   --json                     print a single JSON result object to stdout
   --stream-json              stream session events to stdout as jsonl
   -m, --model <name>         model to use (fuzzy matched, or raw provider/model)
+  --speed <level>            speed: standard|fast
   --effort <level>           thinking effort: auto|low|medium|high|max
   --resume <session-id>      continue an existing session from this project
   --max-tool-calls <n>       stop the agent after n tool calls (default 50)
@@ -52,6 +53,13 @@ export function parseArgs(argv) {
         throw new Error(`invalid effort "${level}": use auto|low|medium|high|max`)
       }
       opts.effort = level
+      i++
+    } else if (arg === '--speed') {
+      const level = takeValue(arg, i)
+      if (!['standard', 'fast'].includes(level)) {
+        throw new Error(`invalid speed "${level}": use standard|fast`)
+      }
+      opts.speed = level
       i++
     } else if (arg === '--resume') {
       opts.resume = takeValue(arg, i)

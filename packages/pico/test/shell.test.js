@@ -62,3 +62,31 @@ test('writes failures only to stderr', async () => {
   assert.equal(stdout.read(), '')
   assert.match(stderr.read(), /^pico:/)
 })
+
+test('shell speed is explicit and does not inherit main defaults', async () => {
+  for (const speed of [undefined, 'standard', 'fast']) {
+    let call
+    const status = await runShell({ prompt: 'show status', ...(speed && { speed }) }, {
+      stdout: output().stream, stderr: output().stream,
+      readConfig: async () => ({ speedDefaults: { 'codex/gpt-5.6-terra': 'fast' } }),
+      loadModelRuntime: async () => ({ ...runtime, models: runtime.models.map(model => ({ ...model, speed: true })) }),
+      runTurn: async options => {
+        call = options
+        return { messages: [{ role: 'assistant', content: 'git status' }] }
+      },
+    })
+    assert.equal(status, 0)
+    assert.equal(call.speed, speed ?? 'standard')
+  }
+})
+
+test('shell rejects unsupported Fast requests', async () => {
+  const stderr = output()
+  const status = await runShell({ prompt: 'show status', speed: 'fast' }, {
+    stdout: output().stream, stderr: stderr.stream,
+    readConfig: async () => ({}), loadModelRuntime: async () => runtime,
+    runTurn: async () => { assert.fail('unsupported Fast must not run') },
+  })
+  assert.equal(status, 1)
+  assert.match(stderr.read(), /does not support speed control/)
+})

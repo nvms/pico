@@ -22,7 +22,7 @@ import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpda
 import { STEER_ROLES, steerableTranscript } from 'picocode-core/steer.js'
 import { writeConfig } from 'picocode-core/config.js'
 import { openaiStatus } from 'picocode-core/openai-auth.js'
-import { EFFORT_LEVELS, SESSION_COLORS } from 'picocode-core/controller.js'
+import { EFFORT_LEVELS, SPEED_LEVELS, SESSION_COLORS } from 'picocode-core/controller.js'
 import { agentTranscript } from 'picocode-core/agent-transcript.js'
 import { fuzzyScore } from 'picocode-core/fuzzy.js'
 import { completionContext, applyCompletion } from 'picocode-core/completion.js'
@@ -40,7 +40,7 @@ import { compactTranscriptRuns, transcriptWindow } from './transcript-window.js'
 import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
-import { ModelPanel, EffortPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
+import { ModelPanel, EffortPanel, SpeedPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
 import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const COMMANDS = [
@@ -48,6 +48,7 @@ const COMMANDS = [
   { name: 'refresh-models', desc: 'Refresh available models from providers' },
   { name: 'connect', desc: 'Sign in with ChatGPT to use a Codex subscription' },
   { name: 'effort', desc: 'Set the thinking effort for this session' },
+  { name: 'speed', desc: 'Speed' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
   { name: 'new', desc: 'Start a new session in this project' },
   { name: 'fork', desc: 'Fork conversation' },
@@ -231,6 +232,9 @@ export function App({ boot, controller: ctl }) {
   const [defaultModel, setDefaultModel] = createSignal(state.defaultModel)
   const [effort, setEffort] = createSignal(state.effort)
   const [defaultEffort, setDefaultEffort] = createSignal(state.defaultEffort)
+  const [speed, setSpeed] = createSignal(state.speed)
+  const [speedDefaults, setSpeedDefaults] = createSignal({ ...state.speedDefaults })
+  const [showSpeedPanel, setShowSpeedPanel] = createSignal(false)
   const [showEffortPanel, setShowEffortPanel] = createSignal(false)
   const [showThemePanel, setShowThemePanel] = createSignal(false)
   const [showConfigPanel, setShowConfigPanel] = createSignal(false)
@@ -328,6 +332,8 @@ export function App({ boot, controller: ctl }) {
     mirror(startedAt, setStartedAt, state.startedAt)
     mirror(model, setModel, state.model)
     mirror(defaultModel, setDefaultModel, state.defaultModel)
+    mirror(speed, setSpeed, state.speed)
+    if (JSON.stringify(speedDefaults()) !== JSON.stringify(state.speedDefaults)) setSpeedDefaults({ ...state.speedDefaults })
     mirror(effort, setEffort, state.effort)
     mirror(defaultEffort, setDefaultEffort, state.defaultEffort)
     mirror(questionRequest, setQuestionRequest, state.question)
@@ -493,6 +499,7 @@ export function App({ boot, controller: ctl }) {
   const performCompaction = ctl.compact
 
   function completionSource(name) {
+    if (name === 'speed') return SPEED_LEVELS.map((l) => l.key)
     if (name === 'color') return Object.keys(SESSION_COLORS)
     if (name === 'theme') return [...paletteList().map((p) => p.key), 'auto']
     if (name === 'effort') return ['default', 'low', 'medium', 'high', 'max']
@@ -769,6 +776,11 @@ export function App({ boot, controller: ctl }) {
       return ctl.switchModelByName(args)
     }
     if (c.name === 'refresh-models') return refreshModels()
+    if (c.name === 'speed') {
+      if (!speedApplies()) return flash(`${model().name} does not support speed control`)
+      if (!args) return setShowSpeedPanel(true)
+      return ctl.speedCommand(args.toLowerCase())
+    }
     if (c.name === 'effort') {
       if (!effortApplies()) return flash(`${model().name} does not support effort control`)
       if (!args) return setShowEffortPanel(true)
@@ -1050,7 +1062,7 @@ export function App({ boot, controller: ctl }) {
   }
 
   const anyPanel = () =>
-    showModelPanel() || showResearchModelPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
+    showModelPanel() || showResearchModelPanel() || showSpeedPanel() || showEffortPanel() || showThemePanel() || showConfigPanel() || showDeleteConfirm() || showMemoryPanel() || showHistoryPanel() || showResumePanel() || showMcpPanel() ||
     showProjectPanel() || showWakeupsPanel() || showConnectPanel() ||
     commandForm() !== null || infoPanel() !== null || rewindStep() !== null
 
@@ -1093,6 +1105,7 @@ export function App({ boot, controller: ctl }) {
     boot.shells.kill(shell.id, 'user')
   }
 
+  const speedApplies = ctl.speedApplies
   const effortApplies = ctl.effortApplies
   const setSessionEffort = ctl.setEffort
 
@@ -2128,6 +2141,24 @@ export function App({ boot, controller: ctl }) {
         />
       )}
 
+      {showSpeedPanel() && (
+        <SpeedPanel
+          levels={SPEED_LEVELS}
+          current={speed()}
+          defaultLevel={speedDefaults()[model().name] ?? 'standard'}
+          focused={showSpeedPanel()}
+          onPick={(l) => {
+            ctl.applySpeed(l.key)
+            setShowSpeedPanel(false)
+          }}
+          onPickDefault={(l) => {
+            ctl.applySpeed(l.key, { asDefault: true })
+            setShowSpeedPanel(false)
+          }}
+          onClose={() => setShowSpeedPanel(false)}
+        />
+      )}
+
       {showEffortPanel() && (
         <EffortPanel
           levels={EFFORT_LEVELS}
@@ -2354,7 +2385,7 @@ export function App({ boot, controller: ctl }) {
           <box style={{ flexDirection: 'column' }}>
             <text style={{ color: FG_SOFT, bold: true }}>{'Session'}</text>
             <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Directory      '}</text><text style={{ color: FG_SOFT, overflow: 'truncate' }}>{boot.displayCwd}</text></box>
-            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Model          '}</text><text style={{ color: accent() }}>{model().name}</text></box>
+            <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Model          '}</text><text style={{ color: accent() }}>{model().name}</text>{speedApplies() && speed() === 'fast' && <text style={{ color: accent() }}>{' Fast'}</text>}</box>
             {effortApplies() && effort() && <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Effort         '}</text><text style={{ color: FG_SOFT }}>{effort()}</text></box>}
             <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Input tokens   '}</text><text style={{ color: FG_SOFT }}>{Math.round(usage.promptTokens).toLocaleString()}</text></box>
             <box style={{ flexDirection: 'row' }}><text style={{ color: MUTED }}>{'Output tokens  '}</text><text style={{ color: FG_SOFT }}>{Math.round(usage.completionTokens).toLocaleString()}</text></box>
@@ -2368,6 +2399,7 @@ export function App({ boot, controller: ctl }) {
           <box style={{ height: 1 }} />
           <box style={{ flexDirection: 'row', paddingX: 2, gap: 1 }}>
             <text style={{ color: MUTED }}>{model().name}</text>
+            {speedApplies() && speed() === 'fast' && <text style={{ color: MUTED }}>Fast</text>}
             {effortApplies() && effort() && <text style={{ color: MUTED }}>{effort()}</text>}
             <box style={{ flexGrow: 1 }} />
             {pendingWakeups > 0 && <text style={{ color: MUTED }}>{`⏰ ${pendingWakeups}`}</text>}

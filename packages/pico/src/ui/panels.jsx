@@ -576,6 +576,48 @@ export function EffortPanel({ levels, current, defaultLevel, focused, onPick, on
   )
 }
 
+export function SpeedPanel({ levels, current, defaultLevel, focused, onPick, onPickDefault, onClose }) {
+  const [cursor, setCursor] = createSignal(Math.max(0, levels.findIndex((l) => l.key === current)))
+  const items = levels
+
+  useInput((event) => {
+    if (!focused) return
+    if (event.ctrl && event.key === 's') {
+      onPickDefault(items[cursor()])
+      event.stopPropagation()
+    }
+  })
+
+  const label = (l) => l.key === 'fast' ? 'Fast' : 'Standard'
+
+  return (
+    <PanelFrame title="Speed" hint="enter: session  ctrl+s: default  esc: close">
+      <box style={{ flexDirection: 'column', marginTop: 1 }}>
+        <Menu
+          counter
+          items={items}
+          selected={cursor()}
+          onSelect={setCursor}
+          focused={focused}
+          maxVisible={5}
+          vimKeys
+          onSubmit={onPick}
+          onCancel={onClose}
+          renderItem={(l, { active }) => (
+            <box style={{ flexDirection: 'row' }}>
+              <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+              <text style={{ color: active ? accent() : FG }}>{label(l).padEnd(Math.max(10, label(l).length + 1))}</text>
+              <text style={{ color: MUTED }}>{`${l.usage.replace(/ usage$/, '')} included usage`}</text>
+              {l.key === current && <text style={{ color: active ? accent() : MUTED }}>{'  ✓'}</text>}
+              {l.key === defaultLevel && <text style={{ color: MUTED }}>{'   default'}</text>}
+            </box>
+          )}
+        />
+      </box>
+    </PanelFrame>
+  )
+}
+
 export function ThemePanel({ themes, pref, focused, onPick, onPreview, onClose }) {
   const [cursor, setCursor] = createSignal(Math.max(0, themes.findIndex((t) => t.key === pref)))
 

@@ -129,6 +129,7 @@ const boot = {
   detectedTheme,
   themePref: themeOverride || 'auto',
   initialEffort: ['low', 'medium', 'high', 'max'].includes(config.defaultEffort) ? config.defaultEffort : null,
+  speedDefaults: config.speedDefaults,
   autoCompact: config.autoCompact !== false,
   clouds: config.animation?.clouds === true,
   compactToolHistory: config.display?.compactToolHistory === true,
@@ -152,6 +153,7 @@ git.retarget(boot.root)
 git.setEnabled(boot.gitFooter)
 
 const controller = createController({ boot })
+if (cli.speed) controller.speedCommand(cli.speed)
 const app = mount(() => <App boot={boot} controller={controller} />, { title: `pico  ${boot.root.split('/').pop()}`, theme })
 boot.setTheme = app.setTheme
 boot.mcp.connectAll()

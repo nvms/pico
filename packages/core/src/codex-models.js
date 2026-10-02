@@ -18,6 +18,7 @@ export function mapCodexModels(entries) {
     desc: `${m.description || m.label || m.slug} · via ChatGPT plan`,
     price: null,
     effort: true,
+    speed: (m.service_tiers || []).some(tier => ['priority', 'fast'].includes(tier.id)) || (m.additional_speed_tiers || []).includes('fast'),
     context: m.context_window || null,
   }))
 }
@@ -27,7 +28,7 @@ export async function loadCodexModels(credentials, { force = false, fetcher = fe
   try {
     cached = JSON.parse(await readFile(cacheFile(), 'utf-8'))
   } catch {}
-  if (!force && cached && Date.now() - cached.at < TTL) return mapCodexModels(cached.models)
+  if (!force && cached && Date.now() - cached.at < TTL && cached.models.every(model => Array.isArray(model.service_tiers) || Array.isArray(model.additional_speed_tiers))) return mapCodexModels(cached.models)
   if (!credentials) return mapCodexModels(cached?.models || [])
 
   try {
@@ -42,6 +43,8 @@ export async function loadCodexModels(credentials, { force = false, fetcher = fe
     const data = await response.json()
     const models = (data.models || []).map((m) => ({
       slug: m.slug,
+      service_tiers: m.service_tiers || [],
+      additional_speed_tiers: m.additional_speed_tiers || [],
       description: m.description,
       label: m.label || m.display_name,
       context_window: m.context_window || m.max_context_window || null,

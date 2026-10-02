@@ -51,3 +51,51 @@ test('no credentials and no cache means no codex rows, cache serves offline', as
   assert.equal(cached[0].name, 'codex/gpt-5.6-terra')
   delete process.env.PICO_HOME
 })
+
+test('Fast capability follows advertised Codex tiers, not the model name', () => {
+  const models = mapCodexModels([
+    { slug: 'supported', service_tiers: [{ id: 'priority', name: 'Fast' }] },
+    { slug: 'alternate', additional_speed_tiers: ['fast'] },
+    { slug: 'gpt-6.1-sol' },
+    { slug: 'standard', service_tiers: [{ id: 'default' }] },
+  ])
+  assert.deepEqual(models.map(model => model.speed), [true, true, false, false])
+})
+
+test('fetch and cache preserve advertised Fast capability', async t => {
+  const previousHome = process.env.PICO_HOME
+  process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-speed-cache-'))
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.PICO_HOME
+    else process.env.PICO_HOME = previousHome
+  })
+  const models = await loadCodexModels({ apiKey: 'token' }, {
+    force: true,
+    fetcher: async () => ({ ok: true, json: async () => ({ models: [
+      { slug: 'supported', service_tiers: [{ id: 'priority' }], additional_speed_tiers: ['fast'] },
+    ] }) }),
+  })
+  assert.equal(models[0].speed, true)
+  const cached = await loadCodexModels(null)
+  assert.equal(cached[0].speed, true)
+})
+
+test('a fresh cache without speed metadata is refreshed', async t => {
+  const previousHome = process.env.PICO_HOME
+  process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-speed-upgrade-'))
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.PICO_HOME
+    else process.env.PICO_HOME = previousHome
+  })
+  const { writeFile } = await import('node:fs/promises')
+  await writeFile(join(process.env.PICO_HOME, 'codex-models-cache.json'), JSON.stringify({ at: Date.now(), models: [{ slug: 'supported' }] }))
+  let fetched = false
+  const models = await loadCodexModels({ apiKey: 'test' }, {
+    fetcher: async () => {
+      fetched = true
+      return { ok: true, json: async () => ({ models: [{ slug: 'supported', service_tiers: [{ id: 'priority' }] }] }) }
+    },
+  })
+  assert.equal(fetched, true)
+  assert.equal(models[0].speed, true)
+})

@@ -42,6 +42,10 @@ export async function runHeadless(opts) {
     process.stderr.write(`pico: no usable model${opts.model ? ` matching "${opts.model}"` : ''}\n`)
     return 1
   }
+  if (opts.speed === 'fast' && !model.speed) {
+    process.stderr.write(`pico: ${model.name} does not support speed control\n`)
+    return 1
+  }
   const effort = opts.effort ?? (model.effort ? 'auto' : null)
 
   const boot = await buildProjectBoot(process.cwd())
@@ -65,6 +69,10 @@ export async function runHeadless(opts) {
     if (opts.streamJson) process.stdout.write(JSON.stringify(event) + '\n')
   }
 
+  const restoredSpeed = deriveState(events).speed
+  const speed = model.speed ? (opts.speed ?? (opts.resume ? restoredSpeed ?? 'standard' : config.speedDefaults?.[model.name]) ?? 'standard') : 'standard'
+  persist(makeEvent('speed', { to: speed }))
+
   const stdinData = await readStdin()
   const promptText = stdinData ? `${opts.prompt}\n\n[piped input]\n${stdinData}` : opts.prompt
   const { content } = finalizeUserContent(promptText, new Map())
@@ -85,7 +93,7 @@ export async function runHeadless(opts) {
 
   let auth = null
   if (model.provider === 'codex') {
-    auth = await openaiCredentials().catch(() => null)
+    auth = codexCreds
     if (!auth) {
       process.stderr.write('pico: codex models need a ChatGPT sign-in (run pico --connect)\n')
       await session.flush()
@@ -93,7 +101,7 @@ export async function runHeadless(opts) {
     }
   }
 
-  log(`pico  ${model.name}${effort ? `  ${effort}` : ''}  session ${session.id}`)
+  log(`pico  ${model.name}${model.speed && speed === 'fast' ? '  Fast' : ''}${effort ? `  ${effort}` : ''}  session ${session.id}`)
   let thoughts = ''
   const result = await runTurn({
     history: derived.providerHistory,
@@ -101,6 +109,7 @@ export async function runHeadless(opts) {
     recorder,
     modelName: model.name,
     effort,
+    ...(model.provider === 'codex' && { speed }),
     auth,
     system: buildSystemPrompt({
       cwd: boot.cwd,

@@ -36,6 +36,11 @@ import { MAX_DELIBERATION_ROUNDS } from './deliberation.js'
 import { buildUserContent, finalizeUserContent, inputTextFromContent, mediaTypeFor, stashImages } from './attachments.js'
 import { settlePending } from './pending.js'
 
+export const SPEED_LEVELS = [
+  { key: 'standard', usage: '1x usage' },
+  { key: 'fast', usage: '2.5x usage' },
+]
+
 export const EFFORT_LEVELS = [
   { key: null, desc: 'let the provider decide how much to think' },
   { key: 'low', desc: 'quick answers, minimal thinking' },
@@ -114,6 +119,8 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     defaultModel: boot.initialModel,
     effort: boot.initialEffort,
     defaultEffort: boot.initialEffort,
+    speedDefaults: { ...boot.speedDefaults },
+    speed: boot.speedDefaults?.[boot.initialModel.name] === 'fast' ? 'fast' : 'standard',
     busy: false,
     compacting: false,
     compactOutcome: null,
@@ -293,6 +300,9 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       // by file needs to hear about it
       emit('session', state.session)
     }
+    if (!state.events.some(event => event.type === 'speed')) {
+      state.events.push(makeEvent('speed', { to: state.speed }))
+    }
     while (state.persisted < state.events.length) {
       state.session.append(state.events[state.persisted])
       state.persisted++
@@ -350,6 +360,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
         recorder,
         modelName: worker.name,
         effort: worker.effort ? 'low' : null,
+        ...(worker.provider === 'codex' && { speed: 'standard' }),
         auth,
         system: context.system,
         signal,
@@ -421,6 +432,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
           recorder: toolset.recorder,
           modelName: roleWorkers[role].name,
           effort: roleWorkers[role].effort ? 'low' : null,
+          ...(roleWorkers[role].provider === 'codex' && { speed: 'standard' }),
           auth: roleAuths[role],
           system: context.system,
           signal: workerSignal,
@@ -606,6 +618,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       const raw = await compactHistory({
         history: current.providerHistory,
         modelName: state.model.name,
+        ...(state.model.provider === 'codex' && { speed: speedApplies() ? state.speed : 'standard' }),
         auth,
         prompt: compactionPrompt(instructions),
         signal: controller.signal,
@@ -828,6 +841,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
         recorder,
         modelName: state.model.name,
         effort: effortApplies() ? state.effort ?? 'auto' : null,
+        ...(state.model.provider === 'codex' && { speed: speedApplies() ? state.speed : 'standard' }),
         auth,
         system: context.system,
         signal: controller.signal,
@@ -946,7 +960,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     set({ queued: [...state.expedited, ...state.queued], expedited: [] })
   }
 
-  function resetConversation({ model, effort } = {}) {
+  function resetConversation({ model, effort, speed } = {}) {
     state.session = null
     state.events = []
     state.persisted = 0
@@ -958,6 +972,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     state.peerPaused = false
     state.model = model ?? state.defaultModel
     state.effort = effort === undefined ? state.defaultEffort : effort
+    state.speed = speed ?? defaultSpeed(state.model)
   }
 
   async function newSession() {
@@ -1192,6 +1207,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
       reDerive()
       restoreModelFromSession()
       state.effort = state.derived.effort === undefined ? state.defaultEffort : state.derived.effort
+      state.speed = state.derived.speed ?? 'standard'
       state.sent = userEntries(state.derived).map((e) => ({ text: recallText(e), at: header.createdAt }))
       changed()
       emit('session', state.session)
@@ -1319,6 +1335,8 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     }
     persist(makeEvent('model_switch', { from: state.model.name, to: pick.name }))
     state.model = pick
+    state.speed = defaultSpeed(pick)
+    persist(makeEvent('speed', { to: state.speed }))
     if (asDefault) {
       state.defaultModel = pick
       writeConfig({ defaultModel: pick.name }).catch(() => {})
@@ -1335,6 +1353,23 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     switchModel(pick, { note: adhoc ? ' (not in catalog, pricing unknown)' : '' })
   }
 
+  const defaultSpeed = model => state.speedDefaults[model.name] === 'fast' ? 'fast' : 'standard'
+  const speedApplies = () => state.model.provider === 'codex' && !!state.model.speed
+
+  function applySpeed(next, { asDefault = false } = {}) {
+    if (!speedApplies()) return flash(`${state.model.name} does not support Fast mode`)
+    if (!SPEED_LEVELS.some(level => level.key === next)) return flash('usage: /speed <standard|fast>')
+    persist(makeEvent('speed', { to: next }))
+    state.speed = next
+    if (asDefault) {
+      state.speedDefaults[state.model.name] = next
+      writeConfig({ speedDefaults: { [state.model.name]: next } }).catch(error => flash(`speed default failed: ${errorText(error, 80)}`))
+    }
+    changed()
+    flash(`speed: ${next}`)
+  }
+
+  const speedCommand = arg => applySpeed(arg.toLowerCase())
   const effortApplies = () => !!state.model.effort
 
   function setEffort(next, { asDefault = false } = {}) {
@@ -1714,6 +1749,9 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     resolveModel,
     switchModel,
     switchModelByName,
+    speedApplies,
+    applySpeed,
+    speedCommand,
     effortApplies,
     setEffort,
     setEffortByName,

@@ -196,6 +196,7 @@ export function deriveState(events) {
     historyEventIds: [],
     model: null,
     effort: undefined,
+    speed: undefined,
     usage: spentUsage,
     usageByModel: spentUsageByModel,
     usageActive: emptyUsage(),
@@ -309,6 +310,9 @@ export function deriveState(events) {
       }
       case 'model_switch':
         state.model = event.data.to
+        break
+      case 'speed':
+        state.speed = event.data.to
         break
       case 'effort':
         state.effort = event.data.to

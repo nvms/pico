@@ -53,3 +53,14 @@ test('help and version modes', () => {
 test('resume takes a session id or path', () => {
   assert.equal(parseArgs(['-p', 'go', '--resume', 'abc-123']).resume, 'abc-123')
 })
+
+test('parses speed independently of effort', () => {
+  for (const speed of ['standard', 'fast']) {
+    assert.deepEqual(parseArgs(['-p', 'go', '--speed', speed, '--effort', 'high']), {
+      mode: 'headless', prompt: 'go', speed, effort: 'high',
+    })
+    assert.equal(parseArgs(['--speed', speed]).speed, speed)
+  }
+  assert.throws(() => parseArgs(['--speed']), /requires a value/)
+  assert.throws(() => parseArgs(['--speed', 'auto']), /invalid speed/)
+})

@@ -58,10 +58,11 @@ export function compactionHistory(history, prompt) {
   return hydrateImages([...history.filter((m) => m.role !== 'system'), { role: 'user', content: prompt }])
 }
 
-export async function compactHistory({ history, modelName, auth, prompt, signal, onStream }) {
+export async function compactHistory({ history, modelName, speed, auth, prompt, signal, onStream }) {
   const out = await compose(
     model({
       model: modelName,
+      ...(speed && { speed }),
       ...(auth?.apiKey && { apiKey: auth.apiKey }),
       ...(auth?.headers && { headers: auth.headers }),
     }),
@@ -102,7 +103,7 @@ function estimateTokens(value) {
   return Math.ceil(JSON.stringify(value ?? '').length / 4)
 }
 
-export async function runTurn({ history, tools, recorder, modelName, effort, auth, system, signal, onStream, beforeRequest, stallMs = STALL_MS }) {
+export async function runTurn({ history, tools, recorder, modelName, effort, speed, auth, system, signal, onStream, beforeRequest, stallMs = STALL_MS }) {
   const collected = []
   let roundText = ''
   let usageSeen = null
@@ -201,6 +202,7 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
             return { ...request, history: [...request.history, ...messages] }
           },
           ...(effort && { effort }),
+          ...(speed && { speed }),
           ...(auth?.apiKey && { apiKey: auth.apiKey }),
           ...(auth?.headers && { headers: auth.headers }),
         })({ ...ctx, history: hydratedHistory, abortSignal: internal.signal })

@@ -40,6 +40,8 @@ export async function runShell(opts, dependencies = {}) {
       throw new Error(`no usable model${requestedName ? ` matching "${requestedName}"` : ''}`)
     }
 
+    if (opts.speed === 'fast' && !model.speed) throw new Error(`${model.name} does not support speed control`)
+
     const auth = model.provider === 'codex' ? runtime.codexCredentials : null
     if (model.provider === 'codex' && !auth) throw new Error('codex models need a ChatGPT sign-in (run pico --connect)')
 
@@ -49,6 +51,7 @@ export async function runShell(opts, dependencies = {}) {
       recorder: null,
       modelName: model.name,
       effort: opts.effort ?? (model.effort ? 'low' : null),
+      ...(model.provider === 'codex' && { speed: model.speed ? (opts.speed ?? 'standard') : 'standard' }),
       auth,
       system: SYSTEM({
         platform: process.platform === 'darwin' ? 'macOS' : process.platform,
