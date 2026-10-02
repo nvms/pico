@@ -1,5 +1,5 @@
 import { WorkspaceSidebar } from './workspace-sidebar.jsx'
-import { workspaceGroups, workspaceSelection, workspaceNavigate, workspaceAction, emptyWorkspaceComposer } from './workspace-sidebar.js'
+import { workspaceGroups, workspaceSelection, workspaceNavigate, workspaceAction, workspaceDraftAttachments, emptyWorkspaceComposer } from './workspace-sidebar.js'
 import { readFile } from 'node:fs/promises'
 import { parseFrontmatter } from 'picocode-core/skills.js'
 import { expandCommand, parseCommandArguments } from 'picocode-core/commands.js'
@@ -1974,7 +1974,7 @@ export function App({ boot, controller: ctl }) {
           onSubmit={send}
           onKeyDown={(e) => {
             if (e.key === 'left' && !e.ctrl && !e.meta && !e.alt && boot.workspace && fm.is('input') && view() === 'chat' && !anyPanel() && emptyWorkspaceComposer({
-              text: e.value, attachments: state.attachments.size, dictation: dictationStatus(), capture: captureStatus(), pending: refs.commandExpansion || refs.workspacePastePending,
+              text: e.value, attachments: workspaceDraftAttachments(e.value, state.attachments), dictation: dictationStatus(), capture: captureStatus(), pending: refs.commandExpansion || refs.workspacePastePending,
               history: histIdx(), completion: completing(), command: commandForm(), question: questionRequest(), steer: steer(), queued: queued().length, expedited: expedited().length,
             })) {
               setWorkspaceSelected(boot.workspace.currentId())

@@ -29,6 +29,10 @@ export function workspaceNavigate(rows, selected, event, height) {
   return rows[Math.max(0, Math.min(rows.length - 1, next))]?.id ?? null
 }
 
+export function workspaceDraftAttachments(text, attachments) {
+  return [...text.matchAll(/\[(?:Image|File) #\d+\]/g)].filter(match => attachments.has(match[0])).length
+}
+
 export function emptyWorkspaceComposer({ text, attachments, dictation, capture, pending, history, completion, command, question, steer, queued, expedited }) {
   return text === '' && attachments === 0 && dictation === 'idle' && capture === 'idle' && !pending && history < 0 && !completion && !command && !question && !steer && queued === 0 && expedited === 0
 }

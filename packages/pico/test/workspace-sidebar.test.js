@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { workspaceGroups, workspaceSelection, workspaceNavigate, workspaceAction, emptyWorkspaceComposer } from '../src/ui/workspace-sidebar.js'
+import { workspaceGroups, workspaceSelection, workspaceNavigate, workspaceAction, workspaceDraftAttachments, emptyWorkspaceComposer } from '../src/ui/workspace-sidebar.js'
 
 const rows = [{ id: 'a', cwd: '/a', name: 'Alpha' }, { id: 'b', cwd: '/a', name: 'Beta' }, { id: 'c', cwd: '/b', name: 'Gamma' }]
 
@@ -42,4 +42,11 @@ test('ctrl+x interrupts busy, demotes idle, leaves paused alone', () => {
   assert.equal(workspaceAction({ status: 'idle' }), 'demote')
   assert.equal(workspaceAction({ status: 'paused' }), null)
   assert.equal(workspaceAction(null), null)
+})
+
+test('historical attachments do not block an empty composer', () => {
+  const attachments = new Map([['[Image #1]', {}], ['[File #2]', {}]])
+  assert.equal(workspaceDraftAttachments('', attachments), 0)
+  assert.equal(workspaceDraftAttachments('[Image #1] [File #2]', attachments), 2)
+  assert.equal(workspaceDraftAttachments('[Image #9]', attachments), 0)
 })
