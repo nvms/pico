@@ -102,7 +102,7 @@ function estimateTokens(value) {
   return Math.ceil(JSON.stringify(value ?? '').length / 4)
 }
 
-export async function runTurn({ history, tools, recorder, modelName, effort, auth, system, signal, onStream, stallMs = STALL_MS }) {
+export async function runTurn({ history, tools, recorder, modelName, effort, auth, system, signal, onStream, beforeRequest, stallMs = STALL_MS }) {
   const collected = []
   let roundText = ''
   let usageSeen = null
@@ -190,6 +190,16 @@ export async function runTurn({ history, tools, recorder, modelName, effort, aut
         onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
         const out = await model({
           model: modelName,
+          beforeRequest: async (request) => {
+            if (internal.signal.aborted) return request
+            const messages = await beforeRequest?.() || []
+            if (messages.length && roundText) {
+              collected.push({ role: 'assistant', content: roundText })
+              roundText = ''
+            }
+            collected.push(...messages)
+            return { ...request, history: [...request.history, ...messages] }
+          },
           ...(effort && { effort }),
           ...(auth?.apiKey && { apiKey: auth.apiKey }),
           ...(auth?.headers && { headers: auth.headers }),

@@ -479,7 +479,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     }
     if (shell.killedBy === 'user') {
       flash(`shell ${shell.id} killed`)
-      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false, sessionId: shell.sessionId, sessionFile: shell.sessionFile })
+      noteSystem(`[system notification] the user manually killed background shell ${shell.id} (${shell.description || shell.command}) from the shells panel (SIGTERM). This was deliberate; do not restart it unless asked.`, { wake: false, duringTurn: true, sessionId: shell.sessionId, sessionFile: shell.sessionFile })
       return
     }
     flash(`shell ${shell.id} exited · code ${shell.exitCode}`)
@@ -487,22 +487,31 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
     noteSystem(
       `[system notification] background shell ${shell.id} (${shell.description || shell.command}) exited with code ${shell.exitCode} after ${shellRuntime(shell)}.` +
         (tail ? `\nRecent output:\n${tail}` : ''),
-      { wake: true, sessionId: shell.sessionId, sessionFile: shell.sessionFile },
+      { wake: true, duringTurn: true, sessionId: shell.sessionId, sessionFile: shell.sessionFile },
     )
   })
 
   // a note for a session that has not started yet waits for its first
   // message; `ensure` starts the session now so the note is persisted and
   // in view before the first turn, not after it
-  function noteSystem(text, { wake, agentId, ensure = false, sessionId = state.session?.id, sessionFile = state.session?.file } = {}) {
+  function noteSystem(text, { wake, agentId, duringTurn = false, ensure = false, sessionId = state.session?.id, sessionFile = state.session?.file } = {}) {
     if (ensure && !state.session && !state.busy) ensureSession()
-    pendingSystemNotes.push({ text, wake, agentId, sessionId: sessionId ?? state.session?.id, sessionFile: sessionFile ?? state.session?.file })
+    pendingSystemNotes.push({ text, wake, agentId, duringTurn, sessionId: sessionId ?? state.session?.id, sessionFile: sessionFile ?? state.session?.file })
     flushSystemNotes()
   }
 
   function discardCollectedAgentNotes(agentIds) {
     const collected = new Set(agentIds.map(String))
     pendingSystemNotes = pendingSystemNotes.filter((note) => !collected.has(String(note.agentId)))
+  }
+
+  function takeTurnNotes(signal) {
+    if (signal.aborted || state.held || peerTransition || shuttingDown || !state.session || state.expedited.length || state.views.length) return []
+    const current = pendingSystemNotes.filter((note) => note.duringTurn && (!note.sessionId || note.sessionId === state.session.id))
+    if (!current.length) return []
+    const taken = new Set(current)
+    pendingSystemNotes = pendingSystemNotes.filter((note) => !taken.has(note))
+    return [{ role: 'user', content: current.map((note) => note.text).join('\n\n') }]
   }
 
   function flushSystemNotes() {
@@ -822,6 +831,7 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
         system: context.system,
         signal: controller.signal,
         onStream: streamHandler(recorder, controller),
+        beforeRequest: () => takeTurnNotes(controller.signal),
       })
     } catch (err) {
       abort = null
@@ -833,7 +843,10 @@ export function createController({ boot, run = runTurn, peerDirectory } = {}) {
 
     const turnTranscript = [...state.overlay]
     flushStream(turnTranscript)
-    for (const message of result.messages) persist(makeEvent('message', { message, hideFromTranscript: true }))
+    for (const message of result.messages) {
+      if (message.role === 'user') persist(makeEvent('system_note', { text: message.content }))
+      else persist(makeEvent('message', { message, hideFromTranscript: true }))
+    }
     persist(makeEvent('turn_transcript', { items: turnTranscript }))
     for (const entry of recorder.entries) persist(makeEvent('tool_meta', entry))
     for (const path of tracker.loaded) {

@@ -20,14 +20,15 @@ async function fixture(t, run) {
   const previousHome = process.env.PICO_HOME
   process.env.PICO_HOME = join(root, 'home')
   const directory = join(root, 'peers')
+  let shellExit
   const boot = {
     cwd: root, root, initialModel: { name: 'test/model', provider: 'test' }, models: [{ name: 'test/model', provider: 'test' }],
     providers: [], autoCompact: false, startupContext: { files: [], stopDir: root },
     tracker: createContextTracker({ stopDir: root, loaded: new Set() }),
     memory: { list: async () => [] }, skills: { list: () => [] },
     mcp: { list: () => [], tools: () => [], terminateAll() {} },
-    shells: { killAll() {} }, git: { refresh() {} },
-    setMcpNotify() {}, setShellsNotify() {}, setWakeupsNotify() {}, setGitNotify() {}, setWakeupsFire() {}, setShellsExit() {},
+    shells: { killAll() {}, output() { return { output: 'shell output' } } }, git: { refresh() {} },
+    setMcpNotify() {}, setShellsNotify() {}, setWakeupsNotify() {}, setGitNotify() {}, setWakeupsFire() {}, setShellsExit(handler) { shellExit = handler },
   }
   const calls = []
   const controller = createController({ boot, peerDirectory: directory, run: async args => {
@@ -43,7 +44,7 @@ async function fixture(t, run) {
     else process.env.PICO_HOME = previousHome
     await rm(root, { recursive: true, force: true })
   })
-  return { controller, remote, calls }
+  return { controller, remote, calls, shellExit: (shell) => shellExit({ id: 'shell-1', command: 'test', exitCode: 0, startedAt: Date.now(), ...shell }) }
 }
 
 test('only explicit names connect; conflicts preserve identity; fork and new disconnect', async t => {
@@ -318,4 +319,92 @@ test('urgent peer messages respect a held session at tool boundaries', async t =
   assert.equal(calls.length, 1)
   ctl.hold(false)
   await waitFor(() => calls.length === 2 && !ctl.state.busy)
+})
+
+
+test('shell exits are batched into the active turn and persisted once in conversation order', async t => {
+  let resume
+  const { controller: ctl, calls, shellExit } = await fixture(t, async ({ beforeRequest }) => {
+    assert.deepEqual(beforeRequest(), [])
+    await new Promise(resolve => { resume = resolve })
+    const notes = beforeRequest()
+    assert.equal(notes.length, 1)
+    assert.match(notes[0].content, /shell-1/)
+    assert.match(notes[0].content, /shell-2/)
+    assert.deepEqual(beforeRequest(), [])
+    return { messages: [{ role: 'assistant', content: 'before' }, ...notes, { role: 'assistant', content: 'after' }] }
+  })
+  ctl.send('start')
+  await waitFor(() => !!resume)
+  shellExit({ sessionId: ctl.state.session.id })
+  shellExit({ id: 'shell-2', exitCode: 1, sessionId: ctl.state.session.id })
+  resume()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  const history = ctl.state.derived.providerHistory
+  assert.deepEqual(history.map(m => m.role), ['user', 'assistant', 'user', 'assistant'])
+  await ctl.state.session.flush()
+  const saved = await loadSession(ctl.state.session.file)
+  assert.equal(saved.events.filter(e => e.type === 'system_note').length, 1)
+})
+
+test('shell notes not consumed during the active turn wake a follow-up turn', async t => {
+  let resume
+  const { controller: ctl, calls, shellExit } = await fixture(t, async () => {
+    if (!resume) await new Promise(resolve => { resume = resolve })
+    return { messages: [{ role: 'assistant', content: 'done' }] }
+  })
+  ctl.send('start')
+  await waitFor(() => !!resume)
+  shellExit({ sessionId: ctl.state.session.id })
+  resume()
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /shell-1/)
+})
+
+test('holding a turn keeps shell notes queued until released', async t => {
+  let resume
+  const { controller: ctl, calls, shellExit } = await fixture(t, async ({ beforeRequest }) => {
+    if (!resume) {
+      await new Promise(resolve => { resume = resolve })
+      assert.deepEqual(beforeRequest(), [])
+    }
+    return { messages: [{ role: 'assistant', content: 'done' }] }
+  })
+  ctl.send('start')
+  await waitFor(() => !!resume)
+  ctl.hold(true)
+  shellExit({ sessionId: ctl.state.session.id })
+  resume()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  ctl.hold(false)
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /shell-1/)
+})
+
+test('model shell kills stay silent and user shell kills do not wake an idle model', async t => {
+  const { controller: ctl, calls, shellExit } = await fixture(t)
+  await ctl.rename('shell-kills')
+  shellExit({ killedBy: 'model', sessionId: ctl.state.session.id })
+  assert.equal(ctl.state.events.filter(e => e.type === 'system_note').length, 0)
+  shellExit({ killedBy: 'user', sessionId: ctl.state.session.id })
+  assert.equal(calls.length, 0)
+  assert.match(ctl.state.events.find(e => e.type === 'system_note').data.text, /manually killed/)
+})
+
+test('shell exits from another session stay outside the active conversation', async t => {
+  let resume
+  const { controller: ctl, calls, shellExit } = await fixture(t, async ({ beforeRequest }) => {
+    await new Promise(resolve => { resume = resolve })
+    assert.deepEqual(beforeRequest(), [])
+    return { messages: [{ role: 'assistant', content: 'done' }] }
+  })
+  ctl.send('start')
+  await waitFor(() => !!resume)
+  shellExit({ sessionId: 'other-session' })
+  resume()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  assert.equal(ctl.state.events.filter(e => e.type === 'system_note').length, 0)
 })
