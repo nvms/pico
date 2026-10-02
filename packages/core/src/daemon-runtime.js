@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { plain } from './daemon-wire.js'
 import { diffSnapshot } from './daemon-patch.js'
+import { createProjection, defaultTranscriptLimit } from './daemon-projection.js'
 import { forkSession, loadSession } from './session.js'
 
 const events = ['change', 'derived', 'flash', 'input', 'question', 'turn', 'session', 'resumed', 'mcp', 'shells', 'git', 'project', 'image']
@@ -8,7 +9,11 @@ const queries = ['activity', 'shellRows', 'costSummary', 'speedApplies', 'effort
 const busy = ctl => ctl.isWorking?.() || ctl.state.busy || ctl.state.compacting || ctl.agents?.list().some(a => ['running', 'queued'].includes(a.status))
 const named = ctl => !!ctl.state.derived?.title?.trim()
 
-export function snapshot(ctl) {
+const projections = new WeakMap()
+
+export function snapshot(ctl, limit = defaultTranscriptLimit) {
+  if (!projections.has(ctl)) projections.set(ctl, createProjection())
+  const projection = projections.get(ctl)
   const boot = ctl.boot
   const services = {}
   for (const [service, methods] of Object.entries({ shells: ['list', 'running'], wakeups: ['list', 'pending'], git: ['status'], mcp: ['list'], commands: ['list'], skills: ['list'] })) {
@@ -22,7 +27,7 @@ export function snapshot(ctl) {
   }
   const cached = {}
   for (const method of queries) if (typeof ctl[method] === 'function') cached[method] = plain(ctl[method]())
-  return { state: plain(ctl.state), boot: plain(Object.fromEntries(Object.entries(boot).filter(([key]) => !['refs', 'shells', 'wakeups', 'git', 'mcp', 'memory', 'commands', 'skills', 'tracker'].includes(key)))), services, cached, agents: plain(ctl.agents?.list() || []), methods: Object.keys(ctl).filter(k => typeof ctl[k] === 'function' && !['on', 'shutdown'].includes(k)) }
+  return { state: projection.state(ctl.state, limit), boot: plain(Object.fromEntries(Object.entries(boot).filter(([key]) => !['refs', 'shells', 'wakeups', 'git', 'mcp', 'memory', 'commands', 'skills', 'tracker'].includes(key)))), services, cached, agents: projection.agents(ctl.agents?.list() || []), methods: Object.keys(ctl).filter(k => typeof ctl[k] === 'function' && !['on', 'shutdown'].includes(k)) }
 }
 
 export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs = 16 }) {
@@ -38,13 +43,13 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
   async function createRecord(client, options) {
     const created = await createSession(options)
     const ctl = created.controller || created
-    const record = { id: randomUUID(), ctl, dispose: created.dispose, views: new Set([client]), events: [], timer: null, unsub: [], baselines: new Map() }
+    const record = { id: randomUUID(), ctl, dispose: created.dispose, views: new Set([client]), events: [], timer: null, unsub: [], baselines: new Map(), limits: new Map() }
     sessions.set(record.id, record)
     for (const type of events) record.unsub.push(ctl.on(type, payload => publish(record, type, payload)))
     return record
   }
   function fullSnapshot(record, client) {
-    const value = snapshot(record.ctl)
+    const value = snapshot(record.ctl, record.limits.get(client) ?? defaultTranscriptLimit)
     const sequence = (record.baselines.get(client)?.sequence || 0) + 1
     record.baselines.set(client, { snapshot: value, sequence })
     return { snapshot: value, sequence }
@@ -52,11 +57,14 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
   function flush(record) {
     clearTimeout(record.timer)
     record.timer = null
-    const next = snapshot(record.ctl)
+    const snapshots = new Map()
     const notifications = record.events.splice(0)
     for (const client of record.views) {
       const baseline = record.baselines.get(client)
       if (!baseline) continue
+      const limit = record.limits.get(client) ?? defaultTranscriptLimit
+      if (!snapshots.has(limit)) snapshots.set(limit, snapshot(record.ctl, limit))
+      const next = snapshots.get(limit)
       const sequence = baseline.sequence + 1
       const patches = diffSnapshot(baseline.snapshot, next)
       record.baselines.set(client, { snapshot: next, sequence })
@@ -81,6 +89,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
     if (!record) return
     record.views.delete(client)
     record.baselines.delete(client)
+    record.limits.delete(client)
     if (!record.views.size && !named(record.ctl)) await dispose(record)
   }
   return {
@@ -112,6 +121,13 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
       if (!record) throw new Error('session is no longer running')
       if (op === 'attach') { record.views.add(client); return { id, ...fullSnapshot(record, client) } }
       if (op === 'snapshot') { if (!record.views.has(client)) throw new Error('attach first'); return fullSnapshot(record, client) }
+      if (op === 'history') {
+        if (!record.views.has(client)) throw new Error('attach first')
+        const [limit] = args
+        if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('history limit must be a positive safe integer')
+        record.limits.set(client, Math.max(record.limits.get(client) ?? defaultTranscriptLimit, limit))
+        return fullSnapshot(record, client)
+      }
       if (op === 'switch') {
         const [method, value] = args
         if (!record.views.has(client)) throw new Error('attach to the session first')

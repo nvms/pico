@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 
 export function diffSnapshot(previous, next, path = [], patches = []) {
-  if (isDeepStrictEqual(previous, next)) return patches
+  if (Object.is(previous, next)) return patches
   if (typeof previous === 'string' && typeof next === 'string' && next.startsWith(previous)) {
     patches.push({ op: 'appendText', path, value: next.slice(previous.length) })
   } else if (Array.isArray(previous) && Array.isArray(next)) {
@@ -12,7 +12,7 @@ export function diffSnapshot(previous, next, path = [], patches = []) {
   } else if (previous && next && Object.getPrototypeOf(previous) === Object.prototype && Object.getPrototypeOf(next) === Object.prototype) {
     for (const key of Object.keys(previous)) if (!(key in next)) patches.push({ op: 'delete', path: [...path, key] })
     for (const key of Object.keys(next)) diffSnapshot(previous[key], next[key], [...path, key], patches)
-  } else patches.push({ op: 'set', path, value: next })
+  } else if (!isDeepStrictEqual(previous, next)) patches.push({ op: 'set', path, value: next })
   return patches
 }
 

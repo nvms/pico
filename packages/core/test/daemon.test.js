@@ -16,7 +16,7 @@ function factory() {
       boot: { root: '/workspace', commands: { list: () => [] }, shells: { list: () => [], running: () => 0 } },
       agents: { list: () => [] },
       on(type, fn) { listeners.set(type, fn); return () => listeners.delete(type) },
-      rename(title) { ctl.state.derived.title = title; listeners.get('change')?.(); return true },
+      rename(title) { ctl.state.derived = { ...ctl.state.derived, title }; listeners.get('change')?.(); return true },
       send(text) { ctl.state.text = text; listeners.get('change')?.() },
       interrupt() { ctl.state.busy = false },
       shutdown() { ctl.closed = true },

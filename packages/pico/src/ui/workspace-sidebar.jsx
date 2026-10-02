@@ -25,7 +25,7 @@ export function WorkspaceSidebar({ groups, selected, width, loading, error, onHe
     {loading && <text style={{ color: MUTED }}>loading</text>}
     {error && <text style={{ color: MUTED, overflow: 'truncate' }}>{error}</text>}
     <ScrollBox style={{ flexGrow: 1 }} followFocus={focus} focusPadding={1} onMetrics={(metrics) => onHeight(metrics.visibleHeight)}>
-      {groups.map((group) => <box key={group.cwd} style={{ flexDirection: 'column' }}>
+      {groups.map((group, index) => <box key={group.cwd} style={{ flexDirection: 'column', marginTop: index > 0 ? 1 : 0 }}>
         <text style={{ color: MUTED, overflow: 'truncate', paddingX: 1 }}>{group.cwd === home ? '~' : group.cwd.startsWith(home + '/') ? '~' + group.cwd.slice(home.length) : group.cwd}</text>
         {group.sessions.map((row) => <SessionRow key={row.id} row={row} selected={row.id === selected} focus={focus} now={now()} />)}
       </box>)}

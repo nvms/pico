@@ -1,5 +1,4 @@
 import { applyPatches } from './daemon-patch.js'
-import { deriveState } from './derive.js'
 
 export async function createRemoteController(connection, { id, options = {}, localBoot = {} } = {}) {
   const initial = await connection.request(id ? 'attach' : 'create', id, id ? [] : [options])
@@ -62,13 +61,12 @@ export async function createRemoteController(connection, { id, options = {}, loc
       if (nextId === id) { await clearPreview(); return }
       const previous = id
       const previousPreview = previewId
-      const next = await connection.request('attach', nextId)
+      const next = previousPreview === nextId ? null : await connection.request('attach', nextId)
       previewId = null
       if (previousPreview && previousPreview !== nextId) await connection.request('detach', previousPreview)
-      id = next.id
+      id = nextId
       controller.id = id
-      sequences.set(next.id, next.sequence)
-      apply(next.snapshot)
+      if (next) { sequences.set(next.id, next.sequence); apply(next.snapshot) }
       await connection.request('detach', previous)
       emit('project', boot)
       emit('session', state.session)
@@ -91,7 +89,15 @@ export async function createRemoteController(connection, { id, options = {}, loc
     emit('session', state.session)
     emit('change', state)
   }
-  controller.previewSteer = changes => changes?.length ? deriveState([...state.events, { id: '__steer_preview__', at: Date.now(), type: 'steer', data: { changes } }]) : state.derived
+  controller.previewSteer = changes => call('controller', 'previewSteer', changes)
+  controller.loadHistory = async limit => {
+    const target = displayedId()
+    const reply = await connection.request('history', target, [Number.isFinite(limit) ? limit : Number.MAX_SAFE_INTEGER])
+    if (displayedId() !== target) return
+    sequences.set(target, reply.sequence)
+    apply(reply.snapshot)
+    emit('change', state)
+  }
   function show(snapshot) {
     apply(snapshot)
     emit('project', boot)

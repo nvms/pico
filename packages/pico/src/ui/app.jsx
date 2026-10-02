@@ -643,16 +643,40 @@ export function App({ boot, controller: ctl }) {
     flash(pref === 'auto' ? `theme: auto  following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
   }
 
+  const [steerDerived, setSteerDerived] = createSignal(null)
+  let steerPreviewRequest = 0
   function steerPreview() {
-    return ctl.previewSteer(steer()?.changes)
+    const changes = steer()?.changes
+    if (!changes?.length) return derived()
+    if (refs.steerPreviewChanges !== changes) {
+      refs.steerPreviewChanges = changes
+      const request = ++steerPreviewRequest
+      Promise.resolve(ctl.previewSteer(changes)).then(next => {
+        if (request === steerPreviewRequest) setSteerDerived(next)
+      }).catch(error => flash(error.message))
+    }
+    return steerDerived() || derived()
+  }
+  async function loadFullHistory() {
+    if (ctl.loadHistory && (state.derived.transcriptOffset || 0) > 0) await ctl.loadHistory(Infinity)
+  }
+  async function loadOlderHistory() {
+    if (!ctl.loadHistory || refs.historyLoading || !(state.derived.transcriptOffset > 0)) return
+    refs.historyLoading = true
+    try { await ctl.loadHistory(state.derived.transcript.length + HISTORY_WINDOW) }
+    catch (error) { flash(error.message) }
+    finally { refs.historyLoading = false }
   }
 
   function steerRows() {
     return steerableTranscript(steerPreview().transcript)
   }
 
-  function beginSteer() {
+  async function beginSteer() {
     if (busy() || compacting()) return flash('finish or interrupt the current turn first')
+    await loadFullHistory()
+    setSteerDerived(null)
+    refs.steerPreviewChanges = null
     const rows = steerRows()
     const selected = Math.max(0, rows.length - 1)
     setSteer({ selected, editing: false, adding: false, role: 'user', changes: [] })
@@ -869,6 +893,7 @@ export function App({ boot, controller: ctl }) {
       return
     }
     if (c.name === 'rewind') {
+      await loadFullHistory()
       if (busy()) return flash('finish or interrupt the current turn first')
       if (userEntries(derived()).length === 0) return flash('nothing to rewind yet')
       setRewindStep('pick')
@@ -1388,11 +1413,13 @@ export function App({ boot, controller: ctl }) {
       return
     }
     if (fm.is('feed') && event.key === '/') {
+      await loadFullHistory()
       conversationSearch.open()
       event.stopPropagation()
       return
     }
     if (event.ctrl && event.key === 'r' && view() === 'chat' && !anyPanel()) {
+      await loadFullHistory()
       if (busy()) flash('finish or interrupt the current turn first')
       else if (userEntries(derived()).length === 0) flash('nothing to rewind yet')
       else setRewindStep('pick')
@@ -1581,7 +1608,7 @@ export function App({ boot, controller: ctl }) {
       : source
   const transcriptItems = groupItems(transcript, activeAgent?.status === 'running')
   const windowed = deliberationView ? { items: transcriptItems, hiddenItems: 0, hiddenCount: 0 } : transcriptWindow(transcriptItems, histWindow())
-  const hiddenCount = windowed.hiddenCount
+  const hiddenCount = windowed.hiddenCount + (!activeAgent && !activeShell ? derived().transcriptOffset || 0 : 0)
   const visibleItems = isolatedTranscript ? windowed.items : [...windowed.items, ...groupItems(overlay(), turnPhase() === 'tools'), ...(streaming() ? [{ kind: 'assistant', text: `${streaming()}▋` }] : []), ...unreadPeers]
   const preparedConversation = conversationSearch.prepare(visibleItems)
   conversationSearchMatches = preparedConversation.matches
@@ -1776,6 +1803,7 @@ export function App({ boot, controller: ctl }) {
             if (previous?.visibleHeight === metrics.visibleHeight && previous?.contentHeight === metrics.contentHeight) return
             setTranscriptMetrics(metrics)
             if (hiddenCount > 0 && metrics.visibleHeight > 0 && metrics.contentHeight <= metrics.visibleHeight) {
+              if (windowed.hiddenCount === 0) void loadOlderHistory()
               setHistWindow((size) => size + HISTORY_WINDOW)
             }
           }}
@@ -1787,7 +1815,8 @@ export function App({ boot, controller: ctl }) {
           if (next === 0 && hiddenCount > 0) {
             // keep the view anchored: estimate the rows the new batch adds
             // and scroll past them so the current top item stays in place
-            const added = Math.min(HISTORY_WINDOW, windowed.hiddenItems)
+            if (windowed.hiddenCount === 0) void loadOlderHistory()
+            const added = Math.min(HISTORY_WINDOW, windowed.hiddenItems || HISTORY_WINDOW)
             const avgRows = Math.max(2, Math.round((meta?.maxOffset || 0) / Math.max(1, items.length)))
             setHistWindow((w) => w + HISTORY_WINDOW)
             setOffset(added * avgRows)
