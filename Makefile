@@ -24,7 +24,7 @@ release: ## Bump both packages to v=x.y.z, commit, and tag
 	@test -n "$(v)" || (echo "usage: make release v=x.y.z" && exit 1)
 	@npm version $(v) --workspaces --no-git-tag-version >/dev/null
 	@npm pkg set dependencies.picocode-core=$(v) -w picocode
-	@npm install --package-lock-only >/dev/null
+	@npm install >/dev/null
 	@git add package-lock.json packages/*/package.json
 	@git commit -qm "release $(v)"
 	@git tag v$(v)
