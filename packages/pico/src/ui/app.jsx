@@ -1274,7 +1274,7 @@ export function App({ boot, controller: ctl }) {
       }
       const row = workspaceSessions.find((row) => row.id === workspaceSelected())
       if (!row) return
-      const attach = !event.ctrl && !event.meta && !event.alt && (event.key === 'right' || event.key === 'l')
+      const attach = !event.ctrl && !event.meta && !event.alt && (event.key === 'right' || event.key === 'l' || event.key === 'return')
       const action = event.ctrl && event.key === 'x' ? workspaceAction(row) : null
       if (!attach && !action) return
       setWorkspacePending(true)
@@ -1995,7 +1995,7 @@ export function App({ boot, controller: ctl }) {
           }}
           onSubmit={send}
           onKeyDown={(e) => {
-            if (e.key === 'left' && !e.ctrl && !e.meta && !e.alt && boot.workspace && fm.is('input') && view() === 'chat' && !anyPanel() && emptyWorkspaceComposer({
+            if (((e.key === 'left' && !e.ctrl) || (e.key === 'h' && e.ctrl)) && !e.meta && !e.alt && boot.workspace && fm.is('input') && view() === 'chat' && !anyPanel() && emptyWorkspaceComposer({
               text: e.value, attachments: workspaceDraftAttachments(e.value, state.attachments), dictation: dictationStatus(), capture: captureStatus(), pending: refs.commandExpansion || refs.workspacePastePending,
               history: histIdx(), completion: completing(), command: commandForm(), question: questionRequest(), steer: steer(), queued: queued().length, expedited: expedited().length,
             })) {

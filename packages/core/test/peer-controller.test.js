@@ -276,11 +276,11 @@ test('reload restores unprocessed peer messages and processes them once after re
   assert.equal(ctl.state.derived.pendingPeerMessages.length, 0)
 })
 
-for (const urgent of [false, true]) test(`peer urgency ${urgent} controls interruption at the next tool boundary`, async t => {
+for (const boundaryType of ['tool_complete', 'tool_error']) test(`peer messages interrupt at the next ${boundaryType} boundary`, async t => {
   let boundary, finish
   const { controller: ctl, remote, calls } = await fixture(t, async ({ onStream, signal }) => {
     if (calls.length === 1) {
-      await new Promise(resolve => { finish = resolve; boundary = () => onStream({ type: 'tool_complete', call: { id: 'tool-1' } }) })
+      await new Promise(resolve => { finish = resolve; boundary = () => onStream({ type: boundaryType, call: { id: 'tool-1' } }) })
       return { messages: [{ role: 'assistant', content: 'first turn' }], interrupted: signal.aborted }
     }
     return { messages: [{ role: 'assistant', content: 'peer handled' }] }
@@ -288,18 +288,17 @@ for (const urgent of [false, true]) test(`peer urgency ${urgent} controls interr
   await ctl.rename('foo')
   ctl.send('work')
   await waitFor(() => !!boundary)
-  await remote.send({ to: 'foo', message: 'change course', urgent })
+  await remote.send({ to: 'foo', message: 'change course' })
   assert.equal(calls[0].signal.aborted, false)
   boundary()
-  assert.equal(calls[0].signal.aborted, urgent)
+  assert.equal(calls[0].signal.aborted, true)
   finish()
   await waitFor(() => calls.length === 2 && !ctl.state.busy)
   assert.match(calls[1].history.at(-1).content, /change course/)
   assert.equal(ctl.state.peerPaused, false)
-  assert.equal(ctl.state.derived.transcript.find(item => item.kind === 'peer').urgent, urgent)
 })
 
-test('urgent peer messages respect a held session at tool boundaries', async t => {
+test('peer messages respect a held session at tool boundaries', async t => {
   let boundary, finish
   const { controller: ctl, remote, calls } = await fixture(t, async ({ onStream, signal }) => {
     if (calls.length === 1) {
@@ -312,7 +311,7 @@ test('urgent peer messages respect a held session at tool boundaries', async t =
   ctl.send('work')
   await waitFor(() => !!boundary)
   ctl.hold(true)
-  await remote.send({ to: 'foo', message: 'urgent but held', urgent: true })
+  await remote.send({ to: 'foo', message: 'held update' })
   boundary()
   assert.equal(calls[0].signal.aborted, false)
   finish()
@@ -410,7 +409,7 @@ test('shell exits from another session stay outside the active conversation', as
   assert.equal(ctl.state.events.filter(e => e.type === 'system_note').length, 0)
 })
 
-for (const urgent of [false, true]) test(`incoming ${urgent ? 'urgent' : 'normal'} peers stay below a continuous stream through replay`, async t => {
+test('incoming peers stay below a continuous stream through replay', async t => {
   let resume, started
   const ready = new Promise(resolve => { started = resolve })
   const { controller: ctl, remote } = await fixture(t, async ({ onStream }) => {
@@ -424,8 +423,8 @@ for (const urgent of [false, true]) test(`incoming ${urgent ? 'urgent' : 'normal
   ctl.send('start')
   await ready
   ctl.hold(true)
-  await remote.send({ to: 'foo', message: 'first update', urgent })
-  await remote.send({ to: 'foo', message: 'second update', urgent })
+  await remote.send({ to: 'foo', message: 'first update' })
+  await remote.send({ to: 'foo', message: 'second update' })
   assert.equal(ctl.state.streaming, 'Published with ')
   const live = [...ctl.state.overlay, { kind: 'assistant', text: ctl.state.streaming }, ...ctl.state.derived.transcript.filter(item => item.kind === 'peer' && !item.read)]
   assert.deepEqual(live.map(item => item.kind), ['assistant', 'peer', 'peer'])

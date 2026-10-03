@@ -33,8 +33,8 @@ export function workspaceDraftAttachments(text, attachments) {
   return [...text.matchAll(/\[(?:Image|File) #\d+\]/g)].filter(match => attachments.has(match[0])).length
 }
 
-export function emptyWorkspaceComposer({ text, attachments, dictation, capture, pending, history, completion, command, question, steer, queued, expedited }) {
-  return text === '' && attachments === 0 && dictation === 'idle' && capture === 'idle' && !pending && history < 0 && !completion && !command && !question && !steer && queued === 0 && expedited === 0
+export function emptyWorkspaceComposer({ text, attachments, dictation, capture, pending, history, completion, command, question, steer }) {
+  return text === '' && attachments === 0 && dictation === 'idle' && capture === 'idle' && !pending && history < 0 && !completion && !command && !question && !steer
 }
 
 export function workspaceAction(row) {

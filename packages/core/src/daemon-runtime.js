@@ -111,7 +111,8 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
         const tool = [...(ctl.state.overlay || [])].reverse().find(item => item.kind === 'tool')
         const message = [...(ctl.state.events || [])].reverse().find(event => event.type === 'message' && event.data.message.role === 'assistant')
         const content = message?.data.message.content
-        return { id: r.id, sessionId: ctl.state.session?.id, name: ctl.state.derived?.title || null, title: ctl.state.derived?.title || '', cwd: ctl.boot.cwd, root: ctl.boot.root, color: ctl.state.derived?.color, status: busy(ctl) ? 'busy' : 'idle', busy: !!busy(ctl), activity: tool?.description || tool?.title || (busy(ctl) ? ctl.state.turnPhase || 'working' : null), lastMessageAt: message?.at || null, lastMessage: typeof content === 'string' ? content : content?.filter(part => part.type === 'text').map(part => part.text).join('\n') || '', views: r.views.size }
+        const runningShells = (ctl.boot.shells?.list() || []).filter(shell => shell.status === 'running')
+        return { id: r.id, sessionId: ctl.state.session?.id, name: ctl.state.derived?.title || null, title: ctl.state.derived?.title || '', cwd: ctl.boot.cwd, root: ctl.boot.root, color: ctl.state.derived?.color, runningShells: runningShells.length, shellActivity: runningShells.at(-1)?.description || null, status: busy(ctl) ? 'busy' : 'idle', busy: !!busy(ctl), activity: tool?.description || tool?.title || (busy(ctl) ? ctl.state.turnPhase || 'working' : null), lastMessageAt: message?.at || null, lastMessage: typeof content === 'string' ? content : content?.filter(part => part.type === 'text').map(part => part.text).join('\n') || '', views: r.views.size }
       })
       if (op === 'create') {
         const record = await createRecord(client, args[0] || {})

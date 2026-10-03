@@ -503,12 +503,13 @@ export function Message({ item, verbose, showLocked = false }) {
     const incoming = item.direction === 'incoming'
     const unread = incoming && !item.read
     const color = incoming && item.read ? MUTED : PEER
-    const status = incoming ? `  ${unread ? 'unread' : 'read'}` : `  ${item.status || 'unknown'}`
+    const deliveryStatus = item.status || 'unknown'
+    const status = incoming ? ` (${unread ? 'unread' : 'read'}):` : deliveryStatus === 'delivered' ? ':' : ` (${deliveryStatus}):`
     return (
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
         <text> </text>
         <box style={{ flexDirection: 'row' }}>
-          <text style={{ color: PEER, bold: true }}>{`@${item.from.name} → @${item.to.name}${item.urgent ? '  urgent' : ''}`}</text>
+          <text style={{ color: PEER, bold: true }}>{`${incoming ? 'from' : 'to'} @${incoming ? item.from.name : item.to.name}`}</text>
           <text style={{ color, bold: unread }}>{status}</text>
         </box>
         <text style={{ color }}>{item.text}</text>

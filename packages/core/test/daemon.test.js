@@ -180,3 +180,20 @@ test('accepted user messages publish immediately as patches rather than full his
     assert.ok(recovered.sequence > update.sequence)
   } finally { await runtime.close() }
 })
+
+test('idle sessions report running background shells separately from model work', async () => {
+  const fake = factory()
+  const runtime = createDaemonRuntime(fake)
+  const viewer = client()
+  try {
+    await runtime.dispatch(viewer, { op: 'create' })
+    fake.controllers[0].boot.shells.list = () => [
+      { status: 'completed', description: 'Finished command' },
+      { status: 'running', description: 'Watching publication' },
+    ]
+    const [row] = await runtime.dispatch(viewer, { op: 'list' })
+    assert.equal(row.status, 'idle')
+    assert.equal(row.runningShells, 1)
+    assert.equal(row.shellActivity, 'Watching publication')
+  } finally { await runtime.close() }
+})

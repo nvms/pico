@@ -173,12 +173,12 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       if (boot.ephemeral) throw new Error('peer delivery requires a saved session')
       const duplicate = state.events.find((event) => event.type === 'peer_message' && event.data.id === message.id)
       if (duplicate) {
-        if (duplicate.data.from.id !== message.from.id || (duplicate.data.message !== message.message || !!duplicate.data.urgent !== !!message.urgent)) throw new Error('message ID reused with different content')
+        if (duplicate.data.from.id !== message.from.id || duplicate.data.message !== message.message) throw new Error('message ID reused with different content')
         return
       }
       const incoming = incomingPeers.get(message.id)
       if (incoming) {
-        if (incoming.from.id !== message.from.id || (incoming.message !== message.message || !!incoming.urgent !== !!message.urgent)) throw new Error('message ID reused with different content')
+        if (incoming.from.id !== message.from.id || incoming.message !== message.message) throw new Error('message ID reused with different content')
         return incoming.write
       }
       if (pendingPeers().length + peerWrites.size >= 100) throw new Error('recipient inbox is full')
@@ -772,8 +772,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
               : item,
           ),
         )
-        const urgentPeer = !state.held && !state.peerPaused && !peerTransition && !shuttingDown && pendingPeers().some((message) => message.urgent)
-        if (state.expedited.length > 0 || state.views.length > 0 || urgentPeer) {
+        const pendingPeer = !state.held && !state.peerPaused && !peerTransition && !shuttingDown && pendingPeers().length > 0
+        if (state.expedited.length > 0 || state.views.length > 0 || pendingPeer) {
           sendAfterToolTriggered = true
           controller.abort()
         }

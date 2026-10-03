@@ -259,7 +259,7 @@ export function deriveState(events) {
         const peer = event.data
         const item = {
           kind: 'peer', direction: peer.direction, from: peer.from, to: peer.to,
-          text: peer.message, urgent: peer.urgent ?? false, status: peer.status || 'unknown', messageId: peer.id,
+          text: peer.message, status: peer.status || 'unknown', messageId: peer.id,
           ...(peer.direction === 'incoming' ? { read: false } : {}),
           eventId: event.id, at: event.at ?? null,
         }

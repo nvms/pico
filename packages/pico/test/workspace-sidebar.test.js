@@ -32,7 +32,8 @@ test('navigation clamps ends, handles vim and arrow keys, and half pages', () =>
 test('left entry requires a completely empty composer', () => {
   const empty = { text: '', attachments: 0, dictation: 'idle', capture: 'idle', pending: false, history: -1, completion: false, command: null, question: null, steer: null, queued: 0, expedited: 0 }
   assert.equal(emptyWorkspaceComposer(empty), true)
-  for (const [key, value] of Object.entries({ text: ' ', attachments: 1, dictation: 'recording', capture: 'capturing', pending: true, history: 0, completion: true, command: {}, question: {}, steer: {}, queued: 1, expedited: 1 })) {
+  assert.equal(emptyWorkspaceComposer({ ...empty, queued: 3, expedited: 2 }), true)
+  for (const [key, value] of Object.entries({ text: ' ', attachments: 1, dictation: 'recording', capture: 'capturing', pending: true, history: 0, completion: true, command: {}, question: {}, steer: {} })) {
     assert.equal(emptyWorkspaceComposer({ ...empty, [key]: value }), false, key)
   }
 })
