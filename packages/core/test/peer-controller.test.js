@@ -322,6 +322,86 @@ test('peer messages respect a held session at tool boundaries', async t => {
 })
 
 
+async function boundaryFixture(t) {
+  let boundary, finish, turns = 0
+  const setup = await fixture(t, async ({ onStream, signal }) => {
+    if (++turns > 1) return { messages: [{ role: 'assistant', content: 'continued' }] }
+    await new Promise(resolve => { finish = resolve; boundary = type => onStream({ type, call: { id: 'tool-1' } }) })
+    return { messages: [{ role: 'assistant', content: 'first turn' }], interrupted: signal.aborted }
+  })
+  return { ...setup, boundary: type => boundary(type), finish: () => finish(), ready: () => !!boundary }
+}
+
+for (const boundaryType of ['tool_complete', 'tool_error']) test(`shell completions interrupt at the next ${boundaryType} boundary`, async t => {
+  const { controller: ctl, calls, shellExit, boundary, finish, ready } = await boundaryFixture(t)
+  ctl.send('work')
+  await waitFor(ready)
+  shellExit({ sessionId: ctl.state.session.id })
+  shellExit({ id: 'shell-2', sessionId: ctl.state.session.id })
+  assert.equal(calls[0].signal.aborted, false)
+  boundary(boundaryType)
+  assert.equal(calls[0].signal.aborted, true)
+  finish()
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /shell-1/)
+  assert.match(calls[1].history.at(-1).content, /shell-2/)
+  assert.equal(ctl.state.peerPaused, false)
+  assert.equal(ctl.state.events.filter(event => event.type === 'interrupt').length, 0)
+  assert.equal(ctl.state.events.filter(event => event.type === 'system_note' && event.data.text.includes('shell-1')).length, 1)
+})
+
+test('a user-killed shell resumes the turn it interrupts at a tool boundary', async t => {
+  const { controller: ctl, calls, shellExit, boundary, finish, ready } = await boundaryFixture(t)
+  ctl.send('work')
+  await waitFor(ready)
+  shellExit({ sessionId: ctl.state.session.id, killedBy: 'user' })
+  boundary('tool_complete')
+  assert.equal(calls[0].signal.aborted, true)
+  finish()
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /manually killed background shell shell-1/)
+})
+
+test('shell completions respect a held session at tool boundaries', async t => {
+  const { controller: ctl, calls, shellExit, boundary, finish, ready } = await boundaryFixture(t)
+  ctl.send('work')
+  await waitFor(ready)
+  ctl.hold(true)
+  shellExit({ sessionId: ctl.state.session.id })
+  boundary('tool_complete')
+  assert.equal(calls[0].signal.aborted, false)
+  finish()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  ctl.hold(false)
+  await waitFor(() => calls.length === 2 && !ctl.state.busy)
+  assert.match(calls[1].history.at(-1).content, /shell-1/)
+})
+
+test('shell completions respect a paused session at tool boundaries', async t => {
+  const { controller: ctl, calls, shellExit, boundary, finish, ready } = await boundaryFixture(t)
+  ctl.send('work')
+  await waitFor(ready)
+  ctl.state.peerPaused = true
+  shellExit({ sessionId: ctl.state.session.id })
+  boundary('tool_complete')
+  assert.equal(calls[0].signal.aborted, false)
+  finish()
+})
+
+test('shell completions owned by another session do not interrupt', async t => {
+  const { controller: ctl, calls, shellExit, boundary, finish, ready } = await boundaryFixture(t)
+  ctl.send('work')
+  await waitFor(ready)
+  shellExit({ sessionId: 'another-session', sessionFile: null })
+  boundary('tool_complete')
+  assert.equal(calls[0].signal.aborted, false)
+  finish()
+  await waitFor(() => !ctl.state.busy)
+  assert.equal(calls.length, 1)
+  assert.equal(ctl.state.events.filter(event => event.type === 'system_note').length, 0)
+})
+
 test('shell exits are batched into the active turn and persisted once in conversation order', async t => {
   let resume
   const { controller: ctl, calls, shellExit } = await fixture(t, async ({ beforeRequest }) => {

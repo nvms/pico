@@ -520,9 +520,21 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     pendingSystemNotes = pendingSystemNotes.filter((note) => !collected.has(String(note.agentId)))
   }
 
+  function isTurnNote(note) {
+    return note.duringTurn && !!state.session && (!note.sessionId || note.sessionId === state.session.id)
+  }
+
+  // a turn cut short to deliver notes has to resume, so the notes it
+  // stopped for wake the next turn even if they would not on their own
+  function claimTurnNotes() {
+    if (!pendingSystemNotes.some(isTurnNote)) return false
+    pendingSystemNotes = pendingSystemNotes.map((note) => isTurnNote(note) ? { ...note, wake: true } : note)
+    return true
+  }
+
   function takeTurnNotes(signal) {
     if (signal.aborted || state.held || peerTransition || shuttingDown || !state.session || state.expedited.length || state.views.length) return []
-    const current = pendingSystemNotes.filter((note) => note.duringTurn && (!note.sessionId || note.sessionId === state.session.id))
+    const current = pendingSystemNotes.filter(isTurnNote)
     if (!current.length) return []
     const taken = new Set(current)
     pendingSystemNotes = pendingSystemNotes.filter((note) => !taken.has(note))
@@ -772,8 +784,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
               : item,
           ),
         )
-        const pendingPeer = !state.held && !state.peerPaused && !peerTransition && !shuttingDown && pendingPeers().length > 0
-        if (state.expedited.length > 0 || state.views.length > 0 || pendingPeer) {
+        const canDeliver = !state.held && !state.peerPaused && !peerTransition && !shuttingDown
+        const notified = canDeliver && (claimTurnNotes() || pendingPeers().length > 0)
+        if (state.expedited.length > 0 || state.views.length > 0 || notified) {
           sendAfterToolTriggered = true
           controller.abort()
         }
