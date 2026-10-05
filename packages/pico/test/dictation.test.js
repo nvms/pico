@@ -107,7 +107,7 @@ test('background failures are silent and a hotkey can retry', async () => {
 })
 
 test('preload timeouts and unsupported platforms stay quiet', async () => {
-  for (const options of [{ loadingTimeout: 10 }, { platform: 'linux' }, { arch: 'x64' }, { launch: () => { throw new Error('spawn failed') } }]) {
+  for (const options of [{ loadingTimeout: 10 }, { platform: 'win32' }, { arch: 'x64' }, { launch: () => { throw new Error('spawn failed') } }]) {
     const f = fixture(options)
     await f.dictation.preload()
     assert.deepEqual(f.errors, [])
@@ -216,8 +216,17 @@ test('loading and transcription have bounded waits', async () => {
   assert.deepEqual(f.errors, ['dictation timed out'])
 })
 
+test('Linux uses the same recording and transcription protocol', async () => {
+  const f = fixture({ platform: 'linux', arch: 'x64' })
+  const child = await recording(f)
+  const stopping = f.dictation.stop()
+  child.reply({ id: child.requests.at(-1).id, text: 'Hello Linux.' })
+  assert.equal(await stopping, 'Hello Linux.')
+  f.dictation.dispose()
+})
+
 test('unsupported platforms do not launch a helper', async () => {
-  const f = fixture({ platform: 'linux' })
+  const f = fixture({ platform: 'win32' })
   await f.dictation.start()
   assert.equal(f.children.length, 0)
   assert.match(f.errors[0], /Apple Silicon/)

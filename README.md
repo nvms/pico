@@ -40,8 +40,25 @@ source "${commands[pico]:A:h:h}/integrations/pico.zsh"
 
 Choose the Shell model in Pico's `/config` screen. `--model` overrides it for one request.
 
-The terminal client's local dictation requires macOS 14 or newer on Apple Silicon. macOS asks for microphone access on first use, and FluidAudio downloads the Parakeet speech models to the user's cache on first use.
+### Local dictation
 
-In the composer, Ctrl+G starts recording, Enter stops and inserts the transcript at the cursor, and Escape cancels. Dictation never sends a message automatically. The helper stays loaded between recordings and does not require the desktop app.
+In the composer, Ctrl+G starts recording, Enter stops and inserts the transcript at the cursor, and Escape cancels. Dictation never sends a message automatically or sends microphone audio to a cloud service.
 
-For a source checkout on macOS, run `make helper` and `make build` before starting the terminal client.
+**macOS:** requires macOS 14 or newer on Apple Silicon. macOS asks for microphone access on first use, and FluidAudio downloads the Parakeet speech models to the user's cache. For a source checkout, run `make helper` and `make build`.
+
+**Linux:** uses whisper.cpp for CPU transcription and `pw-record` (PipeWire), or `parec` (PulseAudio), for microphone capture. From a source checkout:
+
+```sh
+# Ubuntu/Debian prerequisites
+sudo apt install build-essential cmake curl git pipewire-bin
+make helper-linux
+make build
+```
+
+`make helper-linux` builds whisper.cpp v1.8.2 and downloads the English base model (~148 MB) to `${XDG_CACHE_HOME:-~/.cache}/pico/whisper`. After setup, dictation works offline. Recordings are limited to two minutes; temporary audio is removed after transcription or cancellation. Linux does not mute speaker output, so headphones are recommended.
+
+To use your own installation, set `PICO_WHISPER_BIN` to a whisper.cpp `whisper-cli` executable and `PICO_WHISPER_MODEL` to a GGML model file. The helper also searches `PATH` for `whisper-cli`. `PICO_WHISPER_LANGUAGE` defaults to `en`; use a multilingual model for other languages. `PICO_DICTATION_SOURCE` selects a PipeWire target or PulseAudio source; otherwise the default microphone is used.
+
+### Region screenshots
+
+Click the square beside the record button, or press Ctrl+O, then drag a screen region to attach it to the composer. This does not send the message automatically. macOS uses its built-in screenshot tool. Linux X11 uses `xfce4-screenshooter`, with `gnome-screenshot` and `scrot` as fallbacks; on Ubuntu/Debian, install it with `sudo apt install xfce4-screenshooter`. Wayland tries `gnome-screenshot` or `spectacle`, whose capture support depends on the compositor; there is not yet a universal portal backend.

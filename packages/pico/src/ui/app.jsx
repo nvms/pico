@@ -783,12 +783,19 @@ export function App({ boot, controller: ctl }) {
     }
   }
 
-  async function runCommand(c, args = '') {
+  function runCommand(c, args = '') {
+    return executeCommand(c, args).catch(error => flash(error.message))
+  }
+
+  async function executeCommand(c, args = '') {
     if (typeof args !== 'string') args = ''
     if (c.command) return insertCommand(c)
     setInput('')
     setCmdCycle(null)
-    if (c.name === 'fork') return ctl.fork(args.trim())
+    if (c.name === 'fork') {
+      if (busy() || compacting()) return flash('finish or interrupt the current turn first')
+      return ctl.fork(args.trim())
+    }
     if (c.name === 'rename') return ctl.rename(args)
     if (c.name === 'color') return ctl.setColor(args)
     if (c.name === 'config') {
@@ -1174,7 +1181,7 @@ export function App({ boot, controller: ctl }) {
   const agentRows = activityRows(ctl.activity())
   shellsVersion()
   const shellRows = activityRows(ctl.shellRows())
-  const showComposerActions = !steer() && !viewedAgentId() && !viewedShellId() && !anyPanel() && process.platform === 'darwin'
+  const showComposerActions = !steer() && !viewedAgentId() && !viewedShellId() && !anyPanel() && (process.platform === 'darwin' || process.platform === 'linux')
   const activityMargin = (shellRows.length > 0 && agentRows.length > 0) || !showComposerActions ? 1 : 0
   const [shellStripSize, agentStripSize] = activityStripSizes(terminalHeight(), [shellRows.length, agentRows.length], activityMargin)
   if (questionRequest()) {

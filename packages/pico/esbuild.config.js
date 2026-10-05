@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild'
 
 await esbuild.build({
-  entryPoints: { pico: './src/main.jsx', daemon: './src/daemon.js' },
+  entryPoints: { pico: './src/main.jsx', daemon: './src/daemon.js', 'linux-dictate': './helper/linux-dictate.js' },
   bundle: true,
   packages: 'external',
   platform: 'node',

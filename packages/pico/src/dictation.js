@@ -3,12 +3,16 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-export function dictationHelperPath() {
+export function dictationHelperPath(platform = process.platform) {
+  if (platform === 'linux') {
+    const bundled = fileURLToPath(new URL('./linux-dictate.js', import.meta.url))
+    return existsSync(bundled) ? bundled : fileURLToPath(new URL('../helper/linux-dictate.js', import.meta.url))
+  }
   const bundled = fileURLToPath(new URL('./pico-dictate', import.meta.url))
   return existsSync(bundled) ? bundled : fileURLToPath(new URL('../helper/.build/release/pico-dictate', import.meta.url))
 }
 
-export function createDictation({ onStatus = () => {}, onLevel = () => {}, onError = () => {}, platform = process.platform, arch = process.arch, launch = () => spawn(dictationHelperPath(), [], { stdio: ['pipe', 'pipe', 'pipe'] }), loadingTimeout = 600000, requestTimeout = 45000 } = {}) {
+export function createDictation({ onStatus = () => {}, onLevel = () => {}, onError = () => {}, platform = process.platform, arch = process.arch, launch = () => spawn(platform === 'linux' ? process.execPath : dictationHelperPath(platform), platform === 'linux' ? [dictationHelperPath(platform)] : [], { stdio: ['pipe', 'pipe', 'pipe'] }), loadingTimeout = 600000, requestTimeout = platform === 'linux' ? 180000 : 45000 } = {}) {
   let child = null
   let status = 'idle'
   let sequence = 0
@@ -54,7 +58,7 @@ export function createDictation({ onStatus = () => {}, onLevel = () => {}, onErr
 
   function load() {
     if (ready) return ready
-    if (platform !== 'darwin' || arch !== 'arm64') throw new Error('dictation requires an Apple Silicon Mac')
+    if (platform !== 'linux' && (platform !== 'darwin' || arch !== 'arm64')) throw new Error('dictation requires Linux or an Apple Silicon Mac')
     const instance = launch()
     child = instance
     ready = waitFor('ready', loadingTimeout)

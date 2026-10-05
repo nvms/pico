@@ -14,6 +14,9 @@ helper: ## Build the macOS arm64 dictation helper
 	cp $(PICO)/helper/.build/arm64-apple-macosx/release/pico-dictate "$$tmp" && \
 	chmod 755 "$$tmp" && mv -f "$$tmp" $(PICO)/dist/pico-dictate
 
+helper-linux: ## Build whisper.cpp and download the local Linux dictation model (~148 MB)
+	@bash $(PICO)/helper/setup-linux.sh
+
 test: ## Run every workspace test suite
 	@npm test --workspaces
 
