@@ -15,7 +15,10 @@ export function captureCommands(platform, file, env = process.env) {
   if (platform === 'darwin') return [['screencapture', ['-i', '-x', file]]]
   if (platform === 'linux') {
     if (env.XDG_SESSION_TYPE === 'wayland') {
-      return [['gnome-screenshot', ['-a', '-f', file]], ['spectacle', ['-r', '-b', '-n', '-o', file]]]
+      const fallback = [['gnome-screenshot', ['-a', '-f', file]], ['spectacle', ['-r', '-b', '-n', '-o', file]]]
+      return env.SWAYSOCK || env.XDG_CURRENT_DESKTOP?.split(':').includes('sway')
+        ? [['slurp', []], ...fallback]
+        : fallback
     }
     return [
       ['xfce4-screenshooter', ['--region', '--save', file]],
@@ -30,9 +33,28 @@ export async function captureRegion({ platform = process.platform, env = process
   const file = join(await ensureCaptureDir(), `capture-${Date.now()}.png`)
   const commands = captureCommands(platform, file, env)
   for (const [command, args] of commands) {
-    const error = await new Promise(resolve => {
-      run(command, args, error => resolve(error))
-    })
+    let error
+    if (command === 'slurp') {
+      const selection = await new Promise(resolve => {
+        const child = run(command, args, (error, stdout) => resolve({ error, stdout }))
+        // slurp consumes optional rectangles from stdin before showing its UI.
+        // execFile leaves that pipe open; signal EOF so selection can start.
+        child?.stdin?.end()
+      })
+      error = selection.error
+      if (!error) {
+        const geometry = selection.stdout?.trim()
+        if (!geometry) return null
+        error = await new Promise(resolve => {
+          run('grim', ['-g', geometry, file], error => resolve(error))
+        })
+        if (error?.code === 'ENOENT') throw new Error('Install grim and slurp for Sway region capture: sudo apt install grim slurp.')
+      }
+    } else {
+      error = await new Promise(resolve => {
+        run(command, args, error => resolve(error))
+      })
+    }
     // Try another backend only when the executable is missing, not on cancel.
     if (error?.code === 'ENOENT') continue
     if (!exists(file)) {
