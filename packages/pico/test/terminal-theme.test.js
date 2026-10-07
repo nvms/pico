@@ -38,6 +38,23 @@ test('setPalette swaps live bindings and falls back to dark', () => {
   assert.equal(paletteName(), 'dark')
 })
 
+test('default palettes use purple accents without changing error colors', () => {
+  theme.setAccent(null)
+  try {
+    for (const [palette, accent, red] of [
+      ['dark', '#a78bfa', '#f87171'],
+      ['light', '#7c3aed', '#dc2626'],
+    ]) {
+      setPalette(palette)
+      assert.equal(theme.DEFAULT_ACCENT, accent)
+      assert.equal(theme.accent(), accent)
+      assert.equal(theme.RED, red)
+    }
+  } finally {
+    setPalette('dark')
+  }
+})
+
 test('every palette declares the full color set and a shiki theme', () => {
   const keys = theme.paletteList().map((p) => p.key)
   assert.ok(keys.includes('nord'))

@@ -90,8 +90,11 @@ export function createGitService({ onChange = () => {} } = {}) {
     }
     // the working tree too, so an edit shows up right away rather than at
     // the next poll. recursive watching rides on FSEvents on macOS; the
-    // refresh is debounced so a burst of writes costs one git call
-    try {
+    // refresh is debounced so a burst of writes costs one git call. linux
+    // has no native recursive watch: node walks the tree and spends an
+    // inotify watch per directory (node_modules included), which can drain
+    // the user's whole fs.inotify.max_user_watches, so linux leans on the poll
+    if (process.platform !== 'linux') try {
       treeWatcher = watch(root, { recursive: true }, (_event, file) => {
         if (epoch !== started) return
         const name = String(file ?? '')
