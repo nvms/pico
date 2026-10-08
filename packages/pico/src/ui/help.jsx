@@ -65,7 +65,7 @@ The agent can schedule one-time wake-ups for itself with the schedule_wakeup too
 
 ## Appearance
 
-pico picks a light or dark palette at startup by asking the terminal for its background color (OSC 11), so it matches whatever theme your terminal uses. \`/theme\` opens a picker that previews each theme as you move and persists your choice in \`~/.pico/config.json\`; \`/theme light\`, \`/theme dark\`, or \`/theme auto\` applies one directly. \`/color\` tints a single session's accent and is independent of the palette.
+pico picks a light or dark palette at startup by asking the terminal for its background color (OSC 11), so it matches whatever theme your terminal uses. In auto mode it also follows the terminal when it switches between light and dark while pico is running (terminals that support color scheme notifications, mode 2031, such as kitty, ghostty, foot, and contour). \`/theme\` opens a picker that previews each theme as you move and persists your choice in \`~/.pico/config.json\`; \`/theme light\`, \`/theme dark\`, or \`/theme auto\` applies one directly. \`/color\` tints a single session's accent and is independent of the palette.
 
 ## Context
 

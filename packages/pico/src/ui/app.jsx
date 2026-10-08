@@ -14,7 +14,7 @@ import { createScreenCaptureInput } from './screen-capture-input.js'
 import { captureRegion } from '../screen-capture.js'
 import { createComposerFiles } from './composer-files.js'
 import { dictationIndicator, appendLevel } from './dictation-indicator.js'
-import { createSignal, useInterval, onCleanup, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useSelection, useToast } from '@trendr/core'
+import { createSignal, useInterval, onCleanup, Menu, ProgressBar, ScrollBox, Shimmer, Spinner, TextArea, useFocus, useFocusTrap, useFrameStats, useHitTest, useInput, useLayout, useMouse, useResize, useColorScheme, useSelection, useToast } from '@trendr/core'
 import { makeEvent } from 'picocode-core/events.js'
 import { listSessions, deleteSession, deleteProjectData } from 'picocode-core/session.js'
 import { userEntries, rewindStats } from 'picocode-core/derive.js'
@@ -275,6 +275,7 @@ export function App({ boot, controller: ctl }) {
   const [memScope, setMemScope] = createSignal(0)
   const [memoryList, setMemoryList] = createSignal([])
   const [themePref, setThemePref] = createSignal(boot.themePref || 'auto')
+  const [detectedTheme, setDetectedTheme] = createSignal(boot.detectedTheme || 'dark')
   const [queued, setQueued] = createSignal(state.queued)
   const [expedited, setExpedited] = createSignal(state.expedited)
   const [sent, setSent] = createSignal(state.sent)
@@ -624,12 +625,20 @@ export function App({ boot, controller: ctl }) {
 
   const themeItems = () => [
     ...paletteList(),
-    { key: 'auto', desc: `follow the terminal (detected: ${boot.detectedTheme || 'dark'})` },
+    { key: 'auto', desc: `follow the terminal (detected: ${detectedTheme()})` },
   ]
 
   function paletteFor(pref) {
-    return pref === 'auto' ? boot.detectedTheme || 'dark' : pref
+    return pref === 'auto' ? detectedTheme() : pref
   }
+
+  // the terminal reports light/dark switches while pico runs; auto follows
+  // them, but never over a palette the theme picker is previewing
+  const recheckTheme = useColorScheme((scheme) => {
+    if (scheme === detectedTheme()) return
+    setDetectedTheme(scheme)
+    if (themePref() === 'auto' && !showThemePanel()) previewPalette('auto')
+  })
 
   function previewPalette(pref) {
     setPalette(paletteFor(pref))
@@ -639,6 +648,7 @@ export function App({ boot, controller: ctl }) {
   function applyThemePref(pref) {
     setThemePref(pref)
     previewPalette(pref)
+    if (pref === 'auto') recheckTheme()
     writeConfig({ theme: pref === 'auto' ? undefined : pref }).catch(() => {})
     flash(pref === 'auto' ? `theme: auto  following the terminal (${paletteFor('auto')})` : `theme: ${pref}`)
   }
