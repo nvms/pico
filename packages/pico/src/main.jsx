@@ -8,7 +8,7 @@ import { loadModelRuntime } from './model-runtime.js'
 import { readConfig } from 'picocode-core/config.js'
 import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
 import { App } from './ui/app.jsx'
-import { DEFAULT_ACCENT, MUTED, setPalette, paletteList } from './ui/theme.js'
+import { DEFAULT_ACCENT, MUTED, setPalette, setTerminalBackground, paletteList } from './ui/theme.js'
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'))
 
@@ -80,8 +80,9 @@ if (providers.length === 0) {
 
 const config = await readConfig()
 
-const detectedTheme = await detectTerminalTheme()
+const { theme: detectedTheme, background: terminalBackground } = await detectTerminalTheme()
 const themeOverride = paletteList().some((p) => p.key === config.theme) ? config.theme : null
+setTerminalBackground(terminalBackground)
 setPalette(themeOverride || detectedTheme)
 const theme = { accent: DEFAULT_ACCENT, muted: MUTED }
 

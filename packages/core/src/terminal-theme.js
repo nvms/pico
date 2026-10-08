@@ -1,9 +1,23 @@
-export function parseOsc11(response) {
-  const match = response.match(/\]11;rgb:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)/i)
+const OSC11_RE = /\]11;rgba?:([0-9a-f]+)\/([0-9a-f]+)\/([0-9a-f]+)/i
+
+function osc11Channels(response) {
+  const match = response.match(OSC11_RE)
   if (!match) return null
-  const channel = (hex) => parseInt(hex, 16) / (16 ** hex.length - 1)
-  const luminance = 0.2126 * channel(match[1]) + 0.7152 * channel(match[2]) + 0.0722 * channel(match[3])
-  return luminance > 0.5 ? 'light' : 'dark'
+  return [match[1], match[2], match[3]].map((hex) => parseInt(hex, 16) / (16 ** hex.length - 1))
+}
+
+export function parseOsc11(response) {
+  const channels = osc11Channels(response)
+  if (!channels) return null
+  const [r, g, b] = channels
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5 ? 'light' : 'dark'
+}
+
+// the reported background as '#rrggbb'
+export function parseOsc11Background(response) {
+  const channels = osc11Channels(response)
+  if (!channels) return null
+  return '#' + channels.map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')
 }
 
 export function themeFromColorfgbg(value) {
@@ -13,8 +27,9 @@ export function themeFromColorfgbg(value) {
   return bg === 7 || bg === 15 ? 'light' : 'dark'
 }
 
+// resolves { theme: 'light' | 'dark', background: '#rrggbb' | null }
 export function detectTerminalTheme({ timeoutMs = 150 } = {}) {
-  const fallback = () => themeFromColorfgbg(process.env.COLORFGBG) || 'dark'
+  const fallback = () => ({ theme: themeFromColorfgbg(process.env.COLORFGBG) || 'dark', background: null })
   if (!process.stdin.isTTY || !process.stdout.isTTY) return Promise.resolve(fallback())
 
   return new Promise((resolve) => {
@@ -25,19 +40,19 @@ export function detectTerminalTheme({ timeoutMs = 150 } = {}) {
     // never pause() here: an explicit pause sticks, and trend's mount only
     // attaches a data listener, which will not un-pause an explicitly
     // paused stream - input would be frozen for the whole session
-    const finish = (theme) => {
+    const finish = (result) => {
       if (settled) return
       settled = true
       clearTimeout(timer)
       process.stdin.off('data', onData)
       process.stdin.setRawMode(wasRaw)
-      resolve(theme)
+      resolve(result)
     }
 
     const onData = (chunk) => {
       buffer += chunk.toString('latin1')
       const theme = parseOsc11(buffer)
-      if (theme) finish(theme)
+      if (theme) finish({ theme, background: parseOsc11Background(buffer) })
     }
 
     const timer = setTimeout(() => finish(fallback()), timeoutMs)

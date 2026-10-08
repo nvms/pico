@@ -45,6 +45,39 @@ const PALETTES = {
   },
 }
 
+// the dark and light palettes sit on the terminal's own background, and any
+// fixed panel color collides with some terminal theme. when the background is
+// known, panel and selection colors are mixed from it instead: toward white
+// on dark backgrounds, toward black on light ones
+const DERIVED_SURFACES = {
+  dark: { toward: 255, panel: 0.08, select: 0.2 },
+  light: { toward: 0, panel: 0.06, select: 0.14 },
+}
+
+let terminalBackground = null
+
+function hexToRgb(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [n >> 16, (n >> 8) & 255, n & 255]
+}
+
+function mix(rgb, toward, amount) {
+  return '#' + rgb.map((c) => Math.round(c + (toward - c) * amount).toString(16).padStart(2, '0')).join('')
+}
+
+function derivedSurfaces(name) {
+  const rule = DERIVED_SURFACES[name]
+  const rgb = hexToRgb(terminalBackground)
+  if (!rule || !rgb) return null
+  // a palette forced onto the opposite kind of background keeps its constants
+  const [r, g, b] = rgb
+  const side = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.5 ? 'light' : 'dark'
+  if (side !== name) return null
+  return { panelBg: mix(rgb, rule.toward, rule.panel), selectBg: mix(rgb, rule.toward, rule.select) }
+}
+
 export let DEFAULT_ACCENT = PALETTES.dark.accent
 export let FG = PALETTES.dark.fg
 export let FG_SOFT = PALETTES.dark.fgSoft
@@ -75,13 +108,25 @@ export function setPalette(name) {
   FG = p.fg
   FG_SOFT = p.fgSoft
   MUTED = p.muted
-  PANEL_BG = p.panelBg
-  SELECT_BG = p.selectBg
+  const derived = derivedSurfaces(currentPalette)
+  PANEL_BG = derived?.panelBg ?? p.panelBg
+  SELECT_BG = derived?.selectBg ?? p.selectBg
   RED = p.red
   GREEN = p.green
   PEER = p.peer
   HIGHLIGHT = p.highlight
   setAccentValue(explicitAccent || p.accent)
+}
+
+// the terminal's background as '#rrggbb', or null when unknown. re-applies
+// the current palette so derived surfaces follow it
+export function setTerminalBackground(hex) {
+  terminalBackground = hexToRgb(hex) ? hex.toLowerCase() : null
+  setPalette(currentPalette)
+}
+
+export function getTerminalBackground() {
+  return terminalBackground
 }
 
 export function paletteName() {

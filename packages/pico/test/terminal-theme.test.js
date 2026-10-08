@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseOsc11, themeFromColorfgbg } from 'picocode-core/terminal-theme.js'
+import { parseOsc11, parseOsc11Background, themeFromColorfgbg } from 'picocode-core/terminal-theme.js'
 import { setPalette, paletteName, FG, PANEL_BG } from '../src/ui/theme.js'
 import * as theme from '../src/ui/theme.js'
 
@@ -101,4 +101,31 @@ test('peer color is independent of session accent', () => {
   }
   theme.setAccent(null)
   setPalette('dark')
+})
+
+test('parseOsc11Background reports the color as hex', () => {
+  assert.equal(parseOsc11Background('\x1b]11;rgb:1e1e/1d1d/2424\x1b\\'), '#1e1d24')
+  assert.equal(parseOsc11Background('\x1b]11;rgb:f7/f6/fb\x07'), '#f7f6fb')
+  assert.equal(parseOsc11Background('garbage'), null)
+})
+
+test('panel surfaces derive from the terminal background', () => {
+  theme.setTerminalBackground('#1e1d24')
+  setPalette('dark')
+  assert.equal(theme.PANEL_BG, '#302f36')
+  assert.equal(theme.SELECT_BG, '#4b4a50')
+
+  setPalette('light')
+  assert.equal(theme.PANEL_BG, '#e9e9ee', 'light palette on a dark terminal keeps its constant')
+
+  theme.setTerminalBackground('#f7f6fb')
+  assert.equal(theme.PANEL_BG, '#e8e7ec', 're-applies the current palette')
+  assert.equal(theme.SELECT_BG, '#d4d4d8')
+
+  setPalette('nord')
+  assert.equal(theme.PANEL_BG, '#3b4252', 'named themes keep their own surfaces')
+
+  theme.setTerminalBackground(null)
+  setPalette('dark')
+  assert.equal(theme.PANEL_BG, '#1e1e22', 'unknown background falls back to the palette')
 })

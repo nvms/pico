@@ -44,7 +44,7 @@ import { QuestionForm } from './question-form.jsx'
 import { EmptyState } from './empty-state.jsx'
 import { Help } from './help.jsx'
 import { ModelPanel, EffortPanel, SpeedPanel, ThemePanel, ConfigPanel, ConfirmPanel, HistoryPanel, RewindPickPanel, RewindActionPanel, ResumePanel, ProjectPanel, McpPanel, MemoryPanel, InfoListPanel, WakeupsPanel, ConnectPanel, timeAgo } from './panels.jsx'
-import { accent, setAccent, setPalette, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
+import { accent, setAccent, setPalette, setTerminalBackground, getTerminalBackground, paletteName, paletteList, DEFAULT_ACCENT, FG, FG_SOFT, MUTED, PANEL_BG, RED, GREEN, HIGHLIGHT } from './theme.js'
 
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
@@ -633,8 +633,13 @@ export function App({ boot, controller: ctl }) {
   }
 
   // the terminal reports light/dark switches while pico runs; auto follows
-  // them, but never over a palette the theme picker is previewing
-  const recheckTheme = useColorScheme((scheme) => {
+  // them, but never over a palette the theme picker is previewing. a new
+  // background color re-derives panel surfaces under whatever palette is up
+  const recheckTheme = useColorScheme((scheme, { background } = {}) => {
+    if (background && background !== getTerminalBackground()) {
+      setTerminalBackground(background)
+      boot.setTheme?.({ accent: accent(), muted: MUTED })
+    }
     if (scheme === detectedTheme()) return
     setDetectedTheme(scheme)
     if (themePref() === 'auto' && !showThemePanel()) previewPalette('auto')
