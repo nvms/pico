@@ -345,8 +345,11 @@ export function App({ boot, controller: ctl }) {
     if (get() !== value) set(value)
   }
   const [peerStatus, setPeerStatus] = createSignal('')
+  // the name peers reach this session by: the user's, or the automatic one
+  const [sessionName, setSessionName] = createSignal(null)
 
   function syncFromController() {
+    setSessionName(state.derived.title || state.peerConnection?.name || null)
     setPeerStatus(state.peerError ? `peer disconnected: ${state.peerError}` : state.peerPaused && state.peerConnection ? 'peer responses paused' : '')
     mirror(derived, setDerived, state.derived)
     mirror(overlay, setOverlay, state.overlay)
@@ -1973,10 +1976,10 @@ export function App({ boot, controller: ctl }) {
       {!steer() && !viewedAgent && !viewedShell && <MouseFocusRegion onPress={() => { if (!workspaceOpen()) fm.focus('input') }} style={{ bg: PANEL_BG, flexDirection: 'row', paddingX: 2, paddingY: 1, marginTop: transcript.length === 0 && clouds() ? 0 : 1, dim: dimmingPanel() || !!questionRequest() }}>
         <text style={{ color: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, bold: true }}>{'❯'}</text>
         <text> </text>
-        {(state.session?.header.forkedFrom || derived().title) && (
+        {(state.session?.header.forkedFrom || sessionName()) && (
           <box style={{ position: 'absolute', top: 0, right: 0, flexDirection: 'row' }}>
-            {state.session?.header.forkedFrom && <text style={{ color: MUTED }}>{derived().title ? '⑂ ' : '⑂'}</text>}
-            {derived().title && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${derived().title} `}</text>}
+            {state.session?.header.forkedFrom && <text style={{ color: MUTED }}>{sessionName() ? '⑂ ' : '⑂'}</text>}
+            {sessionName() && <text style={{ bg: fm.is('input') && !anyPanel() && !questionRequest() ? accent() : MUTED, color: 'black', bold: true }}>{` ${sessionName()} `}</text>}
           </box>
         )}
         <TextArea

@@ -10,7 +10,7 @@ import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
 import { createAgentManager } from './agents.js'
-import { createPeers } from './peers.js'
+import { automaticPeerName, createPeers } from './peers.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
@@ -265,10 +265,25 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     set({ peerConnection: null, peerError: null })
   }
 
+  // every saved session is reachable by peers: under the name the user gave
+  // it, or else an automatic one from its folder and id
+  async function connectAutomatic() {
+    const id = state.session.id
+    for (let length = 2; ; length++) {
+      try {
+        return await peers.connect({ id, name: automaticPeerName(boot.root, id, length), cwd: boot.cwd })
+      } catch (error) {
+        if (error.code !== 'PEER_NAME_TAKEN' || length >= 32) throw error
+      }
+    }
+  }
+
   async function reconnectPeers() {
-    if (!state.derived.title || !state.session) return
+    if (!state.session || boot.ephemeral) return
     try {
-      const identity = await peers.connect({ id: state.session.id, name: state.derived.title, cwd: boot.cwd })
+      const identity = state.derived.title
+        ? await peers.connect({ id: state.session.id, name: state.derived.title, cwd: boot.cwd })
+        : await connectAutomatic()
       set({ peerConnection: identity, peerError: null })
     } catch (error) {
       set({ peerConnection: null, peerError: error.message })
@@ -299,6 +314,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       // the file exists from this moment; anyone tracking open sessions
       // by file needs to hear about it
       emit('session', state.session)
+      if (!boot.ephemeral) reconnectPeers()
     }
     if (!state.events.some(event => event.type === 'speed')) {
       state.events.push(makeEvent('speed', { to: state.speed }))
@@ -1049,6 +1065,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     agents.restore(forked.events)
     reDerive()
     emit('session', state.session)
+    await reconnectPeers()
     flash('session forked')
   }
 
@@ -1064,10 +1081,10 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       await state.session.append(event, { strict: true })
       state.events.push(event)
       state.persisted = state.events.length
-      if (!name) await disconnectPeers()
+      if (!name && !boot.ephemeral) await connectAutomatic()
       set({ peerConnection: peers.identity, peerError: null })
       reDerive()
-      flash(name ? `session renamed to "${name}"` : 'session name reset')
+      flash(name ? `session renamed to "${name}"` : `session name reset to "${peers.identity?.name}"`)
       return true
     } catch (error) {
       try {
@@ -1760,7 +1777,10 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   return {
     state,
     boot,
+    // what peers call this session: the user's name for it, or the automatic one
+    sessionName: () => state.derived.title || state.peerConnection?.name || null,
     isWorking: () => state.busy || preparingTurn,
+    ensureSession,
     on,
     agents,
     send,

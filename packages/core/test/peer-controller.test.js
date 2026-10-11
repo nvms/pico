@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createController } from '../src/controller.js'
-import { createPeers } from '../src/peers.js'
+import { automaticPeerName, createPeers } from '../src/peers.js'
 import { loadSession } from '../src/session.js'
 import { createContextTracker } from '../src/context.js'
 
@@ -47,22 +47,45 @@ async function fixture(t, run) {
   return { controller, remote, calls, shellExit: (shell) => shellExit({ id: 'shell-1', command: 'test', exitCode: 0, startedAt: Date.now(), ...shell }) }
 }
 
-test('only explicit names connect; conflicts preserve identity; fork and new disconnect', async t => {
+test('saved sessions connect under an automatic name until renamed; conflicts preserve identity', async t => {
   const { controller: ctl, remote } = await fixture(t)
   assert.equal((await remote.list()).peers.length, 0)
+  ctl.send('hello')
+  await waitFor(() => !ctl.state.busy && ctl.state.peerConnection)
+  const automatic = automaticPeerName(ctl.boot.root, ctl.state.session.id)
+  assert.match(automatic, /^pico-ctl-peer-[a-z0-9]+-[0-9a-f]{2}$/)
+  assert.equal((await remote.list()).peers[0].name, automatic)
+  assert.equal(ctl.sessionName(), automatic)
   assert.equal(await ctl.rename('foo'), true)
   const original = ctl.state.session
   assert.equal((await remote.list()).peers[0].name, 'foo')
+  assert.equal(ctl.sessionName(), 'foo')
   assert.equal(await ctl.rename('bar'), false)
   assert.equal(ctl.state.derived.title, 'foo')
   await ctl.fork()
   assert.equal(ctl.state.derived.title, null)
-  assert.equal((await remote.list()).peers.length, 0)
+  assert.deepEqual((await remote.list()).peers.map(peer => peer.name), [automaticPeerName(ctl.boot.root, ctl.state.session.id)])
   assert.equal((await loadSession(original.file)).events.at(-1).data.text, 'foo')
   await ctl.rename('forked')
+  assert.equal(await ctl.rename(''), true)
+  assert.equal((await remote.list()).peers[0].name, automaticPeerName(ctl.boot.root, ctl.state.session.id))
   await ctl.newSession()
   assert.equal(ctl.state.session, null)
   assert.equal((await remote.list()).peers.length, 0)
+})
+
+test('an automatic name that is taken grows longer', async t => {
+  const { controller: ctl, remote } = await fixture(t)
+  ctl.send('hello')
+  await waitFor(() => !ctl.state.busy && ctl.state.peerConnection)
+  const session = ctl.state.session
+  await session.flush()
+  const { header } = await loadSession(session.file)
+  await ctl.newSession()
+  await remote.disconnect()
+  await remote.connect({ id: 'remote-id', name: automaticPeerName(ctl.boot.root, session.id), cwd: '/library' })
+  await ctl.resume({ file: session.file, header })
+  assert.equal(ctl.state.peerConnection.name, automaticPeerName(ctl.boot.root, session.id, 3))
 })
 
 test('received messages are durable and visible while held, then wake exactly once', async t => {

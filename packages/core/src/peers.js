@@ -68,6 +68,14 @@ function exchange(path, request) {
   })
 }
 
+// the name a session goes by until someone names it: its folder and the
+// start of its id, like "gibs-6a", longer only when that is taken
+export function automaticPeerName(root, id, length = 2) {
+  const folder = String(root ?? '').split(/[\\/]/).filter(Boolean).pop() ?? ''
+  const base = folder.toLowerCase().replace(/[^a-z0-9._]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 40) || 'session'
+  return `${base}-${String(id).replace(/[^0-9a-f]/gi, '').slice(0, length).toLowerCase()}`
+}
+
 export function createPeers({ directory = defaultDirectory(), onMessage, onSend, onDelivery } = {}) {
   if (typeof onMessage !== 'function') throw new TypeError('onMessage must be a function')
   let identity = null
@@ -199,7 +207,7 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
       try {
         await updateRegistry(records => {
           if (records.some(peer => peer.id === next.id && peer.instance !== instance)) throw fail(`session ${next.id} is already connected`)
-          if (records.some(peer => peer.name === next.name && peer.instance !== instance)) throw fail(`peer name "${next.name}" is already connected`)
+          if (records.some(peer => peer.name === next.name && peer.instance !== instance)) throw fail(`peer name "${next.name}" is already connected`, 'PEER_NAME_TAKEN')
           const index = records.findIndex(peer => peer.instance === instance)
           if (index < 0) records.push(record)
           else records[index] = record
