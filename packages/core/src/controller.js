@@ -1,3 +1,6 @@
+import { modelCredentials, subscriptionProvider } from './model-auth.js'
+import { connectXAI, disconnectXAI } from './xai-auth.js'
+import { loadXAIModels } from './xai-models.js'
 import { existsSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -331,10 +334,10 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     changed()
   }
 
-  async function codexAuth() {
-    if (state.model.provider !== 'codex') return { auth: null, ok: true }
-    const auth = await openaiCredentials().catch(() => null)
-    if (!auth) flash('error: codex models need a ChatGPT sign-in')
+  async function subscriptionAuth() {
+    if (!subscriptionProvider(state.model.provider)) return { auth: null, ok: true }
+    const auth = await modelCredentials(state.model).catch(() => null)
+    if (!auth) flash('error: subscription models need a sign-in (/connect)')
     return { auth, ok: !!auth }
   }
 
@@ -355,7 +358,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     run: async (agent, signal, onStream) => {
       const worker = boot.models.find((m) => m.name === agent.model)
       if (!worker || worker.available === false) throw new Error(`research model unavailable: ${agent.model}`)
-      const auth = worker.provider === 'codex' ? await openaiCredentials() : null
+      const auth = await modelCredentials(worker)
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('worker requires an active session')
       const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
@@ -404,7 +407,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
         const found = boot.models.find((m) => m.name === name)
         if (!found || found.available === false) throw new Error(`deliberation model unavailable: ${name}`)
         roleWorkers[part] = found
-        roleAuths[part] = found.provider === 'codex' ? await openaiCredentials() : null
+        roleAuths[part] = await modelCredentials(found)
       }
       const sessionId = state.session?.id
       if (!sessionId) throw new Error('deliberation requires an active session')
@@ -636,7 +639,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     abort = controller
     set({ busy: true, compacting: true, compactStatus: null, compactOutcome: null, startedAt: Date.now() })
 
-    const { auth, ok } = await codexAuth()
+    const { auth, ok } = await subscriptionAuth()
     if (!ok) {
       abort = null
       set({ compacting: false, busy: false })
@@ -827,7 +830,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     emit('turn', 'start')
     set({ busy: true, turnPhase: 'responding', startedAt: Date.now(), liveUsage: null })
 
-    const { auth, ok } = await codexAuth()
+    const { auth, ok } = await subscriptionAuth()
     if (!ok) {
       set({ turnPhase: 'idle', busy: false, peerPaused: true })
       flushSystemNotes()
@@ -1552,7 +1555,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       const tail = current.transcript.slice(target.index)
       const text = tail.filter((m) => m.text).map((m) => `${m.kind}: ${m.text}`).join('\n')
       flash('summarizing...')
-      const { auth } = await codexAuth()
+      const { auth } = await subscriptionAuth()
       summaryText = await summarizeText({ text, modelName: state.model.name, auth }).catch(() => {
         flash('summary model call failed · kept a crude digest of the rewound turns')
         return tail.filter((m) => m.text).slice(0, 3).map((m) => m.text.split(/\s+/).slice(0, 6).join(' ')).join(' · ')
@@ -1691,8 +1694,11 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     return { model: state.model.name, limit, rows, measured, segments }
   }
 
-  async function connectProvider() {
-    const { email } = await connectOpenAI()
+  async function connectProvider(provider = 'openai', options = {}) {
+    if (provider !== 'openai' && provider !== 'xai') throw new Error(`unknown subscription provider: ${provider}`)
+    const grok = provider === 'xai'
+    const { email } = grok ? await connectXAI(options) : await connectOpenAI()
+    if (grok) return { email, ...await refreshXAIConnection() }
     boot.providers = [...new Set([...boot.providers, 'codex'])]
     const creds = await openaiCredentials().catch(() => null)
     const codex = (await loadCodexModels(creds)).map((m) => ({ ...m, available: true, keyHint: '/connect' }))
@@ -1701,7 +1707,26 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     return { email, count: codex.length }
   }
 
-  async function disconnectProvider() {
+  async function refreshXAIConnection() {
+    const credentials = await modelCredentials({ provider: 'grok' })
+    if (!credentials) throw new Error('SuperGrok sign-in required')
+    const models = await loadXAIModels(credentials, { force: true })
+    boot.providers = [...new Set([...boot.providers, 'grok'])]
+    boot.models = [...boot.models.filter((m) => m.provider !== 'grok'), ...models.map((m) => ({ ...m, available: true, keyHint: '/connect' }))]
+    reDerive()
+    return { count: models.length }
+  }
+
+  async function disconnectProvider(provider = 'openai') {
+    if (provider !== 'openai' && provider !== 'xai') throw new Error(`unknown subscription provider: ${provider}`)
+    if (provider === 'xai') {
+      await disconnectXAI()
+      boot.providers = boot.providers.filter((p) => p !== 'grok')
+      boot.models = boot.models.map((m) => m.provider === 'grok' ? { ...m, available: false } : m)
+      if (state.model.provider === 'grok') state.model = boot.models.find((m) => m.available !== false && m.name === state.defaultModel.name) || boot.models.find((m) => m.available !== false) || state.defaultModel
+      changed()
+      return
+    }
     await disconnectOpenAI().catch(() => {})
     boot.providers = boot.providers.filter((p) => p !== 'codex')
     boot.models = boot.models.map((m) => (m.provider === 'codex' ? { ...m, available: false } : m))
@@ -1849,6 +1874,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     contextBreakdown,
     connectProvider,
     disconnectProvider,
+    refreshXAIConnection,
+    connectXAI: (options) => connectProvider('xai', options),
+    disconnectXAI: () => disconnectProvider('xai'),
     activity,
     cancelAgent,
     dismissAgent,

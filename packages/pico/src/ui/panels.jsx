@@ -208,7 +208,7 @@ export function ModelPanel({ models, current, defaultName, focused, onPick, onPi
                   {m.name === defaultName && <text style={{ color: selected ? 'black' : MUTED }}>{'  default'}</text>}
                   <box style={{ flexGrow: 1 }} />
                   <text style={{ color: selected ? 'black' : MUTED }}>
-                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in  $${m.price.out} out` : m.provider === 'codex' ? 'subscription' : 'price unknown'}
+                    {off ? `needs ${m.keyHint}` : m.price ? `$${m.price.in} in  $${m.price.out} out` : ['codex', 'grok'].includes(m.provider) ? 'subscription' : 'price unknown'}
                   </text>
                 </box>
                 <text style={{ color: selected ? 'black' : MUTED }}>{m.desc}</text>
@@ -879,15 +879,20 @@ export function ConnectPanel({ providers, focused, onConnect, onDisconnect, onCl
           onSubmit={(p) => onConnect(p)}
           onCancel={onClose}
           renderItem={(p, { active }) => (
-            <box style={{ flexDirection: 'row' }}>
-              <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
-              <text style={{ color: p.connected ? accent() : MUTED }}>{p.connected ? '▪' : '▫'}</text>
-              <text style={{ color: active ? accent() : FG }}>{` ${p.label}  `}</text>
-              <box style={{ flexGrow: 1, height: 1 }}>
-                <text style={{ overflow: 'truncate', color: MUTED }}>
-                  {p.connected ? `connected${p.email ? ` as ${p.email}` : ''}` : 'not connected'}
-                </text>
+            <box style={{ flexDirection: 'column' }}>
+              <box style={{ flexDirection: 'row' }}>
+                <text style={{ color: accent() }}>{active ? '› ' : '  '}</text>
+                <text style={{ color: p.connected ? accent() : MUTED }}>{p.connected ? '▪' : '▫'}</text>
+                <text style={{ color: active ? accent() : FG }}>{` ${p.label}  `}</text>
+                <box style={{ flexGrow: 1, height: 1 }}>
+                  <text style={{ overflow: 'truncate', color: MUTED }}>
+                    {p.connected ? `connected${p.email ? ` as ${p.email}` : ''}` : 'not connected'}
+                  </text>
+                </box>
               </box>
+              {(p.usage?.windows || []).map(window => <text style={{ color: MUTED }}>{`  ${window.label.toLowerCase()} ${Math.round(window.usedPercent)}% used${window.resetAt ? `  resets ${new Date(window.resetAt).toLocaleString()}` : ''}`}</text>)}
+              {p.url && <text style={{ color: accent() }}>{p.url}</text>}
+              {p.code && <text style={{ color: FG }}>{p.code}</text>}
             </box>
           )}
         />

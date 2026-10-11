@@ -1,5 +1,7 @@
 import { discoverKeys, applyKeys, keyHint } from 'picocode-core/keys.js'
 import { loadCatalog, extractModels, adhocModel } from 'picocode-core/catalog.js'
+import { loadXAIModels } from 'picocode-core/xai-models.js'
+import { xaiConnected, xaiCredentials } from 'picocode-core/xai-auth.js'
 import { loadCodexModels } from 'picocode-core/codex-models.js'
 import { loadOpenRouterModels } from 'picocode-core/openrouter-models.js'
 import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
@@ -16,10 +18,12 @@ function codexContext(catalogData, model) {
 async function buildModels({ providers, force }) {
   const has = (provider) => providers.includes(provider)
   const codexCredentials = has('codex') ? await openaiCredentials().catch(() => null) : null
-  const [catalogData, codex, openrouter] = await Promise.all([
+  const subscriptionCredentials = has('grok') ? await xaiCredentials().catch(() => null) : null
+  const [catalogData, codex, openrouter, grok] = await Promise.all([
     loadCatalog({ force }),
     loadCodexModels(codexCredentials, { force }),
     has('openrouter') ? loadOpenRouterModels({ force }) : [],
+    loadXAIModels(subscriptionCredentials, { force }),
   ])
   return [
     ...extractModels(catalogData, CATALOG_PROVIDERS).map((model) => ({
@@ -33,16 +37,19 @@ async function buildModels({ providers, force }) {
       available: has('codex'),
       keyHint: '/connect',
     })),
+    ...grok.map(model => ({ ...model, available: has('grok'), keyHint: '/connect' })),
     ...openrouter.map((model) => ({ ...model, available: true, keyHint: keyHint('openrouter') })),
   ]
 }
 
 export async function loadModelRuntime() {
   const chatgpt = await openaiConnected()
-  const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : [])]
+  const grok = await xaiConnected()
+  const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : []), ...(grok.connected ? ['grok'] : [])]
   const codexCredentials = chatgpt ? await openaiCredentials().catch(() => null) : null
   const loadModels = ({ force = false } = {}) => buildModels({ providers, force })
-  return { providers, models: await loadModels(), codexCredentials, loadModels }
+  const subscriptionCredentials = grok.connected ? await xaiCredentials().catch(() => null) : null
+  return { providers, models: await loadModels(), codexCredentials, xaiCredentials: subscriptionCredentials, loadModels }
 }
 
 export function resolveModel(models, providers, name) {

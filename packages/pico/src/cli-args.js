@@ -18,7 +18,7 @@ command flags:
   --max-tool-calls <n>       stop the agent after n tool calls (default 50)
   -q, --quiet                no progress output on stderr
 
-  --connect                  sign in with a ChatGPT plan (OAuth in your browser)
+  --connect [openai|xai]     sign in with a ChatGPT or SuperGrok subscription
   update, --update           update pico to the latest release from npm
   -h, --help                 show this help
   -v, --version              show version`
@@ -72,7 +72,13 @@ export function parseArgs(argv) {
         throw new Error('--max-tool-calls requires a positive integer')
       }
       i++
-    } else if (arg === '--connect') opts.mode = 'connect'
+    } else if (arg === '--connect') {
+      opts.mode = 'connect'
+      if (argv[i + 1] && !argv[i + 1].startsWith('-')) {
+        opts.connectProvider = argv[++i]
+        if (!['openai', 'xai'].includes(opts.connectProvider)) throw new Error('--connect provider must be openai or xai')
+      }
+    }
     else if (arg === 'update' || arg === '--update') opts.mode = 'update'
     else if (arg === '-q' || arg === '--quiet') opts.quiet = true
     else if (arg === '-h' || arg === '--help') opts.mode = 'help'

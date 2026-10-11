@@ -1,3 +1,4 @@
+import { modelRequest } from './model-auth.js'
 import { prepareImages } from './images.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -61,10 +62,8 @@ export function compactionHistory(history, prompt) {
 export async function compactHistory({ history, modelName, speed, auth, prompt, signal, onStream }) {
   const out = await compose(
     model({
-      model: modelName,
+      ...modelRequest(modelName, auth),
       ...(speed && { speed }),
-      ...(auth?.apiKey && { apiKey: auth.apiKey }),
-      ...(auth?.headers && { headers: auth.headers }),
     }),
   )({
     history: await compactionHistory(history, prompt),
@@ -90,10 +89,8 @@ export function compactProgress(streamed) {
 export async function summarizeText({ text, modelName, auth }) {
   const out = await compose(
     model({
-      model: modelName,
+      ...modelRequest(modelName, auth),
       system: 'Summarize the following conversation excerpt in 2-4 dense sentences. Capture decisions, changes made, and open questions. Output only the summary.',
-      ...(auth?.apiKey && { apiKey: auth.apiKey }),
-      ...(auth?.headers && { headers: auth.headers }),
     }),
   )(text.slice(0, 30000))
   return getText(out.lastResponse?.content || '').trim()
@@ -190,7 +187,7 @@ export async function runTurn({ history, tools, recorder, modelName, effort, spe
         estimatedPromptTokens = estimateTokens({ system, history: hydratedHistory, tools })
         onStream?.({ type: 'usage_estimate', usage: estimatedUsage() })
         const out = await model({
-          model: modelName,
+          ...modelRequest(modelName, auth),
           beforeRequest: async (request) => {
             if (internal.signal.aborted) return request
             const messages = await beforeRequest?.() || []
@@ -203,8 +200,6 @@ export async function runTurn({ history, tools, recorder, modelName, effort, spe
           },
           ...(effort && { effort }),
           ...(speed && { speed }),
-          ...(auth?.apiKey && { apiKey: auth.apiKey }),
-          ...(auth?.headers && { headers: auth.headers }),
         })({ ...ctx, history: hydratedHistory, abortSignal: internal.signal })
         // Prepared bytes and omission notices belong only to the request, not
         // the conversation returned by the provider or subsequent tool rounds.

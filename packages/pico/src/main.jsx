@@ -49,11 +49,14 @@ if (cli.mode === 'update') {
   process.exit(1)
 }
 if (cli.mode === 'connect') {
-  const { connectOpenAI } = await import('picocode-core/openai-auth.js')
+  const grok = cli.connectProvider === 'xai'
+  const connect = grok
+    ? (await import('picocode-core/xai-auth.js')).connectXAI
+    : (await import('picocode-core/openai-auth.js')).connectOpenAI
   try {
-    console.error('opening your browser for ChatGPT sign-in...')
-    const { email } = await connectOpenAI({ onUrl: (url) => console.error(`if the browser did not open, visit:\n${url}`) })
-    console.log(`connected as ${email || 'your ChatGPT account'}`)
+    console.error(`opening your browser for ${grok ? 'SuperGrok' : 'ChatGPT'} sign-in...`)
+    const { email } = await connect({ onUrl: (url, code) => console.error(`${url}${code ? `\n${code}` : ''}`) })
+    console.log(`connected as ${email || (grok ? 'your SuperGrok account' : 'your ChatGPT account')}`)
     process.exit(0)
   } catch (err) {
     console.error(`connect failed: ${err.message}`)
@@ -74,7 +77,7 @@ const { providers } = await loadModelRuntime()
 if (providers.length === 0) {
   console.error('pico: no credentials found.')
   console.error('set one of: GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY')
-  console.error('or sign in with a ChatGPT plan: pico --connect')
+  console.error('or sign in: pico --connect openai | pico --connect xai')
   process.exit(1)
 }
 

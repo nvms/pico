@@ -42,8 +42,8 @@ export async function runShell(opts, dependencies = {}) {
 
     if (opts.speed === 'fast' && !model.speed) throw new Error(`${model.name} does not support speed control`)
 
-    const auth = model.provider === 'codex' ? runtime.codexCredentials : null
-    if (model.provider === 'codex' && !auth) throw new Error('codex models need a ChatGPT sign-in (run pico --connect)')
+    const auth = model.provider === 'codex' ? runtime.codexCredentials : model.provider === 'grok' ? runtime.xaiCredentials : null
+    if (['codex', 'grok'].includes(model.provider) && !auth) throw new Error('subscription models need a sign-in (run pico --connect)')
 
     const result = await (dependencies.runTurn || runTurn)({
       history: [{ role: 'user', content: opts.prompt }],

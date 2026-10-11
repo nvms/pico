@@ -23,6 +23,7 @@ import { implicitRewindTarget } from 'picocode-core/rewind.js'
 import { checkForUpdate, fetchLatestVersion, newerVersion, isDevInstall, runUpdate } from 'picocode-core/update.js'
 import { STEER_ROLES, steerableTranscript } from 'picocode-core/steer.js'
 import { writeConfig } from 'picocode-core/config.js'
+import { xaiConnected, xaiUsage } from 'picocode-core/xai-auth.js'
 import { openaiStatus } from 'picocode-core/openai-auth.js'
 import { EFFORT_LEVELS, SPEED_LEVELS, SESSION_COLORS } from 'picocode-core/controller.js'
 import { agentTranscript } from 'picocode-core/agent-transcript.js'
@@ -49,7 +50,7 @@ import { accent, setAccent, setPalette, setTerminalBackground, getTerminalBackgr
 const COMMANDS = [
   { name: 'model', desc: 'Switch the active model for this session' },
   { name: 'refresh-models', desc: 'Refresh available models from providers' },
-  { name: 'connect', desc: 'Sign in with ChatGPT to use a Codex subscription' },
+  { name: 'connect', desc: 'Sign in with ChatGPT or SuperGrok' },
   { name: 'effort', desc: 'Set the thinking effort for this session' },
   { name: 'speed', desc: 'Speed' },
   { name: 'resume', desc: 'Pick up a previous session where you left off' },
@@ -941,9 +942,14 @@ export function App({ boot, controller: ctl }) {
   }
 
   async function refreshAuthProviders() {
-    const openai = await openaiStatus().catch(() => ({ connected: false, email: null }))
+    const [openai, grok] = await Promise.all([
+      openaiStatus().catch(() => ({ connected: false, email: null })),
+      xaiConnected().catch(() => ({ connected: false, email: null })),
+    ])
+    const usage = grok.connected ? await xaiUsage().catch(() => null) : null
     setAuthProviders([
       { id: 'openai', label: 'OpenAI  ChatGPT / Codex plan', connected: openai.connected, email: openai.email },
+      { id: 'xai', label: 'Grok / SuperGrok', connected: grok.connected, email: grok.email, usage, url: grok.connected ? null : authProviders().find(p => p.id === 'xai')?.url, code: grok.connected ? null : authProviders().find(p => p.id === 'xai')?.code },
     ])
   }
 
@@ -952,26 +958,31 @@ export function App({ boot, controller: ctl }) {
     refreshAuthProviders()
   }
 
+  useInterval(() => { if (showConnectPanel()) void refreshAuthProviders() }, 30000)
+
   function connectProvider(provider) {
-    if (provider.id !== 'openai') return
-    setShowConnectPanel(false)
-    flash('opening your browser for ChatGPT sign-in...')
-    ctl.connectProvider()
-      .then(({ email, count }) => flash(`connected as ${email || 'your ChatGPT account'}  ${count} codex models unlocked in /model`))
-      .catch((err) => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
+    const grok = provider.id === 'xai'
+    flash(`signing in to ${grok ? 'Grok' : 'ChatGPT'}`)
+    const task = grok
+      ? ctl.connectXAI({ onUrl: (url, code) => setAuthProviders(authProviders().map(p => p.id === 'xai' ? { ...p, url, code } : p)) })
+      : ctl.connectProvider()
+    task.then(({ email, count }) => {
+      flash(`connected${email ? ` as ${email}` : ''}  ${count} models`)
+      refreshAuthProviders()
+    }).catch(err => flash(`connect failed: ${String(err.message || err).slice(0, 120)}`))
   }
 
   async function disconnectProvider(provider) {
-    if (provider.id !== 'openai') return
     const armed = refs.disconnectArm
     if (!armed || armed.id !== provider.id || Date.now() - armed.at > 3000) {
       refs.disconnectArm = { id: provider.id, at: Date.now() }
-      return flash(`ctrl+x again to disconnect ${provider.label} (you will need to sign in again)`)
+      return flash(`ctrl+x again to disconnect ${provider.label}`)
     }
     refs.disconnectArm = null
-    await ctl.disconnectProvider()
+    if (provider.id === 'xai') await ctl.disconnectXAI()
+    else await ctl.disconnectProvider()
     refreshAuthProviders()
-    flash('disconnected from ChatGPT')
+    flash(`disconnected from ${provider.id === 'xai' ? 'Grok' : 'ChatGPT'}`)
   }
 
   function openResumePanel() {

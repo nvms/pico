@@ -30,7 +30,7 @@ export async function runHeadless(opts) {
 
   onSessionWriteError((err, file) => process.stderr.write(`pico: could not write ${file}: ${err.message}\n`))
 
-  const { providers, models, codexCredentials: codexCreds } = await loadModelRuntime()
+  const { providers, models, codexCredentials: codexCreds, xaiCredentials: xaiCreds } = await loadModelRuntime()
   if (providers.length === 0) {
     process.stderr.write('pico: no credentials found (set a provider key or run pico --connect)\n')
     return 1
@@ -92,10 +92,10 @@ export async function runHeadless(opts) {
   })
 
   let auth = null
-  if (model.provider === 'codex') {
-    auth = codexCreds
+  if (model.provider === 'codex' || model.provider === 'grok') {
+    auth = model.provider === 'codex' ? codexCreds : xaiCreds
     if (!auth) {
-      process.stderr.write('pico: codex models need a ChatGPT sign-in (run pico --connect)\n')
+      process.stderr.write('pico: subscription models need a sign-in (run pico --connect)\n')
       await session.flush()
       return 1
     }

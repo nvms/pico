@@ -53,7 +53,7 @@ The agent can run long-lived processes (dev servers, watchers) with \`bash backg
 
 ## Subscriptions
 
-\`/connect\` lists subscription providers you can sign in with instead of API keys. OpenAI (ChatGPT / Codex plan) signs in through your browser via OAuth; tokens are stored in \`~/.pico/auth.json\` and refreshed automatically, so you sign in once. Once connected, codex models appear in \`/model\`, billed to your plan. \`d\` in the panel disconnects.
+\`/connect\` lists subscription providers you can sign in with instead of API keys. OpenAI (ChatGPT / Codex plan) and Grok (SuperGrok) sign in through your browser via OAuth; tokens are stored in \`~/.pico/auth.json\` and refreshed automatically, so you sign in once. Once connected, subscription models appear in \`/model\`, billed to your plan. \`ctrl+x\` twice in the panel disconnects. Grok weekly quota appears in the connection picker; subscription requests never fall back to paid API keys.
 
 ## Memory
 

@@ -1,3 +1,4 @@
+import { connectXAI } from './xai-auth.js'
 import { applyPatches } from './daemon-patch.js'
 
 export async function createRemoteController(connection, { id, options = {}, localBoot = {} } = {}) {
@@ -88,6 +89,10 @@ export async function createRemoteController(connection, { id, options = {}, loc
     emit('project', boot)
     emit('session', state.session)
     emit('change', state)
+  }
+  controller.connectXAI = async options => {
+    const { email } = await connectXAI(options)
+    return { email, ...await call('controller', 'refreshXAIConnection') }
   }
   controller.previewSteer = changes => call('controller', 'previewSteer', changes)
   controller.loadHistory = async limit => {
