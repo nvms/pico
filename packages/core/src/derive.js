@@ -216,10 +216,13 @@ export function deriveState(events) {
   }
 
   const references = toolResultArchive(events).references
-  const historyTokens = () => Math.ceil(JSON.stringify(applyToolTrims(
-    elideStaleToolResults(state.providerHistory), state.trimmedToolIds,
-    state.toolTrimVersions, state.toolItems, references,
+  const historyTokens = (history = state.providerHistory, trimmed = state.trimmedToolIds, versions = state.toolTrimVersions) => Math.ceil(JSON.stringify(applyToolTrims(
+    elideStaleToolResults(history), trimmed, versions, state.toolItems, references,
   )).length / 4)
+  // where the history stood at the last measured request; its size is only
+  // computed when a later trim makes the estimate need it, so deriving a
+  // long session stays linear in its events
+  const historyMark = () => ({ history: state.providerHistory, length: state.providerHistory.length, trimmed: new Set(state.trimmedToolIds), versions: new Map(state.toolTrimVersions) })
   let measuredBaseline = null
   let contextEdited = false
 
@@ -234,7 +237,7 @@ export function deriveState(events) {
         if (event.data.lastPrompt !== undefined) {
           state.lastPromptTokens = event.data.lastPrompt
           state.lastPromptModel = event.data.model
-          measuredBaseline = { tokens: event.data.lastPrompt, history: historyTokens() }
+          measuredBaseline = { tokens: event.data.lastPrompt, mark: historyMark() }
           contextEdited = false
         }
       }
@@ -412,7 +415,7 @@ export function deriveState(events) {
   const unreadItems = new Set(unread)
   state.transcript = [...state.transcript.filter(item => !unreadItems.has(item)), ...unread]
   state.estimatedPromptTokens = contextEdited && measuredBaseline
-    ? Math.max(0, measuredBaseline.tokens + historyTokens() - measuredBaseline.history)
+    ? Math.max(0, measuredBaseline.tokens + historyTokens() - historyTokens(measuredBaseline.mark.history.slice(0, measuredBaseline.mark.length), measuredBaseline.mark.trimmed, measuredBaseline.mark.versions))
     : null
   const effectiveHistory = elideStaleToolResults(state.providerHistory)
   state.providerHistory = applyToolTrims(effectiveHistory, state.trimmedToolIds, state.toolTrimVersions, state.toolItems, toolResultArchive(events).references)
