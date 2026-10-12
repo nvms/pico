@@ -79,8 +79,11 @@ async function readJson(file, fallback) {
   }
 }
 
-export function readRegistry() {
-  return readJson(globalMcpFile(), { servers: {} })
+// the global file: every project's servers, and the ones switched off
+// everywhere unless a project switches them back on
+export async function readRegistry() {
+  const registry = await readJson(globalMcpFile(), {})
+  return { servers: registry.servers || {}, disabled: registry.disabled || {} }
 }
 
 export async function writeRegistry(registry) {
@@ -88,6 +91,8 @@ export async function writeRegistry(registry) {
   await writeFile(globalMcpFile(), JSON.stringify(registry, null, 2) + '\n')
 }
 
+// a project's file: its own servers, and a switch per server where the
+// project differs from the global setting (true off, false on)
 export async function readProjectConfig(root) {
   const config = await readJson(projectMcpFile(root), {})
   return { disabled: config.disabled || {}, servers: config.servers || {} }
@@ -120,21 +125,20 @@ export async function createMcpTransport(command) {
 }
 
 export async function createMcpRuntime({ root, onChange = () => {} }) {
-  const registry = await readRegistry()
-  const projectConfig = await readProjectConfig(root)
+  let registry = await readRegistry()
+  let projectConfig = await readProjectConfig(root)
   const servers = new Map()
+  // switches for this session alone, never written anywhere
+  const sessionSettings = new Map()
+
+  const projectSetting = (name) => (Object.hasOwn(projectConfig.disabled, name) ? !projectConfig.disabled[name] : null)
+  const globalEnabled = (name) => !registry.disabled[name]
+  // the session's switch wins, then the project's, then the global one
+  const effective = (name) => sessionSettings.has(name) ? sessionSettings.get(name) : projectSetting(name) ?? globalEnabled(name)
 
   const register = (name, command, scope) => {
-    servers.set(name, {
-      name,
-      command,
-      scope,
-      enabled: !projectConfig.disabled[name],
-      status: projectConfig.disabled[name] ? 'disabled' : 'idle',
-      error: null,
-      connection: null,
-      transport: null,
-    })
+    const enabled = effective(name)
+    servers.set(name, { name, command, scope, enabled, status: enabled ? 'idle' : 'disabled', error: null, connection: null, transport: null })
   }
   for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
   for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
@@ -146,13 +150,21 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     server.error = null
     onChange()
     try {
-      server.transport = await createMcpTransport(server.command)
-      server.connection = await connectMCP({
+      const transport = await createMcpTransport(server.command)
+      server.transport = transport
+      const connection = await connectMCP({
         name,
-        transport: () => server.transport,
+        transport: () => transport,
       })
+      // switched off or replaced while it was connecting
+      if (servers.get(name) !== server || !server.enabled || server.transport !== transport) {
+        await connection.close().catch(() => {})
+        return
+      }
+      server.connection = connection
       server.status = 'connected'
     } catch (err) {
+      if (servers.get(name) !== server || !server.enabled) return
       server.status = 'error'
       server.error = String(err.message || err).slice(0, 300)
       server.connection = null
@@ -163,10 +175,28 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
 
   async function disconnect(name) {
     const server = servers.get(name)
-    if (server?.connection) {
-      await server.connection.close().catch(() => {})
-      server.connection = null
+    if (!server) return
+    const connection = server.connection
+    server.connection = null
+    server.transport = null
+    if (connection) await connection.close().catch(() => {})
+  }
+
+  // brings one server in line with its switches; connecting and closing
+  // run in the background, so nothing waits on a slow server
+  function apply(name) {
+    const server = servers.get(name)
+    if (!server) return
+    const enabled = effective(name)
+    if (enabled === server.enabled && (enabled ? server.status !== 'disabled' : true)) return
+    server.enabled = enabled
+    if (enabled) connect(name).catch(() => {})
+    else {
+      server.status = 'disabled'
+      server.error = null
+      disconnect(name).catch(() => {})
     }
+    onChange()
   }
 
   return {
@@ -177,18 +207,59 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       }
       return Promise.allSettled(pending)
     },
+    // reads both files again and follows them: servers added, removed or
+    // changed elsewhere, and switches flipped in another session
+    async sync() {
+      registry = await readRegistry()
+      projectConfig = await readProjectConfig(root)
+      const wanted = new Map([
+        ...Object.entries(registry.servers).map(([name, command]) => [name, { command, scope: 'global' }]),
+        ...Object.entries(projectConfig.servers).map(([name, command]) => [name, { command, scope: 'project' }]),
+      ])
+      for (const name of [...servers.keys()]) {
+        if (wanted.has(name)) continue
+        disconnect(name).catch(() => {})
+        servers.delete(name)
+      }
+      for (const [name, { command, scope }] of wanted) {
+        const server = servers.get(name)
+        if (!server) {
+          register(name, command, scope)
+          if (servers.get(name).enabled) connect(name).catch(() => {})
+          continue
+        }
+        server.scope = scope
+        if (server.command !== command) {
+          server.command = command
+          disconnect(name).catch(() => {})
+          server.status = server.enabled ? 'idle' : 'disabled'
+          if (server.enabled) connect(name).catch(() => {})
+        }
+        apply(name)
+      }
+      onChange()
+    },
+    // on or off for this session only; null follows the project and global
+    setSessionEnabled(name, enabled) {
+      if (enabled === null || enabled === undefined) sessionSettings.delete(name)
+      else sessionSettings.set(name, !!enabled)
+      apply(name)
+    },
     async add(name, command, scope = 'global') {
       if (scope === 'project') {
         const config = await readProjectConfig(root)
         config.servers[name] = command
         await writeProjectConfig(root, config)
+        projectConfig = config
       } else {
-        const registry = await readRegistry()
-        registry.servers[name] = command
-        await writeRegistry(registry)
+        const next = await readRegistry()
+        next.servers[name] = command
+        await writeRegistry(next)
+        registry = next
       }
-      servers.set(name, { name, command, scope, enabled: true, status: 'idle', error: null, connection: null, transport: null })
-      await connect(name)
+      register(name, command, scope)
+      if (servers.get(name).enabled) await connect(name)
+      else onChange()
     },
     async update(name, command) {
       const server = servers.get(name)
@@ -197,10 +268,12 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         const config = await readProjectConfig(root)
         config.servers[name] = command
         await writeProjectConfig(root, config)
+        projectConfig = config
       } else {
-        const registry = await readRegistry()
-        registry.servers[name] = command
-        await writeRegistry(registry)
+        const next = await readRegistry()
+        next.servers[name] = command
+        await writeRegistry(next)
+        registry = next
       }
       await disconnect(name)
       server.command = command
@@ -215,34 +288,30 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         const config = await readProjectConfig(root)
         delete config.servers[name]
         await writeProjectConfig(root, config)
+        projectConfig = config
       } else {
-        const registry = await readRegistry()
-        delete registry.servers[name]
-        await writeRegistry(registry)
+        const next = await readRegistry()
+        delete next.servers[name]
+        delete next.disabled[name]
+        await writeRegistry(next)
+        registry = next
       }
       await disconnect(name)
       servers.delete(name)
       onChange()
     },
+    // the project's switch: off here, or back to on (overriding a global off)
     async toggle(name) {
       const server = servers.get(name)
       if (!server) return
       const config = await readProjectConfig(root)
-      if (server.enabled) {
-        // flip the visible state first: a slow-closing server (headless
-        // browsers, heavy processes) must not make disable feel dead
-        server.enabled = false
-        server.status = 'disabled'
-        onChange()
-        config.disabled[name] = true
-        await writeProjectConfig(root, config)
-        disconnect(name).catch(() => {})
-      } else {
-        server.enabled = true
-        delete config.disabled[name]
-        await writeProjectConfig(root, config)
-        await connect(name)
-      }
+      if (server.enabled) config.disabled[name] = true
+      else if (globalEnabled(name)) delete config.disabled[name]
+      else config.disabled[name] = false
+      await writeProjectConfig(root, config)
+      projectConfig = config
+      sessionSettings.delete(name)
+      apply(name)
     },
     reconnect(name) {
       return disconnect(name).then(() => connect(name))
@@ -253,6 +322,9 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         command: s.command,
         scope: s.scope,
         enabled: s.enabled,
+        globalEnabled: globalEnabled(s.name),
+        projectEnabled: projectSetting(s.name),
+        sessionEnabled: sessionSettings.has(s.name) ? sessionSettings.get(s.name) : null,
         status: s.status,
         error: s.error,
         toolCount: s.connection?.tools.length || 0,
@@ -261,7 +333,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     },
     tools() {
       return [...servers.values()]
-        .filter((s) => s.connection)
+        .filter((s) => s.connection && s.enabled)
         .flatMap((s) => s.connection.tools)
     },
     closeAll() {
