@@ -12,4 +12,4 @@ import { deriveState } from 'picocode-core/derive.js'
 import { createToolset } from 'picocode-core/tools/index.js'
 ```
 
-Model access goes through [@prsm/ai](https://github.com/prsmjs/ai). The package is plain ESM and requires Node 24 or newer.
+Model access goes through [@prsm/ai](https://github.com/prsmjs/ai), except for models whose provider has a turn engine (`engines.js`): Claude Code models (`claude-code/*`) run through the local `claude` command on the user's Claude subscription; see `src/claude-code/README.md`. The package is plain ESM and requires Node 24 or newer.

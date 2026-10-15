@@ -13,6 +13,7 @@ import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
 import { createAgentManager } from './agents.js'
+import { engineFor, releaseEngines } from './engines.js'
 import { automaticPeerName, createPeers } from './peers.js'
 import { runDeliberation, validateDeliberation } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
@@ -649,7 +650,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     const keepFrom = compactionKeepFrom(current, state.model.context)
     let streamed = ''
     try {
-      const raw = await compactRun({
+      const raw = await (engineFor(state.model)?.compact ?? compactRun)({
         history: current.providerHistory,
         modelName: state.model.name,
         ...(state.model.provider === 'codex' && { speed: speedApplies() ? state.speed : 'standard' }),
@@ -698,7 +699,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   function maybeAutoCompact() {
-    if (boot.autoCompact === false || state.busy || state.compacting) return
+    if (boot.autoCompact === false || engineFor(state.model)?.autoCompact === false || state.busy || state.compacting) return
     const limit = state.model.context
     const used = state.derived.lastPromptTokens
     if (!limit || !used || state.derived.lastPromptModel !== state.model.name) return
@@ -707,6 +708,21 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       flash(`context ${Math.round(ratio * 100)}% full · auto-compacting`)
       compact('', { automatic: true })
     }
+  }
+
+  // what an engine (engines.js) is told about the session it runs a turn for
+  function engineHost(engine) {
+    return {
+      sessionId: state.session?.id ?? null,
+      cwd: boot.cwd,
+      env: boot.env,
+      contextFiles: boot.startupContext?.files ?? [],
+      engineState: savedEngineState(engine),
+    }
+  }
+
+  function savedEngineState(engine) {
+    return state.events.findLast((event) => event.type === 'engine_state' && event.data.engine === engine.name)?.data.state ?? null
   }
 
   async function refreshProjectIndexes() {
@@ -795,7 +811,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
         })
       } else if (event.type === 'tool_complete' || event.type === 'tool_error') {
         boot.git.refresh()
-        const entry = recorder.entries.at(-1)
+        // an engine may finish calls out of order, so match by id
+        const entry = recorder.entries.findLast((candidate) => candidate.callId === event.call.id)
         updateOverlay((items) =>
           items.map((item) =>
             item.kind === 'tool' && item.callId === event.call.id
@@ -875,9 +892,10 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       reDerive()
     }
     sendAfterToolTriggered = false
+    const engine = engineFor(state.model)
     let result
     try {
-      result = await run({
+      result = await (engine?.run ?? run)({
         history: state.derived.providerHistory,
         tools,
         recorder,
@@ -889,6 +907,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
         signal: controller.signal,
         onStream: streamHandler(recorder, controller),
         beforeRequest: () => takeTurnNotes(controller.signal),
+        ...(engine && { host: engineHost(engine) }),
       })
     } catch (err) {
       abort = null
@@ -911,6 +930,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     }
     if (result.usage) persist(makeEvent('usage', { model: state.model.name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
     if (result.interrupted && !sendAfterToolTriggered) persist(makeEvent('interrupt', {}))
+    if (engine && result.engineState && JSON.stringify(result.engineState) !== JSON.stringify(savedEngineState(engine))) {
+      persist(makeEvent('engine_state', { engine: engine.name, state: result.engineState }))
+    }
 
     abort = null
     state.overlay = []
@@ -1794,6 +1816,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     }
     await agents.collect(agents.list().filter(agent => ['queued', 'running'].includes(agent.status)).map(agent => agent.id))
     await disconnectPeers()
+    if (state.session) releaseEngines(state.session.id)
     await state.session?.flush()
     await boot.mcp.terminateAll()
     boot.git?.dispose?.()
