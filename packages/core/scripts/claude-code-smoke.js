@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createController } from '../src/controller.js'
 import { createContextTracker } from '../src/context.js'
+import { agentTranscript } from '../src/agent-transcript.js'
 import { claudeCodeModels, claudeCodeStatus } from '../src/claude-code/models.js'
 
 const status = await claudeCodeStatus()
@@ -55,6 +56,7 @@ const turn = (text, { interruptAfter } = {}) => new Promise((resolve) => {
 await turn('In notes.txt replace beta with BETA using your Edit tool. Then run `wc -l notes.txt` with Bash. Then ask me my favourite colour with the ask_user tool, as one text question. Finish with one short sentence that includes the colour.')
 await turn('What word did you replace, in one word?')
 await turn('Run `for i in 1 2 3 4 5 6 7 8 9 10; do echo $i; sleep 1; done` with Bash.', { interruptAfter: 6000 })
+await turn('Launch two subagents in parallel, in one message: one runs `ls` with Bash in this folder, the other runs `wc -c notes.txt`. Each reports its output. Then reply: done.')
 
 // a restart: the session is reopened by a new controller, and Claude Code
 // resumes the conversation it saved instead of starting over
@@ -69,6 +71,8 @@ for (const item of ctl.state.derived.transcript) {
   if (item.kind === 'tool') console.log(`tool ${item.name} ${item.status}${item.diff ? ` +${item.diff.additions}/-${item.diff.deletions}` : ''}${item.revert ? ' (revertible)' : ''}: ${String(item.fullOutput ?? item.resultText ?? '').slice(0, 80).replace(/\n/g, ' | ')}`)
   else console.log(`${item.kind}: ${String(item.text ?? '').slice(0, 160)}`)
 }
+console.log('\n--- activity')
+for (const agent of ctl.activity()) console.log(`agent ${agent.id} ${agent.status} ${agent.model}: ${agent.description} | ${agentTranscript(agent).map((i) => i.kind === 'tool' ? `${i.name}:${i.status}` : `${i.kind}:${String(i.text).slice(0, 40)}`).join(' | ')}`)
 const engine = ctl.state.events.filter((event) => event.type === 'engine_state').map((event) => event.data.state)
 console.log('\n--- engine states', engine.map((s) => s.claudeSessionId))
 console.log('usage', JSON.stringify(ctl.state.derived.usage), 'last prompt', ctl.state.derived.lastPromptTokens)

@@ -31,13 +31,13 @@ A Claude subscription can't be used as an API key. The supported way to use it i
 - **Subscription only.** `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` are removed from the child's environment. Either one would make Claude Code bill the API, silently. The models only appear when `claude auth status` reports a claude.ai sign-in.
 - **No permission prompts.** Claude Code runs with `--dangerously-skip-permissions`, as pico does. Questions go through pico's `ask_user`, so `AskUserQuestion` is disallowed, and so are `EnterWorktree` and `ExitWorktree` because the host owns worktrees.
 - **Compaction.** Claude Code compacts its own context, so pico doesn't auto-compact these sessions. A manual compact summarizes with the same model and restarts the Claude session from that summary.
+- **Subagents.** Claude's subagents show in pico's activity list, with their tool calls and reports, through the agent manager's `track`. Background tasks are turned off (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`): work that outlives a turn would be invisible to pico, and the idle stop would kill it. Subagents still run in parallel, and the turn waits for them.
 
 ## Not covered
 
-- What happens inside a Claude `Task` subagent: only the call and its result are shown.
 - pico's own subagents and deliberation. Claude Code has its own.
 - The subscription's rate-limit status.
 
 ## Checking it
 
-`test/claude-code.test.js` runs the engine against a scripted Claude Code; no model is called. `node scripts/claude-code-smoke.js [model]` runs real turns through the installed `claude` (haiku by default): an edit, bash, ask_user, an interrupt, and a resume after restart. Run it after upgrading Claude Code, since the stream-json control protocol is the Agent SDK's and isn't separately documented.
+`test/claude-code.test.js` runs the engine against a scripted Claude Code; no model is called. `node scripts/claude-code-smoke.js [model]` runs real turns through the installed `claude` (haiku by default): an edit, bash, ask_user, an interrupt, parallel subagents, and a resume after restart. Run it after upgrading Claude Code, since the stream-json control protocol is the Agent SDK's and isn't separately documented.

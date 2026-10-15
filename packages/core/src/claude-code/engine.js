@@ -20,6 +20,8 @@ import { claudeCommand, cliModel, CLAUDE_CODE_PROVIDER } from './models.js'
 import { addUsage, COVERED_TOOLS, emptyUsage, fingerprint, picoTool, seedText, splitTurn, toolEntry, transcriptText, toolResultText, usageOf, userBlocks } from './translate.js'
 
 const IDLE_MS = 10 * 60 * 1000
+// Claude Code's tools that run a subagent
+const SUBAGENT_TOOLS = new Set(['Task', 'Agent'])
 // how long an interrupted turn may take to wind down before the process
 // is stopped instead
 const INTERRUPT_GRACE_MS = 10000
@@ -154,6 +156,46 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     // Claude Code's messages are handled one at a time, in order
     let chain = Promise.resolve()
 
+    // Claude's subagents, by the id of the Task call that started each,
+    // shown in pico's activity list as they work. A subagent's own traffic
+    // carries that id as its parent; it may start subagents of its own
+    const subagents = new Map()
+    const startSubagent = (block) => {
+      if (!host.subagents || !SUBAGENT_TOOLS.has(block.name)) return
+      // a subagent runs on the session's model unless its call names another
+      const handle = host.subagents.start({ description: block.input?.description, prompt: block.input?.prompt ?? '', model: `${CLAUDE_CODE_PROVIDER}/${block.input?.model ?? model}` })
+      subagents.set(block.id, { handle })
+    }
+    // `extra` is the structured result, whose report is free of the frame
+    // Claude Code wraps it in for the model
+    const finishSubagent = (block, extra) => {
+      const sub = subagents.get(block.tool_use_id)
+      if (!sub) return
+      subagents.delete(block.tool_use_id)
+      const text = Array.isArray(extra?.content) ? toolResultText(extra.content) : toolResultText(block.content)
+      sub.handle.finish(block.is_error ? { error: text || 'failed', interrupted } : { result: text })
+    }
+    const onSubagent = (message) => {
+      const sub = subagents.get(message.parent_tool_use_id)
+      if (!sub) return
+      if (message.type === 'assistant') {
+        for (const block of message.message?.content ?? []) {
+          if (block.type === 'text' && block.text) sub.handle.event({ type: 'content', content: block.text })
+          if (block.type !== 'tool_use') continue
+          const { name, args } = picoTool(block.name, block.input, host.cwd)
+          sub.handle.event({ type: 'tool_executing', call: { id: block.id, type: 'function', function: { name, arguments: JSON.stringify(args) } }, at: Date.now() })
+          startSubagent(block)
+        }
+      } else if (message.type === 'user') {
+        const blocks = (Array.isArray(message.message?.content) ? message.message.content : []).filter((block) => block.type === 'tool_result')
+        for (const block of blocks) {
+          const text = toolResultText(block.content)
+          sub.handle.event(block.is_error ? { type: 'tool_error', call: { id: block.tool_use_id }, error: text } : { type: 'tool_complete', call: { id: block.tool_use_id }, result: text })
+          finishSubagent(block, blocks.length === 1 ? message.tool_use_result : null)
+        }
+      }
+    }
+
     // offered: pico's tools that Claude Code has no version of its own. A
     // call through the bridge lands on the tool_use Claude announced for
     // it (same name, same arguments, oldest first), once every message
@@ -179,6 +221,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
         if (bridged) unclaimed.push({ id: block.id, name, args: block.input ?? {} })
         onStream({ type: 'tool_calls_ready', calls: [call] })
         onStream({ type: 'tool_executing', call })
+        startSubagent(block)
       }
       if (!raws.has(id)) countUsage(id, message.message?.usage)
     }
@@ -194,6 +237,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
         const waiting = unclaimed.findIndex((candidate) => candidate.id === use.id)
         if (waiting >= 0) unclaimed.splice(waiting, 1)
         const text = toolResultText(block.content)
+        finishSubagent(block, blocks.length === 1 ? message.tool_use_result : null)
         collected.push({ role: 'tool', tool_call_id: use.id, content: text })
         // a bridged call the bridge never ran (Claude refused it first)
         // has no entry yet, so it gets one like any other call
@@ -219,8 +263,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     const outcome = new Promise((resolve) => {
       entry.onMessage = (message) => {
         chain = chain.then(async () => {
-          // a subagent's own traffic stays inside its Task call
-          if (message.parent_tool_use_id) return
+          if (message.parent_tool_use_id) return onSubagent(message)
           if (message.type === 'system' && message.subtype === 'init') entry.claudeSessionId = message.session_id
           else if (message.type === 'stream_event') {
             const event = message.event
@@ -263,6 +306,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     entry.onMessage = null
     entry.onExit = null
     flushAssistant()
+    for (const sub of subagents.values()) sub.handle.finish({ interrupted: true })
     // a call cut off by an interrupt still needs a result, or the history
     // is invalid for whichever model reads it next
     for (const use of uses.values()) collected.push({ role: 'tool', tool_call_id: use.id, content: '[interrupted before it finished]' })

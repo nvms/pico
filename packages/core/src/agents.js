@@ -31,6 +31,7 @@ function restoredAgent(data, at) {
     error: null,
     usage: null,
     options: data,
+    external: !!data.external,
   }
 }
 
@@ -156,6 +157,66 @@ export function createAgentManager({ run, concurrency = 8, onChange = () => {}, 
     return agent
   }
 
+  // an agent another runtime runs, such as a Claude Code subagent: listed,
+  // recorded and shown like pico's own, but fed and finished from outside
+  function track(options) {
+    const id = String(nextId++)
+    let resolve
+    const done = new Promise((r) => { resolve = r })
+    const at = Date.now()
+    const agent = {
+      id,
+      description: options.description || options.prompt?.slice(0, 80) || `agent ${id}`,
+      prompt: options.prompt || '',
+      model: options.model || null,
+      role: 'worker',
+      parentId: null,
+      sessionId: options.sessionId || null,
+      sessionFile: options.sessionFile || null,
+      tools: [],
+      status: 'running',
+      createdAt: at,
+      updatedAt: at,
+      startedAt: at,
+      endedAt: null,
+      events: [],
+      result: '',
+      error: null,
+      usage: null,
+      controller: new AbortController(),
+      resolve,
+      done,
+      options,
+      external: true,
+      generation,
+    }
+    agents.set(id, agent)
+    onCreate(agent)
+    changed()
+    const live = () => agent.generation === generation && agent.status === 'running'
+    return {
+      id,
+      event(event) {
+        if (!live()) return
+        agent.events.push(event)
+        if (event.type === 'usage') agent.usage = event.usage
+        agent.updatedAt = Date.now()
+        onEvent(agent, event)
+        changed()
+      },
+      finish({ result = '', error = null, interrupted = false } = {}) {
+        if (!live()) return
+        agent.result = result
+        agent.error = error
+        agent.status = error ? 'failed' : interrupted ? 'cancelled' : 'completed'
+        agent.endedAt = Date.now()
+        onFinish(agent)
+        changed()
+        resolve(agent)
+      },
+    }
+  }
+
   function restore(events) {
     generation++
     for (const agent of agents.values()) {
@@ -176,6 +237,7 @@ export function createAgentManager({ run, concurrency = 8, onChange = () => {}, 
 
   return {
     start,
+    track,
     restore,
     clear: () => restore([]),
     get: (id) => agents.get(String(id)) || null,
@@ -196,7 +258,8 @@ export function createAgentManager({ run, concurrency = 8, onChange = () => {}, 
     },
     cancel(id) {
       const agent = agents.get(String(id))
-      if (!agent || ['completed', 'failed', 'cancelled'].includes(agent.status)) return false
+      // an external agent stops only with whatever runs it
+      if (!agent || agent.external || ['completed', 'failed', 'cancelled'].includes(agent.status)) return false
       if (agent.status === 'queued') {
         agent.status = 'cancelled'
         agent.endedAt = Date.now()

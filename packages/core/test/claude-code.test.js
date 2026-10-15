@@ -14,6 +14,7 @@ test('the child never sees an API key, so it bills the subscription', () => {
 test('Claude Code runs without permission prompts and with pico taking questions', () => {
   const args = claudeArgs({ model: 'opus', effort: 'high', resume: 'abc', fork: true })
   assert.ok(args.includes('--dangerously-skip-permissions'))
+  assert.ok(args.includes('--forward-subagent-text'))
   assert.equal(args[args.indexOf('--disallowedTools') + 1], 'AskUserQuestion,EnterWorktree,ExitWorktree')
   assert.deepEqual(args.slice(args.indexOf('--model'), args.indexOf('--model') + 6), ['--model', 'opus', '--effort', 'high', '--resume', 'abc'])
   assert.ok(args.includes('--fork-session'))
@@ -269,4 +270,35 @@ test('a process that cannot start fails the turn with the reason', async (t) => 
   const { result } = await turn(engine, [{ role: 'user', content: 'hi' }])
   assert.match(result.error, /claude not found/)
   assert.equal(result.engineState.claudeSessionId, null)
+})
+
+test('Claude\'s subagents are tracked as pico agents while they work', async (t) => {
+  const task = (id, description) => ({ type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id, name: 'Agent', input: { description, prompt: `do ${description}` } }] } })
+  const reply = [
+    task('a1', 'first'), task('a2', 'second'),
+    { type: 'assistant', parent_tool_use_id: 'a1', message: { id: 's1', model: 'claude-haiku-5-5', content: [{ type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', parent_tool_use_id: 'a1', message: { content: [{ type: 'tool_result', tool_use_id: 'b1', content: 'a.txt' }] } },
+    { type: 'assistant', parent_tool_use_id: 'a1', message: { id: 's2', content: [{ type: 'text', text: 'one file' }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a1', content: '[Subagent hand-back] framed: one file' }] }, tool_use_result: { content: [{ type: 'text', text: 'one file' }] } },
+  ]
+  const { spawn } = fakeClaude([reply])
+  const engine = createClaudeCodeEngine({ spawn, bridge: async () => fakeBridge() })
+  t.after(() => engine.releaseAll())
+  const tracked = []
+  const subagents = {
+    start(options) {
+      const agent = { options, events: [], finished: null }
+      tracked.push(agent)
+      return { event: (e) => agent.events.push(e), finish: (r) => { agent.finished = r } }
+    },
+  }
+  const { result } = await turn(engine, [{ role: 'user', content: 'split it' }], { host: { sessionId: 'pico-1', cwd: '/p', env: {}, subagents } })
+  assert.deepEqual(tracked.map((a) => a.options.description), ['first', 'second'])
+  const [first, second] = tracked
+  assert.equal(first.options.model, 'claude-code/opus')
+  assert.deepEqual(first.events.map((e) => e.type), ['tool_executing', 'tool_complete', 'content'])
+  assert.equal(first.events[0].call.function.name, 'bash')
+  assert.deepEqual(first.finished, { result: 'one file' })
+  assert.deepEqual(second.finished, { interrupted: true }, 'one still running when the turn ended')
+  assert.ok(!result.messages.some((m) => m.tool_calls?.some((c) => c.id === 'b1')), 'a subagent\'s calls stay out of the session history')
 })

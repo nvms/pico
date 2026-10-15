@@ -33,6 +33,9 @@ export function claudeArgs({ model, effort, resume, fork, mcpConfig, appendSyste
     // Claude Code itself
     '--dangerously-skip-permissions',
     '--disallowedTools', DISALLOWED.join(','),
+    // a subagent's text and thinking, not only its tool calls, so pico can
+    // show what it is doing
+    '--forward-subagent-text',
   ]
   if (oneShot) args.push('--tools', '', '--no-session-persistence', '--strict-mcp-config')
   if (model) args.push('--model', model)
@@ -45,7 +48,11 @@ export function claudeArgs({ model, effort, resume, fork, mcpConfig, appendSyste
 }
 
 export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, ...options }) {
-  const child = spawn(command, claudeArgs(options), { cwd, env: claudeEnv({ ...process.env, ...env }), stdio: ['pipe', 'pipe', 'pipe'] })
+  // background tasks keep running after a turn ends, where pico cannot see
+  // them and the idle stop would kill them; in the foreground, subagents
+  // still run in parallel, and the turn waits for them
+  const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }
+  const child = spawn(command, claudeArgs(options), { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let stderr = ''
   let exited = false

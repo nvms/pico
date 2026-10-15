@@ -346,12 +346,14 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     concurrency: 8,
     defaults: () => ({ model: boot.researchModel }),
     onChange: bumpActivity,
-    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools })),
+    onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools, ...(agent.external ? { external: true } : {}) })),
     onEvent: (agent, event) => {
       if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
     },
     onFinish: (agent) => {
       persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
+      // an external agent's result already went to whatever ran it
+      if (agent.external) return
       noteSystem(`Agent ${agent.id} (${agent.description}) finished with status ${agent.status}. Its result is ready. Call agent_collect with id ${agent.id} before finishing your response.`, { wake: true, agentId: agent.id, sessionId: agent.sessionId, sessionFile: agent.sessionFile })
     },
     // this closure outlives any single boot: /connect and project switches
@@ -718,6 +720,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       env: boot.env,
       contextFiles: boot.startupContext?.files ?? [],
       engineState: savedEngineState(engine),
+      // subagents the engine runs itself, shown in the activity list
+      subagents: { start: (options) => agents.track({ ...options, sessionId: state.session?.id, sessionFile: state.session?.file }) },
     }
   }
 
