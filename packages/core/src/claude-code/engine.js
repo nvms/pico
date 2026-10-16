@@ -64,7 +64,9 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     entry.bridge = await bridge()
     entry.model = model
     entry.effort = effort
-    entry.proc = spawn({
+    // a process that was replaced still exits, and may still speak, after
+    // the next one starts; only the current process reaches the turn
+    const proc = spawn({
       command,
       cwd,
       env,
@@ -74,13 +76,15 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
       fork,
       mcpConfig: entry.bridge.mcpConfig(),
       appendSystemPrompt: systemPrompt(contextFiles),
-      onMessage: (message) => entry.onMessage?.(message),
+      onMessage: (message) => { if (entry.proc === proc) entry.onMessage?.(message) },
       onExit: (exit) => {
+        if (entry.proc !== proc) return
         entry.proc = null
         entry.lastExit = exit
         entry.onExit?.(exit)
       },
     })
+    entry.proc = proc
   }
 
   async function run({ history, tools, recorder, modelName, effort, signal, onStream = () => {}, beforeRequest, host = {} }) {

@@ -199,6 +199,41 @@ test('a restarted host resumes the saved Claude session, and a fork forks it', a
   assert.equal(spawned[1].options.fork, true)
 })
 
+test('a replaced process that exits or speaks late does not reach the next turn', async (t) => {
+  const { spawn, spawned } = fakeClaude([text('m1', 'Hi.')])
+  const engine = createClaudeCodeEngine({
+    spawn: (options) => {
+      const proc = spawn(options)
+      if (spawned.length === 1) {
+        // the first process outlives its close: it streams once more, then exits
+        proc.close = () => setTimeout(() => {
+          options.onMessage(text('stale', 'Stale.')[1])
+          options.onExit({ error: null, stderr: '' })
+        }, 1)
+      } else {
+        proc.send = (content) => {
+          proc.sent.push(content)
+          setTimeout(() => {
+            for (const message of text('m2', 'Fresh.')) options.onMessage(message)
+            options.onMessage({ type: 'result', is_error: false, session_id: SESSION })
+          }, 10)
+          return true
+        }
+      }
+      return proc
+    },
+    bridge: async () => fakeBridge(),
+  })
+  t.after(() => engine.releaseAll())
+  await turn(engine, [{ role: 'user', content: 'hello' }])
+  // a rewind: the history moved, so the first process is replaced
+  const { result, events } = await turn(engine, [{ role: 'user', content: 'hello again' }])
+  assert.equal(spawned.length, 2)
+  assert.equal(result.error, undefined)
+  assert.deepEqual(events.filter((e) => e.type === 'content').map((e) => e.content), ['Fresh.'])
+  assert.deepEqual(result.messages, [{ role: 'assistant', content: 'Fresh.' }])
+})
+
 test('a pico tool called through the bridge is recorded under Claude\'s call id', async (t) => {
   const bridges = []
   const call = { type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 'tu9', name: 'mcp__pico__peer_send', input: { to: 'b', message: 'hi' } }] } }
