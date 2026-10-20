@@ -37,7 +37,7 @@ export async function createRemoteController(connection, { id, options = {}, loc
   apply(initial.snapshot)
   for (const [target, methods] of Object.entries({
     shells: ['kill', 'dismiss', 'output'], wakeups: ['cancel'], git: ['refresh', 'setEnabled'],
-    mcp: ['connectAll', 'add', 'update', 'remove', 'toggle', 'reconnect'], memory: ['list', 'setDisabled', 'forget'],
+    mcp: ['connectAll', 'add', 'update', 'remove', 'toggle', 'reconnect', 'signIn', 'signOut'], memory: ['list', 'setDisabled', 'forget'],
   })) {
     boot[target] = {}
     for (const method of methods) boot[target][method] = (...args) => call(target, method, ...args)

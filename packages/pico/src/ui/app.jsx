@@ -1674,6 +1674,10 @@ export function App({ boot, controller: ctl }) {
         focused
         onToggle={(name) => mcp.toggle(name)}
         onReconnect={(name) => mcp.reconnect(name)}
+        onSignIn={(name) => {
+          flash(`signing in to ${name} in your browser`)
+          mcp.signIn(name).then(() => flash(`signed in to ${name}`), (error) => flash(String(error.message || error)))
+        }}
         onRemove={(name) => {
           const armed = refs.mcpRemoveArm
           if (!armed || armed.name !== name || Date.now() - armed.at > 3000) {

@@ -1087,7 +1087,7 @@ function McpServerForm({ focused, server, onSave, onInvalid, onCancel }) {
   )
 }
 
-export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, onAdd, onEdit, onInvalid, onClose }) {
+export function McpPanel({ servers, focused, onToggle, onReconnect, onSignIn, onRemove, onAdd, onEdit, onInvalid, onClose }) {
   const [form, setForm] = createSignal(null)
   const [index, setIndex] = createSignal(0)
   const [viewing, setViewing] = createSignal(null)
@@ -1128,7 +1128,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
       title="MCP servers"
       hint={form()
         ? 'tab moves between fields  j/k + space picks a radio option  esc cancels'
-        : 'enter enable/disable  t tools  e edit  r reconnect  a add  ctrl+x remove (twice)  esc close'}
+        : 'enter enable/disable  t tools  e edit  r reconnect  s sign in  a add  ctrl+x remove (twice)  esc close'}
       fullScreen
     >
       <box style={{ flexDirection: 'column', flexGrow: 1, marginTop: 1, paddingX: 2 }}>
@@ -1167,8 +1167,8 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
                     <text style={{ color: st.color }}>{st.icon}</text>
                     <text style={{ color: active ? accent() : FG }}>{` ${s.name.padEnd(Math.max(14, s.name.length + 1))}`}</text>
                     <box style={{ flexGrow: 1, height: 1 }}>
-                      <text style={{ overflow: 'truncate', color: s.status === 'error' ? RED : MUTED }}>
-                        {s.status === 'error' ? s.error : s.status === 'connected' ? `${s.toolCount} tools` : s.status}
+                      <text style={{ overflow: 'truncate', color: s.status === 'error' ? RED : s.status === 'signin' ? accent() : MUTED }}>
+                        {s.status === 'error' ? s.error : s.status === 'connected' ? `${s.toolCount} tools` : s.status === 'signin' ? 'sign-in needed' : s.status}
                       </text>
                     </box>
                   </box>
@@ -1193,6 +1193,7 @@ export function McpPanel({ servers, focused, onToggle, onReconnect, onRemove, on
             if (key === 'a') setForm('add')
             else if (s && key === 'e') setForm(s)
             else if (s && key === 'r') onReconnect(s.name)
+            else if (s && key === 's') onSignIn(s.name)
             else if (s && key === 'remove') onRemove(s.name)
             else if (s && key === 't') setViewing(s.name)
           }}

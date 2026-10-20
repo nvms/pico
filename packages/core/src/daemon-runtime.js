@@ -177,7 +177,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
       }
       if (op === 'call') {
         const [target, method, ...values] = args
-        const allowedServices = { shells: ['kill', 'dismiss', 'output'], wakeups: ['cancel'], git: ['refresh', 'setEnabled'], mcp: ['connectAll', 'add', 'update', 'remove', 'toggle', 'reconnect'], memory: ['list', 'setDisabled', 'forget'], boot: ['refreshModels'] }
+        const allowedServices = { shells: ['kill', 'dismiss', 'output'], wakeups: ['cancel'], git: ['refresh', 'setEnabled'], mcp: ['connectAll', 'add', 'update', 'remove', 'toggle', 'reconnect', 'signIn', 'signOut'], memory: ['list', 'setDisabled', 'forget'], boot: ['refreshModels'] }
         if (target !== 'controller' && !allowedServices[target]?.includes(method)) throw new Error('unsupported service action')
         const object = target === 'controller' ? record.ctl : target === 'boot' ? record.ctl.boot : record.ctl.boot[target]
         if (!object || typeof object[method] !== 'function' || method.startsWith('_') || ['shutdown', 'on', 'constructor', '__proto__'].includes(method)) throw new Error('unsupported daemon action')

@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { connectMCP } from '@prsm/ai'
 import { globalMcpFile, projectMcpFile, projectDir, ensureDir, picoHome } from './paths.js'
 import { dirname } from 'node:path'
+import { authProvider, signIn as browserSignIn, signOut as forgetSignIn, hasSignIn } from './mcp-auth.js'
 
 function tokenize(str) {
   const tokens = []
@@ -107,12 +108,17 @@ export async function createMcpTransport(command) {
   const spec = parseServerSpec(command)
   if (spec.type === 'http') {
     const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js')
-    const fetch = (url, init) => init?.method === 'GET'
+    // the server's own address is not listened to for pushed messages;
+    // other GETs, like discovering how to sign in, go through
+    const fetch = (url, init) => init?.method === 'GET' && String(url) === new URL(spec.url).href
       ? Promise.resolve(new Response(null, { status: 405 }))
       : globalThis.fetch(url, init)
+    // a server given its own Authorization header signs in with that
+    const ownAuth = Object.keys(spec.headers).some((name) => name.toLowerCase() === 'authorization')
     return new StreamableHTTPClientTransport(new URL(spec.url), {
       requestInit: Object.keys(spec.headers).length ? { headers: spec.headers } : undefined,
       fetch,
+      ...(ownAuth ? {} : { authProvider: authProvider(spec.url) }),
     })
   }
   const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js')
@@ -165,8 +171,10 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       server.status = 'connected'
     } catch (err) {
       if (servers.get(name) !== server || !server.enabled) return
-      server.status = 'error'
-      server.error = String(err.message || err).slice(0, 300)
+      // the server wants the person to sign in, which they start themselves
+      const signIn = err?.name === 'UnauthorizedError' || err?.constructor?.name === 'UnauthorizedError'
+      server.status = signIn ? 'signin' : 'error'
+      server.error = signIn ? null : String(err.message || err).slice(0, 300)
       server.connection = null
       server.transport = null
     }
@@ -316,6 +324,25 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     reconnect(name) {
       return disconnect(name).then(() => connect(name))
     },
+    // a browser sign-in to a server that asks for one; open is handed the
+    // address to send the person to, the default browser when left out
+    async signIn(name, { open } = {}) {
+      const server = servers.get(name)
+      if (!server) throw new Error(`no MCP server ${name}`)
+      const spec = parseServerSpec(server.command)
+      if (spec.type !== 'http') throw new Error(`${name} runs on this computer and has no sign-in`)
+      await browserSignIn(spec.url, open ? { open } : {})
+      await disconnect(name)
+      await connect(name)
+    },
+    async signOut(name) {
+      const server = servers.get(name)
+      if (!server) return
+      const spec = parseServerSpec(server.command)
+      if (spec.type === 'http') forgetSignIn(spec.url)
+      await disconnect(name)
+      await connect(name)
+    },
     list() {
       return [...servers.values()].map((s) => ({
         name: s.name,
@@ -327,6 +354,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         sessionEnabled: sessionSettings.has(s.name) ? sessionSettings.get(s.name) : null,
         status: s.status,
         error: s.error,
+        signedIn: (() => { const spec = parseServerSpec(s.command); return spec.type === 'http' && hasSignIn(spec.url) })(),
         toolCount: s.connection?.tools.length || 0,
         tools: (s.connection?.tools || []).map((t) => ({ name: t.name, description: t.description || '', schema: t.schema ?? null })),
       }))
