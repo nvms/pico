@@ -347,3 +347,11 @@ test('pico\'s memories reach Claude in place of its own, under the bridge\'s too
   assert.match(spawned[0].options.appendSystemPrompt, /- deploys \(project\): production deploys by hand/)
   assert.match(spawned[0].options.appendSystemPrompt, /the mcp__pico__recall tool/)
 })
+
+test('an mcp server\'s schema reaches Claude whole: a list-or-null parameter, and none at all', () => {
+  const expand = { anyOf: [{ type: 'array', items: { type: 'string', enum: ['summary', 'transcript'] } }, { type: 'null' }], default: null }
+  const schema = { type: 'object', properties: { id: { type: 'string' }, expand }, required: ['id'], additionalProperties: false }
+  assert.equal(inputSchema(schema), schema)
+  const bare = { type: 'object' }
+  assert.equal(inputSchema(bare), bare)
+})

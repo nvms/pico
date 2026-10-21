@@ -211,7 +211,8 @@ function jsonProperty(prop) {
 }
 
 export function inputSchema(schema = {}) {
-  if (schema.type === 'object' && schema.properties) return schema
+  // a whole JSON Schema (an MCP server's) goes as it is
+  if (typeof schema.type === 'string') return schema
   const properties = {}
   const required = []
   for (const [key, prop] of Object.entries(schema)) {
