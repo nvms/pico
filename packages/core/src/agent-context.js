@@ -16,14 +16,16 @@ export async function createAgentContext(boot, { userTools = [], isolated = fals
   const tracker = isolated
     ? createContextTracker({ stopDir: boot.startupContext.stopDir, loaded: new Set(files.map((file) => file.path)) })
     : boot.tracker
+  const memoryIndexText = memoryIndex(await boot.memory.list().catch(() => []), boot.root)
   const system = buildSystemPrompt({
     cwd: boot.cwd,
     contextFiles: files,
     skills: boot.skills.list(),
-    memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
+    memoryIndexText,
   })
   return {
     system: instructions ? `${system}\n\n${instructions}` : system,
+    memoryIndexText,
     tools: {
       cwd: boot.cwd,
       env: boot.env,

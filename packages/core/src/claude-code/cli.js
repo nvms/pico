@@ -51,7 +51,7 @@ export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, .
   // background tasks keep running after a turn ends, where pico cannot see
   // them and the idle stop would kill them; in the foreground, subagents
   // still run in parallel, and the turn waits for them
-  const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1' }
+  const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }
   const child = spawn(command, claudeArgs(options), { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let stderr = ''

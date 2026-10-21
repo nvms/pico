@@ -16,11 +16,13 @@ export const BRIDGE_SERVER = 'pico'
 const BRIDGE_PREFIX = `mcp__${BRIDGE_SERVER}__`
 
 // pico tools Claude Code already has its own version of; offering both
-// would only make the model choose between equivalent tools
+// would only make the model choose between equivalent tools. Memory is
+// not among them: Claude Code's own is switched off, so every model in a
+// project keeps one store, pico's
 export const COVERED_TOOLS = new Set([
   'read', 'write', 'edit', 'bash', 'glob', 'grep', 'view', 'shell_output', 'shell_kill', 'tool_result',
   'agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel', 'deliberate',
-  'skill', 'remember', 'recall',
+  'skill',
 ])
 
 const SEED_CHARS = 600000

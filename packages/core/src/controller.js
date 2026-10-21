@@ -713,8 +713,10 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   // what an engine (engines.js) is told about the session it runs a turn for
-  function engineHost(engine) {
+  function engineHost(engine, context) {
     return {
+      // pico's memories, which an engine's model keeps in place of its own
+      memoryIndexText: context.memoryIndexText ?? '',
       sessionId: state.session?.id ?? null,
       cwd: boot.cwd,
       env: boot.env,
@@ -911,7 +913,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
         signal: controller.signal,
         onStream: streamHandler(recorder, controller),
         beforeRequest: () => takeTurnNotes(controller.signal),
-        ...(engine && { host: engineHost(engine) }),
+        ...(engine && { host: engineHost(engine, context) }),
       })
     } catch (err) {
       abort = null

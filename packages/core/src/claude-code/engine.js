@@ -28,12 +28,16 @@ const INTERRUPT_GRACE_MS = 10000
 
 const HOST_NOTE = `You are running inside pico, an agent runtime, possibly within kagent, a desktop workspace where several agent sessions work side by side. Besides your own tools, the host's tools are available under mcp__pico__: ask_user asks the user questions (use it instead of AskUserQuestion), peer_list and peer_send message other agent sessions, schedule_wakeup schedules a note to your future self, and the host may add more, such as terminals and a browser. Messages that begin with [system notification] or [peer input ...] come from the host or from other agents, not from the user.`
 
-function systemPrompt(contextFiles = []) {
+function systemPrompt(contextFiles = [], memoryIndexText = '') {
   // Claude Code reads CLAUDE.md files itself; any other instructions pico
   // would give its own models (AGENTS.md) are passed along
   const files = contextFiles.filter((file) => basename(file.path) !== 'CLAUDE.md' && file.content?.trim())
-  if (!files.length) return HOST_NOTE
-  return `${HOST_NOTE}\n\nProject instructions:\n\n${files.map((file) => `<file path="${file.path}">\n${file.content.trim()}\n</file>`).join('\n\n')}`
+  const parts = [HOST_NOTE]
+  // pico's memories stand in for Claude Code's own, which is switched off;
+  // they are saved and loaded with mcp__pico__remember and recall
+  if (memoryIndexText) parts.push(memoryIndexText.replace(/\bthe (remember|recall) tool\b/g, 'the mcp__pico__$1 tool'))
+  if (files.length) parts.push(`Project instructions:\n\n${files.map((file) => `<file path="${file.path}">\n${file.content.trim()}\n</file>`).join('\n\n')}`)
+  return parts.join('\n\n')
 }
 
 // the trailing user messages of `history` that Claude Code has not seen,
@@ -60,7 +64,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     entry.bridge = null
   }
 
-  async function start(entry, { cwd, env, model, effort, resume, fork, contextFiles }) {
+  async function start(entry, { cwd, env, model, effort, resume, fork, contextFiles, memoryIndexText }) {
     entry.bridge = await bridge()
     entry.model = model
     entry.effort = effort
@@ -75,7 +79,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
       resume,
       fork,
       mcpConfig: entry.bridge.mcpConfig(),
-      appendSystemPrompt: systemPrompt(contextFiles),
+      appendSystemPrompt: systemPrompt(contextFiles, memoryIndexText),
       onMessage: (message) => { if (entry.proc === proc) entry.onMessage?.(message) },
       onExit: (exit) => {
         if (entry.proc !== proc) return
@@ -118,7 +122,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     if (!entry.proc) {
       entry.lastExit = null
       try {
-        await start(entry, { cwd: host.cwd, env: host.env, model, effort: level, resume: fresh ? known.claudeSessionId : null, fork: !!fresh && known.owner !== key, contextFiles: host.contextFiles })
+        await start(entry, { cwd: host.cwd, env: host.env, model, effort: level, resume: fresh ? known.claudeSessionId : null, fork: !!fresh && known.owner !== key, contextFiles: host.contextFiles, memoryIndexText: host.memoryIndexText })
       } catch (error) {
         stop(entry)
         return { messages: [], usage: null, lastPromptTokens: 0, interrupted: true, stalled: false, error: String(error.message || error) }

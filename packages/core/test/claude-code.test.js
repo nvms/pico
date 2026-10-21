@@ -337,3 +337,13 @@ test('Claude\'s subagents are tracked as pico agents while they work', async (t)
   assert.deepEqual(second.finished, { interrupted: true }, 'one still running when the turn ended')
   assert.ok(!result.messages.some((m) => m.tool_calls?.some((c) => c.id === 'b1')), 'a subagent\'s calls stay out of the session history')
 })
+
+test('pico\'s memories reach Claude in place of its own, under the bridge\'s tool names', async (t) => {
+  const { spawn, spawned } = fakeClaude([text('m1', 'Hi.')])
+  const engine = createClaudeCodeEngine({ spawn, bridge: async () => fakeBridge() })
+  t.after(() => engine.releaseAll())
+  const index = 'Memories you have saved. load one with the recall tool when its content is relevant\n- deploys (project): production deploys by hand'
+  await turn(engine, [{ role: 'user', content: 'hello' }], { host: { sessionId: 'pico-1', cwd: '/p', env: {}, memoryIndexText: index } })
+  assert.match(spawned[0].options.appendSystemPrompt, /- deploys \(project\): production deploys by hand/)
+  assert.match(spawned[0].options.appendSystemPrompt, /the mcp__pico__recall tool/)
+})
