@@ -1662,8 +1662,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     return {
       mcpCount: boot.mcp.tools().length,
       rows: [
-        ...builtins.map((t) => ({ name: t.name, desc: t.description.split('\n')[0], note: 'builtin' })),
-        ...scan.tools.map((t) => ({ name: t.name, desc: t.description, note: `${t.source} · ${t._file.split('/').pop()}` })),
+        ...builtins.map((t) => ({ name: t.name, desc: t.description.split('\n')[0], description: t.description, note: 'builtin' })),
+        ...scan.tools.map((t) => ({ name: t.name, desc: t.description, description: t.description, note: `${t.source} · ${t._file.split('/').pop()}` })),
         ...scan.errors.map((e) => ({ name: e.file.split('/').pop(), desc: e.error, note: 'broken' })),
       ],
     }
