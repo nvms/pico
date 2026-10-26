@@ -61,3 +61,17 @@ test('sync follows servers and switches changed by someone else', async (t) => {
   assert.deepEqual(runtime.list().map((s) => s.name).sort(), ['c', 'p'])
   runtime.closeAll()
 })
+
+test('a starting turn waits for servers still coming up, and no longer than it is given', async (t) => {
+  const root = await home(t)
+  // one that fails at once, one that never answers
+  await writeRegistry({ servers: { quick: dead, stuck: 'node -e setInterval(()=>{},1000)' }, disabled: {} })
+  const runtime = await createMcpRuntime({ root })
+  t.after(() => runtime.terminateAll())
+  assert.deepEqual(runtime.starting().sort(), ['quick', 'stuck'])
+  const began = Date.now()
+  await runtime.ready(300)
+  assert.ok(Date.now() - began >= 250, 'waited for the stuck one until the limit')
+  assert.equal(state(runtime, 'quick').status, 'error')
+  assert.deepEqual(runtime.starting(), ['stuck'])
+})

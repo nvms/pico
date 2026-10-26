@@ -23,7 +23,7 @@ test('shutdown waits for interrupted work to persist and cancels owned resources
     providers: [], autoCompact: false, startupContext: { files: [], stopDir: root },
     tracker: createContextTracker({ stopDir: root, loaded: new Set() }),
     memory: { list: async () => [] }, skills: { list: () => [] },
-    mcp: { list: () => [], tools: () => [], terminateAll() { disposed.push('mcp') } },
+    mcp: { list: () => [], tools: () => [], starting: () => [], ready: async () => {}, terminateAll() { disposed.push('mcp') } },
     shells: { killAll() { disposed.push('shells') } },
     wakeups: { cancelAll() { disposed.push('wakeups') } },
     git: { refresh() {}, dispose() { disposed.push('git') } },

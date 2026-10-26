@@ -3,7 +3,12 @@ import { createContextTracker } from './context.js'
 import { buildSystemPrompt } from './system-prompt.js'
 import { memoryIndex } from './memory.js'
 
+// how long a turn waits for MCP servers still starting; an npx package
+// fetched on first use takes seconds
+export const MCP_WAIT_MS = 30000
+
 export async function createAgentContext(boot, { userTools = [], isolated = false, instructions = '' } = {}) {
+  await boot.mcp.ready(MCP_WAIT_MS)
   const files = [...boot.startupContext.files]
   if (isolated) {
     const known = new Set(files.map((file) => file.path))

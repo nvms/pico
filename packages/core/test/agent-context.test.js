@@ -32,7 +32,7 @@ async function fixture(t) {
     startupContext: { stopDir: root, files: [{ path: startup, content: 'Root instructions' }] },
     tracker: createContextTracker({ stopDir: root, loaded: new Set([startup, nested]) }),
     hostTools: [tool('sibling_processes'), tool('schedule'), tool('browser_open'), tool('browser_read')],
-    mcp: { tools: () => [tool('mcp_search')] },
+    mcp: { tools: () => [tool('mcp_search')], starting: () => [], ready: async () => {} },
   }
 }
 

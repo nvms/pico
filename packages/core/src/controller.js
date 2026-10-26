@@ -8,7 +8,7 @@ import { makeEvent } from './events.js'
 import { createSession, createEphemeralSession, forkSession, openSession, loadSession, listSessions, deleteSession, deleteProjectSessions, appendSessionEvent, onSessionWriteError } from './session.js'
 import { createWorktree, listWorktrees, removeWorktree } from './worktrees.js'
 import { ownerRoot } from './paths.js'
-import { createAgentContext } from './agent-context.js'
+import { createAgentContext, MCP_WAIT_MS } from './agent-context.js'
 import { deriveState, userEntries, rewindStats } from './derive.js'
 import { appendPrompt } from './history.js'
 import { runTurn, summarizeText, compactHistory, compactProgress } from './agent.js'
@@ -127,6 +127,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     speed: boot.speedDefaults?.[boot.initialModel.name] === 'fast' ? 'fast' : 'standard',
     busy: false,
     compacting: false,
+    // MCP servers a starting turn waits for, by name
+    awaitingMcp: [],
     compactOutcome: null,
     compactStatus: null,
     turnPhase: 'idle',
@@ -863,6 +865,12 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     const { tracker } = boot
     const loadedBefore = new Set(tracker.loaded)
     const userToolScan = await refreshProjectIndexes()
+    const starting = boot.mcp.starting()
+    if (starting.length) {
+      set({ awaitingMcp: starting })
+      await boot.mcp.ready(MCP_WAIT_MS)
+      set({ awaitingMcp: [] })
+    }
     const context = await createAgentContext(boot, { userTools: userToolScan.tools })
     const { tools, recorder } = createToolset({
       ...context.tools,

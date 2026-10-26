@@ -32,7 +32,7 @@ async function fixture(t, run) {
     providers: [], autoCompact: false, startupContext: { files: [], stopDir: root },
     tracker: createContextTracker({ stopDir: root, loaded: new Set() }),
     memory: { list: async () => [] }, skills: { list: () => [] },
-    mcp: { list: () => [], tools: () => [], terminateAll() {} },
+    mcp: { list: () => [], tools: () => [], starting: () => [], ready: async () => {}, terminateAll() {} },
     shells: { killAll() {}, output() { return { output: 'shell output' } } }, git: { refresh() {} },
     setMcpNotify() {}, setShellsNotify() {}, setWakeupsNotify() {}, setGitNotify() {}, setWakeupsFire() {}, setShellsExit(handler) { shellExit = handler },
   }

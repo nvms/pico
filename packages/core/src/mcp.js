@@ -149,7 +149,16 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
   for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
   for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
 
-  async function connect(name) {
+  // the connections under way, which a turn about to start waits for
+  const connecting = new Set()
+  function connect(name) {
+    const attempt = open(name)
+    connecting.add(attempt)
+    attempt.finally(() => connecting.delete(attempt)).catch(() => {})
+    return attempt
+  }
+
+  async function open(name) {
     const server = servers.get(name)
     if (!server) return
     server.status = 'connecting'
@@ -208,6 +217,25 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
   }
 
   return {
+    // resolves once every switched-on server has connected or failed, or
+    // after `ms`, whichever is first: a turn's tools are fixed as it starts,
+    // so one starting the moment its session does, as a scheduled run's,
+    // would otherwise go without servers still coming up
+    // the switched-on servers not yet connected or failed, by name
+    starting() {
+      return [...servers.values()].filter((s) => s.enabled && (s.status === 'idle' || s.status === 'connecting')).map((s) => s.name)
+    },
+    ready(ms) {
+      for (const server of servers.values()) {
+        if (server.enabled && server.status === 'idle') connect(server.name).catch(() => {})
+      }
+      if (!connecting.size) return Promise.resolve()
+      let timer
+      return Promise.race([
+        Promise.allSettled([...connecting]),
+        new Promise((resolve) => { timer = setTimeout(resolve, ms) }),
+      ]).finally(() => clearTimeout(timer))
+    },
     connectAll() {
       const pending = []
       for (const server of servers.values()) {

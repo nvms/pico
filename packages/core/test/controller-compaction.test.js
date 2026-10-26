@@ -24,7 +24,7 @@ async function fixture(t, compactRun = async () => summary) {
     providers: [], autoCompact: false, startupContext: { files: [], stopDir: root },
     tracker: createContextTracker({ stopDir: root, loaded: new Set() }),
     memory: { list: async () => [] }, skills: { list: () => [] },
-    mcp: { list: () => [], tools: () => [], terminateAll() {} },
+    mcp: { list: () => [], tools: () => [], starting: () => [], ready: async () => {}, terminateAll() {} },
     shells: { killAll() {} }, git: { refresh() {} },
     setMcpNotify() {}, setShellsNotify() {}, setWakeupsNotify() {}, setGitNotify() {}, setWakeupsFire() {}, setShellsExit() {},
   }
