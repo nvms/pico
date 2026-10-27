@@ -594,13 +594,19 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     state.streaming = null
   }
 
+  // a message sent to be answered aloud is waiting for its turn: queued,
+  // expedited or about to run; the message its turn saves carries it
+  let spokenPending = false
+
   async function persistUserMessage(text, { viewed = false } = {}) {
     // a view label carries the image's path; only user text is scanned
     // for paths, or the viewed image would attach twice
     const { content: built } = viewed ? buildUserContent(text, state.attachments) : finalizeUserContent(text, state.attachments)
     ensureSession()
     const content = state.session.file ? await stashImages(built, sessionAttachmentsDir(boot.root, state.session.id)) : built
-    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}) }))
+    const spoken = !viewed && spokenPending
+    if (!viewed) spokenPending = false
+    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}), ...(spoken ? { spoken: true } : {}) }))
   }
 
   async function executeTurn(text, { views = [] } = {}) {
@@ -693,7 +699,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     if (state.expedited.length > 0 || state.queued.length > 0 || state.views.length > 0) {
       const settled = settlePending({ ...state, interrupted: controller.signal.aborted })
       set({ expedited: [], queued: settled.queued, views: [] })
-      if (settled.recall.length > 0) emit('input', settled.recall.join('\n'))
+      if (settled.recall.length > 0) { spokenPending = false; emit('input', settled.recall.join('\n')) }
       else {
         executeTurn(settled.messages.join('\n'), { views: settled.views })
         return
@@ -977,7 +983,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       // an image the model asked for is dropped with the turn
       const settled = settlePending({ ...state, afterTool: sendAfterToolTriggered, interrupted: result.interrupted })
       set({ expedited: [], queued: settled.queued, views: [] })
-      if (settled.recall.length > 0) emit('input', settled.recall.join('\n'))
+      if (settled.recall.length > 0) { spokenPending = false; emit('input', settled.recall.join('\n')) }
       else {
         executeTurn(settled.messages.join('\n'), { views: settled.views })
         return
@@ -987,10 +993,13 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     maybeAutoCompact()
   }
 
-  function send(text) {
+  // spoken: the person will hear the reply read aloud, so the model is told
+  // to answer in speech
+  function send(text, { spoken = false } = {}) {
     if (peerTransition || shuttingDown) return flash('session is switching')
     const value = text.trim()
     if (!value) return
+    if (spoken) spokenPending = true
     state.peerPaused = false
     state.sent = [...state.sent, { text: value, at: Date.now() }]
     appendPrompt(boot.root, value).catch(() => {})
@@ -1025,6 +1034,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   function recallPending() {
+    spokenPending = false
     const next = takePending()
     return next.join('\n')
   }
@@ -1039,6 +1049,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   function resetConversation({ model, effort, speed } = {}) {
+    spokenPending = false
     state.session = null
     state.events = []
     state.persisted = 0

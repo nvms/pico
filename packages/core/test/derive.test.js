@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { makeEvent } from '../src/events.js'
-import { deriveState, userEntries, rewindStats } from '../src/derive.js'
+import { deriveState, userEntries, rewindStats, SPOKEN_NOTE } from '../src/derive.js'
 
 const user = (text) => makeEvent('message', { message: { role: 'user', content: text } })
 const assistant = (content, toolCalls) =>
@@ -19,6 +19,17 @@ test('folds a plain conversation', () => {
   assert.equal(state.transcript[0].kind, 'user')
   assert.equal(state.transcript[1].kind, 'assistant')
   assert.equal(state.providerHistory.length, 2)
+})
+
+test('a message to be answered aloud tells the model so, and shows only its words', () => {
+  const spoken = makeEvent('message', { message: { role: 'user', content: 'what changed' }, spoken: true })
+  const pictured = makeEvent('message', { message: { role: 'user', content: [{ type: 'text', text: 'and this' }] }, spoken: true })
+  const state = deriveState([spoken, assistant('a lot'), user('thanks'), pictured])
+  assert.equal(state.transcript[0].text, 'what changed')
+  assert.equal(state.providerHistory[0].content, `what changed\n\n${SPOKEN_NOTE}`)
+  assert.equal(state.providerHistory[2].content, 'thanks')
+  assert.equal(state.providerHistory[3].content.at(-1).text, `\n\n${SPOKEN_NOTE}`)
+  assert.equal(state.transcript[3].text, 'and this')
 })
 
 test('clears a custom session title', () => {

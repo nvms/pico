@@ -77,10 +77,19 @@ function pushHistory(state, message, eventId) {
   state.historyEventIds.push(eventId)
 }
 
+// what the model reads after a message the person will hear answered
+// aloud, rather than read
+export const SPOKEN_NOTE = '[system notification] The user will hear your reply read aloud by text to speech, not read it on a screen. Write it to be listened to: plain spoken sentences and short paragraphs. No lists or bullet points, no headings, no bold or italics, no tables, no "label: description" lines, no code blocks, file paths, URLs or commit hashes; describe them in words instead. Say numbers, names and steps the way you would out loud, in order, with ordinary connecting words.'
+
+function spokenTo(message) {
+  if (Array.isArray(message.content)) return { ...message, content: [...message.content, { type: 'text', text: `\n\n${SPOKEN_NOTE}` }] }
+  return { ...message, content: `${message.content}\n\n${SPOKEN_NOTE}` }
+}
+
 function foldMessage(state, event) {
   const message = event.data.message
   if (!message) return
-  pushHistory(state, message, event.id)
+  pushHistory(state, event.data.spoken ? spokenTo(message) : message, event.id)
   for (const call of message.tool_calls || []) state.openToolCalls.add(call.id)
   if (message.role === 'tool') {
     state.openToolCalls.delete(message.tool_call_id)
