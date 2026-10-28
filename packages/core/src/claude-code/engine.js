@@ -259,8 +259,10 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
         onStream({ type: block.is_error ? 'tool_error' : 'tool_complete', call: use.call, ...(block.is_error ? { error: text } : { result: text }) })
       }
       // between tool rounds is where pico delivers notes that arrived
-      // mid-turn; Claude Code folds a message sent now into the same turn
-      if (interrupted || !beforeRequest) return
+      // mid-turn; Claude Code folds a message sent now into the same turn,
+      // but cancels any call still running, a subagent's included, as if
+      // the user had cut in, so notes wait until every call has finished
+      if (interrupted || !beforeRequest || uses.size) return
       const notes = await beforeRequest()
       if (!notes?.length) return
       collected.push(...notes)

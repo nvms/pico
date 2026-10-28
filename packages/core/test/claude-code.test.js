@@ -338,6 +338,20 @@ test('Claude\'s subagents are tracked as pico agents while they work', async (t)
   assert.ok(!result.messages.some((m) => m.tool_calls?.some((c) => c.id === 'b1')), 'a subagent\'s calls stay out of the session history')
 })
 
+test('a note that arrives mid-turn waits until no call is still running', async (t) => {
+  const task = (id) => ({ type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id, name: 'Agent', input: { description: id, prompt: id } }] } })
+  const done = (id) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: `${id} done` }] } })
+  const { spawn, spawned } = fakeClaude([[task('a1'), task('a2'), done('a1'), done('a2')]])
+  const engine = createClaudeCodeEngine({ spawn, bridge: async () => fakeBridge() })
+  t.after(() => engine.releaseAll())
+  let asked = 0
+  const beforeRequest = async () => { asked++; return [{ role: 'user', content: '[peer input] hello' }] }
+  const { result } = await turn(engine, [{ role: 'user', content: 'split it' }], { beforeRequest })
+  assert.equal(asked, 1, 'not asked while a2 was still running')
+  assert.deepEqual(spawned[0].sent[1], [{ type: 'text', text: '[peer input] hello' }])
+  assert.deepEqual(result.messages.map((m) => m.role), ['assistant', 'tool', 'tool', 'user'])
+})
+
 test('pico\'s memories reach Claude in place of its own, under the bridge\'s tool names', async (t) => {
   const { spawn, spawned } = fakeClaude([text('m1', 'Hi.')])
   const engine = createClaudeCodeEngine({ spawn, bridge: async () => fakeBridge() })
