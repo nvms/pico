@@ -72,6 +72,11 @@ export function projectMcpFile(root) {
   return join(sharedProjectDir(root), 'mcp.json')
 }
 
+// a project's own settings, shared by its worktrees
+export function projectSettingsFile(root) {
+  return join(sharedProjectDir(root), 'settings.json')
+}
+
 export function globalMcpFile() {
   return join(picoHome(), 'mcp.json')
 }

@@ -1,7 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { globalAgentsFile } from './paths.js'
+import { findProjectRoot, globalAgentsFile } from './paths.js'
+import { readProjectSettings } from './project-settings.js'
 
 function readIfExists(path) {
   try {
@@ -49,10 +50,14 @@ function readDirContext(dir) {
   return null
 }
 
+// a project with global instructions switched off reads only its own:
+// none from ~/.pico, and none from folders above the project's
 export function loadStartupContext(cwd) {
-  const stopDir = contextStopDir(cwd)
+  const root = findProjectRoot(cwd)
+  const own = !readProjectSettings(root).globalInstructions
+  const stopDir = own ? root : contextStopDir(cwd)
   const files = []
-  const globalContent = readIfExists(globalAgentsFile())
+  const globalContent = own ? null : readIfExists(globalAgentsFile())
   if (globalContent) files.push({ path: globalAgentsFile(), content: globalContent })
   for (const dir of ancestorDirs(cwd, stopDir)) {
     const entry = readDirContext(dir)

@@ -61,3 +61,19 @@ test('a tracker seeded from a copy does not consume the original discovery', asy
   assert.deepEqual(main.check(join(root, 'packages', 'api', 'app.js')).map((f) => f.content), ['api rules'])
   assert.deepEqual(main.check(join(root, 'packages', 'api', 'app.js')), [])
 })
+
+test('a project with global instructions off reads only its own', async () => {
+  const { writeProjectSettings } = await import('../src/project-settings.js')
+  const parent = await mkdtemp(join(tmpdir(), 'pico-parent-'))
+  process.env.PICO_HOME = await mkdtemp(join(tmpdir(), 'pico-home-'))
+  const root = join(parent, 'chats')
+  await mkdir(join(root, '.git'), { recursive: true })
+  await writeFile(join(process.env.PICO_HOME, 'AGENTS.md'), 'global rules')
+  await writeFile(join(root, 'AGENTS.md'), 'chat rules')
+  assert.deepEqual(loadStartupContext(root).files.map((f) => f.content), ['global rules', 'chat rules'])
+  writeProjectSettings(root, { globalInstructions: false })
+  const { files, stopDir } = loadStartupContext(root)
+  assert.deepEqual(files.map((f) => f.content), ['chat rules'])
+  assert.equal(stopDir, root)
+  delete process.env.PICO_HOME
+})
