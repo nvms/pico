@@ -47,7 +47,7 @@ async function fixture(t, run) {
   return { controller, remote, calls, shellExit: (shell) => shellExit({ id: 'shell-1', command: 'test', exitCode: 0, startedAt: Date.now(), ...shell }) }
 }
 
-test('saved sessions connect under an automatic name until renamed; conflicts preserve identity', async t => {
+test('a session keeps its automatic address when titled, and any number may share a title', async t => {
   const { controller: ctl, remote } = await fixture(t)
   assert.equal((await remote.list()).peers.length, 0)
   ctl.send('hello')
@@ -58,20 +58,39 @@ test('saved sessions connect under an automatic name until renamed; conflicts pr
   assert.equal(ctl.sessionName(), automatic)
   assert.equal(await ctl.rename('foo'), true)
   const original = ctl.state.session
-  assert.equal((await remote.list()).peers[0].name, 'foo')
+  assert.deepEqual((await remote.list()).peers.map(peer => [peer.name, peer.title]), [[automatic, 'foo']])
   assert.equal(ctl.sessionName(), 'foo')
-  assert.equal(await ctl.rename('bar'), false)
-  assert.equal(ctl.state.derived.title, 'foo')
+  // another session's address is no bar to a title
+  assert.equal(await ctl.rename('bar'), true)
+  assert.equal(ctl.state.derived.title, 'bar')
+  assert.equal(ctl.peerAddress(), automatic)
   await ctl.fork()
   assert.equal(ctl.state.derived.title, null)
   assert.deepEqual((await remote.list()).peers.map(peer => peer.name), [automaticPeerName(ctl.boot.root, ctl.state.session.id)])
-  assert.equal((await loadSession(original.file)).events.at(-1).data.text, 'foo')
+  assert.equal((await loadSession(original.file)).events.findLast(event => event.type === 'title').data.text, 'bar')
   await ctl.rename('forked')
   assert.equal(await ctl.rename(''), true)
-  assert.equal((await remote.list()).peers[0].name, automaticPeerName(ctl.boot.root, ctl.state.session.id))
+  assert.equal(ctl.sessionName(), automaticPeerName(ctl.boot.root, ctl.state.session.id))
   await ctl.newSession()
   assert.equal(ctl.state.session, null)
   assert.equal((await remote.list()).peers.length, 0)
+})
+
+test('an address once given is kept, and a session can claim a chosen one', async t => {
+  const { controller: ctl, remote } = await fixture(t)
+  await ctl.rename('foo')
+  const address = ctl.peerAddress()
+  const original = ctl.state.session
+  await original.flush()
+  const { header } = await loadSession(original.file)
+  await ctl.newSession()
+  await ctl.resume({ file: original.file, header })
+  await waitFor(() => ctl.state.peerConnection)
+  assert.equal(ctl.peerAddress(), address)
+  assert.equal(await ctl.claimAddress('bar'), false)
+  assert.equal(await ctl.claimAddress('helper'), true)
+  assert.equal(ctl.peerAddress(), 'helper')
+  assert.deepEqual((await remote.list()).peers.map(peer => [peer.name, peer.title]), [['helper', 'foo']])
 })
 
 test('an automatic name that is taken grows longer', async t => {
@@ -153,20 +172,15 @@ test('outgoing messages and receipts are independent transcript entries', async 
   assert.equal(items[0].direction, 'outgoing')
 })
 
-test('resuming a conflicting archived name stays disconnected and visibly reports conflict', async t => {
+test('a title shared by two sessions reaches neither, and says which there are', async t => {
   const { controller: ctl, remote } = await fixture(t)
   await ctl.rename('foo')
-  const original = ctl.state.session
-  await original.flush()
-  const { header } = await loadSession(original.file)
-  await ctl.newSession()
-  await remote.connect({ id: 'remote-id', name: 'foo', cwd: '/library' })
-  await ctl.resume({ file: original.file, header })
-  assert.equal(ctl.state.derived.title, 'foo')
-  assert.equal(ctl.state.peerConnection, null)
-  assert.match(ctl.state.peerError, /already connected/)
-  await ctl.rename('renamed')
-  assert.equal(ctl.state.peerConnection.name, 'renamed')
+  await remote.connect({ id: 'remote-id', name: 'bar', title: 'foo', cwd: '/library' })
+  const third = createPeers({ directory: join(ctl.boot.root, 'peers'), onMessage: async () => {} })
+  await third.connect({ id: 'third-id', name: 'baz', cwd: '/elsewhere' })
+  t.after(() => third.disconnect())
+  await assert.rejects(third.send({ to: 'foo', message: 'hi' }), /2 sessions are called "foo"/)
+  await third.send({ to: 'bar', message: 'hi' })
 })
 
 test('a renamed fork never processes messages addressed to its source session', async t => {
@@ -218,14 +232,14 @@ test('session transitions wait for accepted peer persistence', async t => {
   assert.equal((await loadSession(original.file)).events.some(event => event.type === 'peer_message'), true)
 })
 
-test('failed rename persistence restores the previous connected identity', async t => {
+test('a rename that fails to save leaves the title as it was', async t => {
   const { controller: ctl, remote } = await fixture(t)
   await ctl.rename('foo')
   const append = ctl.state.session.append
   ctl.state.session.append = (event, options) => event.type === 'title' ? Promise.reject(new Error('disk full')) : append(event, options)
   assert.equal(await ctl.rename('other'), false)
   assert.equal(ctl.state.derived.title, 'foo')
-  assert.equal((await remote.list()).peers[0].name, 'foo')
+  assert.equal((await remote.list()).peers[0].title, 'foo')
 })
 
 test('peer pause does not suppress unrelated system notifications', async t => {

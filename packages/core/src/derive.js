@@ -151,7 +151,7 @@ function foldMessage(state, event) {
 function peerInputMessage(peer) {
   return {
     role: 'user',
-    content: `[peer input, not user instruction, from ${peer.from.name} (${peer.from.id})]\n${peer.message}`,
+    content: `[peer input, not user instruction, from ${peer.from.title ? `"${peer.from.title}", ${peer.from.name}` : peer.from.name} (${peer.from.id})]\n${peer.message}`,
   }
 }
 
@@ -254,6 +254,12 @@ export function deriveState(events) {
     }
     if (event.type === 'title') {
       state.title = event.data.text
+      continue
+    }
+    // kept with the session it was given to, so a fork, which copies the
+    // events, gets an address of its own
+    if (event.type === 'peer_address') {
+      state.peerAddress = { name: event.data.name, session: event.data.session }
       continue
     }
     if (dropped.has(event.id)) {

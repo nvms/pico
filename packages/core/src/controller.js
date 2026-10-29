@@ -271,25 +271,62 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     set({ peerConnection: null, peerError: null })
   }
 
-  // every saved session is reachable by peers: under the name the user gave
-  // it, or else an automatic one from its folder and id
+  // every saved session is reachable by peers at an address: the one it
+  // was first given, kept in the session, or else an automatic one from its
+  // folder and id, longer only when that is taken; the title the person
+  // gave it rides along, shared by any number of sessions
   async function connectAutomatic() {
     const id = state.session.id
-    for (let length = 2; ; length++) {
+    const title = state.derived.title || null
+    const kept = state.derived.peerAddress?.session === id ? state.derived.peerAddress.name : null
+    let identity = null
+    if (kept) {
       try {
-        return await peers.connect({ id, name: automaticPeerName(boot.root, id, length), cwd: boot.cwd })
+        identity = await peers.connect({ id, name: kept, title, cwd: boot.cwd })
+      } catch (error) {
+        if (error.code !== 'PEER_NAME_TAKEN') throw error
+      }
+    }
+    for (let length = 2; !identity; length++) {
+      try {
+        identity = await peers.connect({ id, name: automaticPeerName(boot.root, id, length), title, cwd: boot.cwd })
       } catch (error) {
         if (error.code !== 'PEER_NAME_TAKEN' || length >= 32) throw error
       }
+    }
+    if (identity.name !== kept) await keepAddress(identity.name)
+    return identity
+  }
+
+  async function keepAddress(name) {
+    const event = makeEvent('peer_address', { name, session: state.session.id })
+    await state.session.append(event, { strict: true })
+    state.events.push(event)
+    state.persisted = state.events.length
+    reDerive()
+  }
+
+  // a chosen address in place of the automatic one, as a host gives a
+  // session it runs for a purpose; false when another session holds it
+  async function claimAddress(name) {
+    if (boot.ephemeral) return false
+    ensureSession()
+    await state.session.flush()
+    try {
+      const identity = await peers.connect({ id: state.session.id, name, title: state.derived.title || null, cwd: boot.cwd })
+      if (state.derived.peerAddress?.name !== name || state.derived.peerAddress?.session !== state.session.id) await keepAddress(name)
+      set({ peerConnection: identity, peerError: null })
+      return true
+    } catch (error) {
+      if (error.code === 'PEER_NAME_TAKEN') return false
+      throw error
     }
   }
 
   async function reconnectPeers() {
     if (!state.session || boot.ephemeral) return
     try {
-      const identity = state.derived.title
-        ? await peers.connect({ id: state.session.id, name: state.derived.title, cwd: boot.cwd })
-        : await connectAutomatic()
+      const identity = await connectAutomatic()
       set({ peerConnection: identity, peerError: null })
     } catch (error) {
       set({ peerConnection: null, peerError: error.message })
@@ -1119,36 +1156,28 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     flash('session forked')
   }
 
+  // the title the person calls the session by; any number may share one,
+  // and its address stays as it was
   async function rename(text = '') {
     const name = text.trim()
-    if (boot.ephemeral && name) return flash('peer messaging requires a saved session')
     ensureSession()
-    const previous = peers.identity
     try {
       await state.session.flush()
-      if (name) await peers.connect({ id: state.session.id, name, cwd: boot.cwd })
       const event = makeEvent('title', { text: name || null })
       await state.session.append(event, { strict: true })
       state.events.push(event)
       state.persisted = state.events.length
-      if (!name && !boot.ephemeral) await connectAutomatic()
-      set({ peerConnection: peers.identity, peerError: null })
       reDerive()
-      flash(name ? `session renamed to "${name}"` : `session name reset to "${peers.identity?.name}"`)
+      if (peers.identity) await peers.connect({ ...peers.identity, title: name || null })
+      set({ peerConnection: peers.identity, peerError: null })
+      flash(name ? `session renamed to "${name}"` : 'session name cleared')
       return true
     } catch (error) {
-      try {
-        if (previous) await peers.connect(previous)
-        else await disconnectPeers()
-        set({ peerConnection: peers.identity })
-      } catch (rollbackError) {
-        await disconnectPeers().catch(() => {})
-        set({ peerConnection: null, peerError: rollbackError.message })
-      }
       flash(`rename failed: ${error.message}`)
       return false
     }
   }
+
 
   function setColor(input = '') {
     const names = Object.keys(SESSION_COLORS)
@@ -1852,6 +1881,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     boot,
     // what peers call this session: the user's name for it, or the automatic one
     sessionName: () => state.derived.title || state.peerConnection?.name || null,
+    peerAddress: () => state.peerConnection?.name ?? null,
+    claimAddress,
     isWorking: () => state.busy || preparingTurn,
     ensureSession,
     on,

@@ -11,9 +11,12 @@ const MAX_MESSAGE = 64 * 1024
 const TIMEOUT = 5000
 const MAX_CONNECTIONS = 32
 const fail = (message, code = 'PEER_ERROR') => Object.assign(new Error(message), { code })
-const messageIdentity = ({ id, name }) => ({ id, name })
+// name: the session's address, unique among connected sessions and kept
+// for good; title: what the person calls it, which any number may share
+const messageIdentity = ({ id, name, title }) => ({ id, name, ...(title ? { title } : {}) })
 const validStatus = status => ['idle', 'busy', 'paused'].includes(status)
-const publicIdentity = ({ id, name, cwd, status }) => ({ id, name, cwd, status })
+const publicIdentity = ({ id, name, title, cwd, status }) => ({ id, name, ...(title ? { title } : {}), cwd, status })
+const validLabel = value => typeof value === 'string' && !!value.trim() && value === value.trim() && value.length <= 200 && !/[\x00-\x1f\x7f]/.test(value)
 
 function defaultDirectory() {
   const hash = createHash('sha256').update(picoHome()).digest('hex').slice(0, 12)
@@ -193,7 +196,8 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     return serialize(async () => {
       await initialize()
       if (!next || typeof next.id !== 'string' || !next.id || next.id.length > 100 || /[\x00-\x20\x7f]/.test(next.id) || typeof next.cwd !== 'string' || next.cwd.length > 4096) throw fail('session ID and working directory are required')
-      if (typeof next.name !== 'string' || !next.name.trim() || next.name !== next.name.trim() || next.name.length > 200 || /[\x00-\x1f\x7f]/.test(next.name)) throw fail('peer name must be 1-200 characters without control characters')
+      if (!validLabel(next.name)) throw fail('peer name must be 1-200 characters without control characters')
+      if (next.title != null && !validLabel(next.title)) throw fail('peer title must be 1-200 characters without control characters')
       if (identity && identity.id !== next.id) throw fail('disconnect before changing session ID')
       if (next.status !== undefined && !validStatus(next.status)) throw fail('invalid peer status')
       const previous = identity
@@ -262,9 +266,14 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     if (typeof to !== 'string' || !to) throw fail('message target is required')
     validateMessage(message)
     const records = await readRegistry()
-    const matches = records.filter(record => processAlive(record.pid) && (record.id === to || record.name === to))
+    if (to === self.id || to === self.name) throw fail('cannot message yourself')
+    // by id or address first; by title only when no address matches, and
+    // then only when one session has it
+    const live = records.filter(record => processAlive(record.pid) && record.id !== self.id)
+    let matches = live.filter(record => record.id === to || record.name === to)
+    if (!matches.length) matches = live.filter(record => record.title === to)
     if (!matches.length) throw fail(`peer "${to}" is offline`)
-    if (matches.length > 1) throw fail(`peer "${to}" is ambiguous; use a session ID`)
+    if (matches.length > 1) throw fail(`${matches.length} sessions are called "${to}": ${matches.map(record => `${record.name} in ${record.cwd}`).join('; ')}. Use one's name`)
     const peer = matches[0]
     if (peer.id === self.id) throw fail('cannot message yourself')
     const envelope = { id: randomUUID(), from: messageIdentity(self), to: messageIdentity(peer), message }

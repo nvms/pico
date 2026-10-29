@@ -509,7 +509,7 @@ export function Message({ item, verbose, showLocked = false }) {
       <box style={{ flexDirection: 'column', paddingLeft: 2 }}>
         <text> </text>
         <box style={{ flexDirection: 'row' }}>
-          <text style={{ color: PEER, bold: true }}>{`${incoming ? 'from' : 'to'} @${incoming ? item.from.name : item.to.name}`}</text>
+          <text style={{ color: PEER, bold: true }}>{`${incoming ? 'from' : 'to'} @${incoming ? item.from.title || item.from.name : item.to.title || item.to.name}`}</text>
           <text style={{ color, bold: unread }}>{status}</text>
         </box>
         <text style={{ color }}>{item.text}</text>
