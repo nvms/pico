@@ -1,6 +1,6 @@
 {
   "name": "picocode-core",
-  "version": "0.9.223",
+  "version": "0.9.224",
   "description": "The agent runtime behind pico: sessions, tools, subagents, MCP, memory, and model access",
   "type": "module",
   "license": "MIT",
