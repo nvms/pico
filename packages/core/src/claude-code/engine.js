@@ -342,9 +342,9 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     }
   }
 
-  // pico's compaction, done by the same model: one bare Claude Code run
-  // that reads the conversation and writes the summary
-  async function compact({ history, modelName, prompt, signal, onStream = () => {} }) {
+  // one question answered as text by a bare Claude Code run: no tools, no
+  // session kept, `system` added to Claude Code's own prompt
+  async function ask({ modelName, system = '', prompt, effort = null, signal, onStream = () => {} }) {
     let text = ''
     let failure = null
     let proc = null
@@ -353,6 +353,8 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
         command,
         cwd: process.cwd(),
         model: cliModel(modelName),
+        ...(effort ? { effort } : {}),
+        ...(system ? { appendSystemPrompt: system } : {}),
         oneShot: true,
         onMessage: (message) => {
           if (message.type === 'stream_event' && message.event?.delta?.type === 'text_delta') {
@@ -368,11 +370,18 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
         onExit: (exit) => { failure ??= exit.error?.message ?? null; resolve() },
       })
       signal?.addEventListener('abort', () => { proc.close(); resolve() }, { once: true })
-      proc.send(`<transcript>\n${transcriptText(history)}\n</transcript>\n\n${prompt}`)
+      proc.send(prompt)
     })
-    if (signal?.aborted) throw new Error('compaction cancelled')
+    if (signal?.aborted) throw new Error('cancelled')
     if (failure) throw new Error(failure)
     return text.trim()
+  }
+
+  // pico's compaction, done by the same model: one bare run that reads the
+  // conversation and writes the summary
+  function compact({ history, modelName, prompt, signal, onStream }) {
+    return ask({ modelName, prompt: `<transcript>\n${transcriptText(history)}\n</transcript>\n\n${prompt}`, signal, onStream })
+      .catch((error) => { throw signal?.aborted ? new Error('compaction cancelled') : error })
   }
 
   return {
@@ -381,6 +390,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     // too would only restart the Claude session from a summary
     autoCompact: false,
     run,
+    ask,
     compact,
     // the pico session is done with: its process and bridge go
     release(sessionId) {

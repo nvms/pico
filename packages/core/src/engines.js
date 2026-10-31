@@ -5,7 +5,8 @@
 // the controller, session log, transcript, peers and tools work the same
 // whichever engine ran the turn.
 //
-// An engine is { name, run, compact, autoCompact?, release? }. `run` also
+// An engine is { name, run, ask, compact, autoCompact?, release? }. `ask` answers
+// one question as text, outside any session. `run` also
 // receives `host` (the pico session id, cwd, env, context files, and the
 // engine's own state saved with the session) and may return `engineState`
 // to be saved. `release(sessionId)` frees what an engine holds for a
