@@ -631,22 +631,35 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     state.streaming = null
   }
 
-  // a message sent to be answered aloud is waiting for its turn: queued,
-  // expedited or about to run; the message its turn saves carries it
-  let spokenPending = false
+  // the messages sent to be answered aloud that wait for a turn, by text,
+  // counted, since the waiting messages are kept as text; a turn made of
+  // waiting messages is spoken when any of them was
+  let spokenWaiting = new Map()
+  function waitSpoken(text) {
+    spokenWaiting.set(text, (spokenWaiting.get(text) ?? 0) + 1)
+  }
+  function takeSpoken(messages) {
+    let any = false
+    for (const text of messages) {
+      const count = spokenWaiting.get(text)
+      if (!count) continue
+      any = true
+      if (count > 1) spokenWaiting.set(text, count - 1)
+      else spokenWaiting.delete(text)
+    }
+    return any
+  }
 
-  async function persistUserMessage(text, { viewed = false } = {}) {
+  async function persistUserMessage(text, { viewed = false, spoken = false } = {}) {
     // a view label carries the image's path; only user text is scanned
     // for paths, or the viewed image would attach twice
     const { content: built } = viewed ? buildUserContent(text, state.attachments) : finalizeUserContent(text, state.attachments)
     ensureSession()
     const content = state.session.file ? await stashImages(built, sessionAttachmentsDir(boot.root, state.session.id)) : built
-    const spoken = !viewed && spokenPending
-    if (!viewed) spokenPending = false
-    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}), ...(spoken ? { spoken: true } : {}) }))
+    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}), ...(spoken && !viewed ? { spoken: true } : {}) }))
   }
 
-  async function executeTurn(text, { views = [] } = {}) {
+  async function executeTurn(text, { views = [], spoken = false } = {}) {
     if (shuttingDown) return
     preparingTurn = true
     let prepared
@@ -654,7 +667,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     const session = state.session
     try {
       for (const view of views) await persistUserMessage(view, { viewed: true })
-      if (text) await persistUserMessage(text)
+      if (text) await persistUserMessage(text, { spoken })
       reDerive()
       preparingTurn = false
       prepared()
@@ -736,9 +749,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     if (state.expedited.length > 0 || state.queued.length > 0 || state.views.length > 0) {
       const settled = settlePending({ ...state, interrupted: controller.signal.aborted })
       set({ expedited: [], queued: settled.queued, views: [] })
-      if (settled.recall.length > 0) { spokenPending = false; emit('input', settled.recall.join('\n')) }
+      if (settled.recall.length > 0) { takeSpoken(settled.recall); emit('input', settled.recall.join('\n')) }
       else {
-        executeTurn(settled.messages.join('\n'), { views: settled.views })
+        executeTurn(settled.messages.join('\n'), { views: settled.views, spoken: takeSpoken(settled.messages) })
         return
       }
     }
@@ -1020,9 +1033,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       // an image the model asked for is dropped with the turn
       const settled = settlePending({ ...state, afterTool: sendAfterToolTriggered, interrupted: result.interrupted })
       set({ expedited: [], queued: settled.queued, views: [] })
-      if (settled.recall.length > 0) { spokenPending = false; emit('input', settled.recall.join('\n')) }
+      if (settled.recall.length > 0) { takeSpoken(settled.recall); emit('input', settled.recall.join('\n')) }
       else {
-        executeTurn(settled.messages.join('\n'), { views: settled.views })
+        executeTurn(settled.messages.join('\n'), { views: settled.views, spoken: takeSpoken(settled.messages) })
         return
       }
     }
@@ -1036,16 +1049,16 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     if (peerTransition || shuttingDown) return flash('session is switching')
     const value = text.trim()
     if (!value) return
-    if (spoken) spokenPending = true
     state.peerPaused = false
     state.sent = [...state.sent, { text: value, at: Date.now() }]
     appendPrompt(boot.root, value).catch(() => {})
     if (state.busy || preparingTurn) {
+      if (spoken) waitSpoken(value)
       set({ queued: [...state.queued, value] })
       return
     }
     changed()
-    executeTurn(value)
+    executeTurn(value, { spoken })
   }
 
   function interrupt() {
@@ -1071,8 +1084,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   function recallPending() {
-    spokenPending = false
     const next = takePending()
+    takeSpoken(next)
     return next.join('\n')
   }
 
@@ -1086,7 +1099,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   }
 
   function resetConversation({ model, effort, speed } = {}) {
-    spokenPending = false
+    spokenWaiting = new Map()
     state.session = null
     state.events = []
     state.persisted = 0
