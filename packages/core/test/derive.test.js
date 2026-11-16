@@ -274,3 +274,10 @@ test('userEntries and rewindStats', () => {
   assert.equal(stats.msgs, 3)
   assert.equal(stats.edits.length, 1)
 })
+
+test('a spoken message carries the host\'s own wording of the note when it was sent with one', () => {
+  const spoken = makeEvent('message', { message: { role: 'user', content: 'how is it going' }, spoken: 'Answer in one spoken sentence.' })
+  const state = deriveState([spoken])
+  assert.equal(state.providerHistory[0].content, 'how is it going\n\nAnswer in one spoken sentence.')
+  assert.equal(state.transcript[0].text, 'how is it going')
+})

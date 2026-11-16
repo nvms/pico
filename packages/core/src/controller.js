@@ -673,7 +673,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     const { content: built } = viewed ? buildUserContent(text, state.attachments) : finalizeUserContent(text, state.attachments)
     ensureSession()
     const content = state.session.file ? await stashImages(built, sessionAttachmentsDir(boot.root, state.session.id)) : built
-    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}), ...(spoken && !viewed ? { spoken: true } : {}) }))
+    persist(makeEvent('message', { message: { role: 'user', content }, ...(viewed ? { origin: 'view' } : {}), ...(spoken && !viewed ? { spoken: boot.prompts?.spoken?.trim() || true } : {}) }))
   }
 
   async function executeTurn(text, { views = [], spoken = false } = {}) {

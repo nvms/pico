@@ -81,15 +81,17 @@ function pushHistory(state, message, eventId) {
 // aloud, rather than read
 export const SPOKEN_NOTE = '[system notification] The user will hear your reply read aloud by text to speech, not read it on a screen, so be brief: say only what they need, in as few short spoken sentences as possible, usually two or three. Leave out background, detail, examples, caveats and summaries unless leaving them out would mislead; when there is more, offer it in one short sentence instead of saying it. Plain speech only: no lists or bullet points, no headings, no bold or italics, no tables, no "label: description" lines, no code, file paths, URLs or commit hashes; describe them in words. Say numbers and names the way you would out loud.'
 
-function spokenTo(message) {
-  if (Array.isArray(message.content)) return { ...message, content: [...message.content, { type: 'text', text: `\n\n${SPOKEN_NOTE}` }] }
-  return { ...message, content: `${message.content}\n\n${SPOKEN_NOTE}` }
+// a message to be answered aloud carries the note: the host's wording, kept with the message when it was sent, or pico's
+function spokenTo(message, spoken) {
+  const note = typeof spoken === 'string' && spoken.trim() ? spoken : SPOKEN_NOTE
+  if (Array.isArray(message.content)) return { ...message, content: [...message.content, { type: 'text', text: `\n\n${note}` }] }
+  return { ...message, content: `${message.content}\n\n${note}` }
 }
 
 function foldMessage(state, event) {
   const message = event.data.message
   if (!message) return
-  pushHistory(state, event.data.spoken ? spokenTo(message) : message, event.id)
+  pushHistory(state, event.data.spoken ? spokenTo(message, event.data.spoken) : message, event.id)
   for (const call of message.tool_calls || []) state.openToolCalls.add(call.id)
   if (message.role === 'tool') {
     state.openToolCalls.delete(message.tool_call_id)
