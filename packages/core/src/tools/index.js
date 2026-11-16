@@ -7,7 +7,7 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createView } from './view.js'
 
-export function createToolset({ toolResult, cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, peers, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, onToolUpdate, viewer }) {
+export function createToolset({ toolResult, cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, peers, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, denyNames, onToolUpdate, viewer }) {
   const recorder = createRecorder(onToolUpdate)
   let agentStarts = 0
   let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
@@ -312,6 +312,8 @@ export function createToolset({ toolResult, cwd, env, tracker, skills, shells, s
   const byName = new Map()
   for (const tool of [...local, ...hostTools, ...userTools, ...mcpTools]) {
     if (allowNames && !allowNames.includes(tool.name)) continue
+    // a host's setting can leave any tool out, its own or pico's
+    if (denyNames?.includes(tool.name)) continue
     if (!byName.has(tool.name)) byName.set(tool.name, tool)
   }
   const tools = [...byName.values()].map((tool) => ({

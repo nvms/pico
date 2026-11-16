@@ -15,7 +15,7 @@ import { runTurn, summarizeText, compactHistory, compactProgress } from './agent
 import { createAgentManager } from './agents.js'
 import { engineFor, releaseEngines } from './engines.js'
 import { automaticPeerName, createPeers } from './peers.js'
-import { runDeliberation, validateDeliberation } from './deliberation.js'
+import { runDeliberation, validateDeliberation, fillPrompt } from './deliberation.js'
 import { deliberationsFromEvents } from './deliberation-history.js'
 import { compactionPrompt, formatCompactSummary, summarySections, compactionKeepFrom } from './compaction.js'
 import { completedToolCalls, retrieveToolResult, TOOL_TRIM_VERSION } from './tool-trimming.js'
@@ -83,20 +83,25 @@ function createEmitter() {
   }
 }
 
-function parallelPrompt(task, agentLimit) {
+// each of these takes the host's own wording when it gives one (boot.prompts), with {{placeholders}} filled in
+function parallelPrompt(task, agentLimit, template) {
+  if (template) return fillPrompt(template, { task, agents: agentLimit })
   return `Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`
 }
 
-function deliberatePrompt(decision, rounds) {
+function deliberatePrompt(decision, rounds, template) {
   const withRounds = rounds ? ` and rounds set to ${rounds}` : ''
+  if (template) return fillPrompt(template, { decision, rounds: withRounds })
   return `Deliberate on the following decision: ${decision}\n\nImmediately call deliberate with a self-contained brief${withRounds}. Do not research first, start ordinary agents, or approximate the deliberation yourself. The deliberation participants own all supporting research.`
 }
 
-function workerSystemPrompt(scratchpad) {
+function workerSystemPrompt(scratchpad, template) {
+  if (template) return fillPrompt(template, { scratchpad })
   return `You are an isolated worker operating in the user's real project. Complete only the assigned task and do not ask the user questions. You may read, modify, and test project files. Put disposable scripts, generated data, experiments, and temporary package installs in your session-persistent scratchpad at ${scratchpad}, also available as $PICO_SCRATCHPAD. Use primary sources where possible, distinguish evidence from inference, and return a concise self-contained result.`
 }
 
-function participantSystemPrompt(scratchpad) {
+function participantSystemPrompt(scratchpad, template) {
+  if (template) return fillPrompt(template, { scratchpad })
   return `You are one participant in an isolated, bounded deliberation. Research actively with project and web tools, prefer primary sources, and distinguish evidence from inference. Do not ask the user questions or modify project files. Your persistent scratchpad is ${scratchpad}.`
 }
 
@@ -381,15 +386,26 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     return { auth, ok: !!auth }
   }
 
+  const agentText = new Map()
+  function flushAgentText(agent) {
+    const text = agentText.get(agent.id)
+    agentText.delete(agent.id)
+    if (text?.trim()) persist(makeEvent('agent_event', { agentId: agent.id, event: { type: 'content', content: text } }))
+  }
   const agents = createAgentManager({
     concurrency: 8,
     defaults: () => ({ model: boot.researchModel }),
     onChange: bumpActivity,
     onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools, ...(agent.external ? { external: true } : {}) })),
+    // what an agent wrote between its steps is saved as one message each time a step begins or it finishes, so a
+    // restored agent reads in the order it happened: a message, its steps, the next message
     onEvent: (agent, event) => {
+      if (event.type === 'content' && event.content) { agentText.set(agent.id, (agentText.get(agent.id) ?? '') + event.content); return }
+      if (event.type === 'tool_executing') flushAgentText(agent)
       if (['tool_executing', 'tool_complete', 'tool_error', 'usage'].includes(event.type)) persist(makeEvent('agent_event', { agentId: agent.id, event }))
     },
     onFinish: (agent) => {
+      flushAgentText(agent)
       persist(makeEvent('agent_result', { agentId: agent.id, result: agent.result, usage: agent.usage, interrupted: agent.status === 'cancelled', error: agent.error }))
       // an external agent's result already went to whatever ran it
       if (agent.external) return
@@ -405,7 +421,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       if (!sessionId) throw new Error('worker requires an active session')
       const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, agent.id))
       const scan = await refreshProjectIndexes()
-      const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: workerSystemPrompt(scratchpad) })
+      const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: workerSystemPrompt(scratchpad, boot.prompts?.parallel?.worker) })
       const { tools, recorder } = createToolset({
         ...context.tools,
         env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
@@ -477,7 +493,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       const runWorker = async ({ history, role, tools: enabled = true, onStream, workerSignal = signal }) => {
         const scratchpad = ensureDir(agentScratchDir(boot.root, sessionId, `deliberation-${id}-${role}`))
         const scan = await refreshProjectIndexes()
-        const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: participantSystemPrompt(scratchpad) })
+        const context = await createAgentContext(boot, { userTools: scan.tools, isolated: true, instructions: participantSystemPrompt(scratchpad, boot.prompts?.deliberation?.participant) })
         const toolset = createToolset({
           ...context.tools,
           env: { ...boot.env, PICO_SCRATCHPAD: scratchpad },
@@ -505,6 +521,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
         brief,
         rounds,
         signal,
+        prompts: boot.prompts?.deliberation ?? {},
         runParticipant: ({ history, role, round, parallelGroup, signal: workerSignal }) => {
           live.turns[`${role}:${round}`] = { role, round, text: '', ...(parallelGroup ? { parallelGroup } : {}) }
           bumpActivity()
@@ -943,6 +960,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       maxAgentStarts: researchAgentLimit ? 100 : undefined,
       requireAgentPlan: !!researchAgentLimit,
       allowNames: researchAgentLimit ? AGENT_TOOLS : undefined,
+      // the tools the host turned off for this model, read at every turn
+      denyNames: typeof boot.disabledTools === 'function' ? boot.disabledTools(state.model) : boot.disabledTools,
       onToolUpdate,
       viewer: state.model.vision === false ? null : { deliver: deliverImage },
     })
@@ -1534,7 +1553,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     }
     if (!modelAvailable(boot.researchModel)) return false
     nextResearchAgentLimit = boot.researchAgentLimit
-    send(parallelPrompt(task, boot.researchAgentLimit))
+    send(parallelPrompt(task, boot.researchAgentLimit, boot.prompts?.parallel?.request))
     return true
   }
 
@@ -1548,7 +1567,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     if (!modelAvailable(boot.participantAModel || boot.deliberationModel)) return false
     if (!modelAvailable(boot.participantBModel || boot.deliberationModel)) return false
     const n = Number(rounds)
-    send(deliberatePrompt(decision, Number.isInteger(n) && n >= 1 && n <= MAX_DELIBERATION_ROUNDS ? n : null))
+    send(deliberatePrompt(decision, Number.isInteger(n) && n >= 1 && n <= MAX_DELIBERATION_ROUNDS ? n : null, boot.prompts?.deliberation?.request))
     return true
   }
 

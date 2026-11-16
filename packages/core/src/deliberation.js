@@ -13,18 +13,26 @@ export function validateDeliberation({ brief, rounds = DEFAULT_DELIBERATION_ROUN
   return { brief: brief.trim(), rounds }
 }
 
-function participantPrompt(brief, role, rounds) {
+// a prompt the host wrote, with {{name}} placeholders, filled in; a placeholder it does not know is left as written
+export function fillPrompt(template, values) {
+  return String(template).replace(/\{\{(\w+)\}\}/g, (all, key) => (key in values ? String(values[key]) : all))
+}
+
+function participantPrompt(brief, role, rounds, template) {
   const name = role === 'participant-a' ? 'Participant A' : 'Participant B'
+  if (template) return fillPrompt(template, { participant: name, rounds, brief })
   return `You are ${name}, one of two equal participants. Independently investigate and reason about this decision. This is a ${rounds}-round deliberation about the following decision:\n\n${brief}\n\nResearch before making claims. Use the available project and web tools whenever they can replace assumption with evidence. Cite URLs and project paths in your response. Challenge weak premises and address the peer's strongest points once their work is available. Do not seek agreement for its own sake or defend a fixed position. Change your position only when evidence warrants it, and preserve material disagreement and uncertainty. Do not modify project files. Write your own argument and reasoning; never instruct the other participant what to say or conclude. Be concise.`
 }
 
-function peerMessage(role, text, round, rounds) {
+function peerMessage(role, text, round, rounds, template) {
   const name = role === 'participant-a' ? 'Participant A' : 'Participant B'
+  if (template) return fillPrompt(template, { participant: name, round, rounds, reply: text })
   return `Round ${round} of ${rounds}. ${name} replied:\n\n${text}\n\nResearch and respond to the substance of this message.`
 }
 
-function synthesisPrompt(brief, turns) {
+function synthesisPrompt(brief, turns, template) {
   const transcript = turns.map((turn) => `Round ${turn.round}, ${turn.role}:\n${turn.text}`).join('\n\n')
+  if (template) return fillPrompt(template, { brief, transcript })
   return `Synthesize this deliberation into a decision for the main agent. State the recommendation, decisive evidence, unresolved uncertainty, material disagreement, and implementation constraints. Do not manufacture consensus: preserve disagreements that the evidence did not resolve. Preserve useful URLs and project paths. Do not mention the deliberation process unless disagreement remains.\n\nDecision brief:\n${brief}\n\nTranscript:\n${transcript}`
 }
 
@@ -35,9 +43,9 @@ function settledTurn(result, role, round, parallelGroup) {
   return { turn: { role, round, text, messages: result.messages || [], usage: result.usage || null, ...(parallelGroup ? { parallelGroup } : {}) } }
 }
 
-export async function runDeliberation({ brief, rounds, runParticipant, runSynthesis, onEvent = () => {}, signal }) {
+export async function runDeliberation({ brief, rounds, runParticipant, runSynthesis, onEvent = () => {}, signal, prompts = {} }) {
   const valid = validateDeliberation({ brief, rounds })
-  const participants = Object.fromEntries(PARTICIPANT_ROLES.map((role) => [role, [{ role: 'user', content: participantPrompt(valid.brief, role, valid.rounds) }]]))
+  const participants = Object.fromEntries(PARTICIPANT_ROLES.map((role) => [role, [{ role: 'user', content: participantPrompt(valid.brief, role, valid.rounds, prompts.opening) }]]))
   const turns = []
 
   if (signal?.aborted) return { turns, interrupted: true }
@@ -70,13 +78,13 @@ export async function runDeliberation({ brief, rounds, runParticipant, runSynthe
   if (failure) return { turns, ...failure }
   if (signal?.aborted) return { turns, interrupted: true }
 
-  participants['participant-b'].push({ role: 'user', content: peerMessage('participant-a', turns[0].text, 1, valid.rounds) })
+  participants['participant-b'].push({ role: 'user', content: peerMessage('participant-a', turns[0].text, 1, valid.rounds, prompts.reply) })
   let peer = turns.at(-1)
   for (let round = 2; round <= valid.rounds; round++) {
     for (const role of PARTICIPANT_ROLES) {
       if (signal?.aborted) return { turns, interrupted: true }
       const history = participants[role]
-      history.push({ role: 'user', content: peerMessage(peer.role, peer.text, round, valid.rounds) })
+      history.push({ role: 'user', content: peerMessage(peer.role, peer.text, round, valid.rounds, prompts.reply) })
       const result = await runParticipant({ role, round, rounds: valid.rounds, history: [...history], signal })
       history.push(...(result.messages || []))
       const parsed = settledTurn(result, role, round)
@@ -88,6 +96,6 @@ export async function runDeliberation({ brief, rounds, runParticipant, runSynthe
   }
 
   if (signal?.aborted) return { turns, interrupted: true }
-  const synthesis = await runSynthesis({ history: [{ role: 'user', content: synthesisPrompt(valid.brief, turns) }], signal })
+  const synthesis = await runSynthesis({ history: [{ role: 'user', content: synthesisPrompt(valid.brief, turns, prompts.synthesis) }], signal })
   return { turns, result: resultText(synthesis.messages), usage: synthesis.usage || null, interrupted: !!synthesis.interrupted, error: synthesis.error || null }
 }

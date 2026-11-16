@@ -477,3 +477,11 @@ test('peer tools delegate discovery and asynchronous message delivery', async ()
   assert.deepEqual(await send.execute({ description: 'Sending findings', to: 'two', message: 'Verified bug' }), { status: 'delivered' })
   assert.deepEqual(calls, [{ to: 'two', message: 'Verified bug' }])
 })
+
+test('a host can leave out any tool by name, pico\'s own included', () => {
+  const { tools } = createToolset({ cwd: process.cwd(), tracker: createContextTracker({ stopDir: process.cwd(), loaded: new Set() }), denyNames: ['bash', 'write'] })
+  const names = tools.map((tool) => tool.name)
+  assert.ok(!names.includes('bash'))
+  assert.ok(!names.includes('write'))
+  assert.ok(names.includes('read'))
+})

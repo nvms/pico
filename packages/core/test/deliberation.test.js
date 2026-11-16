@@ -122,3 +122,28 @@ test('one round consists of two independent judgments and synthesis only', async
   })
   assert.deepEqual(calls, [['participant-a', 1], ['participant-b', 1]])
 })
+
+test('a host can word every deliberation prompt itself, with placeholders filled in', async () => {
+  const seen = []
+  const result = await runDeliberation({
+    brief: 'pick a database',
+    rounds: 2,
+    prompts: {
+      opening: '{{participant}} opens round 1 of {{rounds}}: {{brief}}',
+      reply: '{{round}}/{{rounds}} from {{participant}}: {{reply}}',
+      synthesis: 'decide {{brief}}\n{{transcript}}',
+    },
+    runParticipant: async ({ role, round, history }) => {
+      seen.push(history.at(-1).content)
+      return { messages: [{ role: 'assistant', content: `${role} says ${round}` }] }
+    },
+    runSynthesis: async ({ history }) => {
+      seen.push(history.at(-1).content)
+      return { messages: [{ role: 'assistant', content: 'use postgres' }] }
+    },
+  })
+  assert.equal(result.result, 'use postgres')
+  assert.ok(seen.includes('Participant A opens round 1 of 2: pick a database'))
+  assert.ok(seen.includes('2/2 from Participant B: participant-b says 1'))
+  assert.ok(seen.at(-1).startsWith('decide pick a database\nRound 1, participant-a:'))
+})
