@@ -142,3 +142,13 @@ test('queued agents can be cancelled', async () => {
   await agent.done
   assert.equal(agent.status, 'cancelled')
 })
+
+test('an agent another engine started keeps the call that started it, after a restore too', async () => {
+  const { createAgentManager, reduceAgentEvents } = await import('../src/agents.js')
+  const manager = createAgentManager({ run: async () => ({ messages: [] }) })
+  const handle = manager.track({ description: 'count files', prompt: 'count', model: 'claude-code/haiku', callId: 'toolu_1' })
+  const agent = manager.list().find((a) => a.id === handle.id)
+  assert.equal(agent.callId, 'toolu_1')
+  const [restored] = reduceAgentEvents([{ type: 'agent_start', at: 1, data: { agentId: agent.id, description: 'count files', callId: 'toolu_1' } }])
+  assert.equal(restored.callId, 'toolu_1')
+})

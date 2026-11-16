@@ -171,8 +171,9 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     const startSubagent = (block) => {
       if (!host.subagents || !SUBAGENT_TOOLS.has(block.name)) return
       // a subagent runs on the session's model unless its call names another
-      const handle = host.subagents.start({ description: block.input?.description, prompt: block.input?.prompt ?? '', model: `${CLAUDE_CODE_PROVIDER}/${block.input?.model ?? model}` })
-      subagents.set(block.id, { handle })
+      // the Task call that started it goes with it, so a host can show the subagent where the call is
+      const handle = host.subagents.start({ description: block.input?.description, prompt: block.input?.prompt ?? '', model: `${CLAUDE_CODE_PROVIDER}/${block.input?.model ?? model}`, callId: block.id })
+      subagents.set(block.id, { handle, said: '' })
     }
     // `extra` is the structured result, whose report is free of the frame
     // Claude Code wraps it in for the model
@@ -181,14 +182,15 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
       if (!sub) return
       subagents.delete(block.tool_use_id)
       const text = Array.isArray(extra?.content) ? toolResultText(extra.content) : toolResultText(block.content)
-      sub.handle.finish(block.is_error ? { error: text || 'failed', interrupted } : { result: text })
+      // what it found is its own last message, as it wrote it; the call's result only when it wrote none
+      sub.handle.finish(block.is_error ? { error: text || 'failed', interrupted } : { result: sub.said.trim() ? sub.said : text })
     }
     const onSubagent = (message) => {
       const sub = subagents.get(message.parent_tool_use_id)
       if (!sub) return
       if (message.type === 'assistant') {
         for (const block of message.message?.content ?? []) {
-          if (block.type === 'text' && block.text) sub.handle.event({ type: 'content', content: block.text })
+          if (block.type === 'text' && block.text) { sub.said = block.text; sub.handle.event({ type: 'content', content: block.text }) }
           if (block.type !== 'tool_use') continue
           const { name, args } = picoTool(block.name, block.input, host.cwd)
           sub.handle.event({ type: 'tool_executing', call: { id: block.id, type: 'function', function: { name, arguments: JSON.stringify(args) } }, at: Date.now() })
