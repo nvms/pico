@@ -21,7 +21,7 @@ const BRIDGE_PREFIX = `mcp__${BRIDGE_SERVER}__`
 // project keeps one store, pico's
 export const COVERED_TOOLS = new Set([
   'read', 'write', 'edit', 'bash', 'glob', 'grep', 'view', 'shell_output', 'shell_kill', 'tool_result',
-  'agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel', 'deliberate',
+  'agent_start', 'agent_list', 'agent_collect', 'agent_cancel', 'deliberate',
   'skill',
 ])
 

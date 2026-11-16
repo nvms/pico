@@ -270,7 +270,6 @@ export function App({ boot, controller: ctl }) {
   const [compactToolHistory, setCompactToolHistory] = createSignal(boot.compactToolHistory)
   const [gitFooter, setGitFooter] = createSignal(boot.gitFooter)
   const [wideSidebar, setWideSidebar] = createSignal(boot.wideSidebar)
-  const [researchAgentLimit, setResearchAgentLimit] = createSignal(boot.researchAgentLimit)
   const [questionRequest, setQuestionRequest] = createSignal(state.question)
   const [showMemoryPanel, setShowMemoryPanel] = createSignal(false)
   const [memScope, setMemScope] = createSignal(0)
@@ -1739,7 +1738,7 @@ export function App({ boot, controller: ctl }) {
   if (showConfigPanel()) {
     return (
       <ConfigPanel
-        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, shellModel: boot.shellModel, deliberationModel: boot.deliberationModel, participantAModel: boot.participantAModel, participantBModel: boot.participantBModel, researchAgentLimit: researchAgentLimit() }}
+        values={{ clouds: clouds(), compactTools: compactToolHistory(), gitStatus: gitFooter(), wideSidebar: wideSidebar(), researchModel: boot.researchModel, shellModel: boot.shellModel, deliberationModel: boot.deliberationModel, participantAModel: boot.participantAModel, participantBModel: boot.participantBModel }}
         focused
         onPickShellModel={() => {
           setSelectingShellModel(true)
@@ -1781,11 +1780,6 @@ export function App({ boot, controller: ctl }) {
             boot.wideSidebar = value
             ctl.configure?.({ wideSidebar: value })
             writeConfig({ display: { wideSidebar: value } })
-          } else if (name === 'researchAgentLimit') {
-            setResearchAgentLimit(value)
-            boot.researchAgentLimit = value
-            ctl.configure?.({ researchAgentLimit: value })
-            writeConfig({ research: { agentLimit: value } })
           } else {
             setCompactToolHistory(value)
             writeConfig({ display: { compactToolHistory: value } })

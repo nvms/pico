@@ -194,7 +194,7 @@ export function createDaemonRuntime({ createSession, onEmpty = () => {}, batchMs
         return { result, incremental: true }
       }
       if (op === 'configure') {
-        const allowed = ['researchModel', 'shellModel', 'deliberationModel', 'participantAModel', 'participantBModel', 'researchAgentLimit', 'clouds', 'compactToolHistory', 'gitFooter', 'wideSidebar']
+        const allowed = ['researchModel', 'shellModel', 'deliberationModel', 'participantAModel', 'participantBModel', 'clouds', 'compactToolHistory', 'gitFooter', 'wideSidebar']
         for (const [key, value] of Object.entries(args[0])) { if (!allowed.includes(key)) throw new Error('unsupported session setting'); record.ctl.boot[key] = value }
         publish(record, 'change')
         return

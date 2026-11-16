@@ -66,7 +66,7 @@ export const SESSION_COLORS = {
   gray: '#9ca3af',
 }
 
-const AGENT_TOOLS = ['agent_plan', 'agent_start', 'agent_list', 'agent_collect', 'agent_cancel']
+const AGENT_TOOLS = ['agent_start', 'agent_list', 'agent_collect', 'agent_cancel']
 const CONTEXT_COLORS = ['#67b7ff', '#c792ea', '#f7c66a', '#f78c6c', '#6be795']
 
 function createEmitter() {
@@ -84,9 +84,9 @@ function createEmitter() {
 }
 
 // each of these takes the host's own wording when it gives one (boot.prompts), with {{placeholders}} filled in
-function parallelPrompt(task, agentLimit, template) {
-  if (template) return fillPrompt(template, { task, agents: agentLimit })
-  return `Use parallel agents for the following task: ${task}\n\nFirst call agent_plan. Interpret any agent-count instruction in the user's task semantically and declare that count; if the user gave no count, declare the configured default budget of ${agentLimit}. Then use agent_start within that enforced budget to delegate distinct, focused parts of the task to the configured worker model. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful and the budget permits, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`
+function parallelPrompt(task, template) {
+  if (template) return fillPrompt(template, { task })
+  return `Use parallel agents for the following task: ${task}\n\nUse agent_start to delegate distinct, focused parts of the task to the configured worker model, as many as the task needs. Collect workers with agent_collect, critically evaluate their results, and synthesize the final response. When useful, use independent workers to check important disputed or weak conclusions. Do not delegate final synthesis. Do not emit progress updates while agents run; Pico displays agent activity automatically.`
 }
 
 function deliberatePrompt(decision, rounds, template) {
@@ -158,7 +158,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
 
   let abort = null
   let sendAfterToolTriggered = false
-  let nextResearchAgentLimit = null
+  let nextParallelTurn = false
   let pendingSystemNotes = []
   const warnedTools = new Set()
 
@@ -923,8 +923,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
 
   async function performAgentTurn() {
     if (state.busy || peerTransition || shuttingDown) return
-    const researchAgentLimit = nextResearchAgentLimit || null
-    nextResearchAgentLimit = null
+    // a /parallel turn: the main agent only delegates
+    const parallelTurn = nextParallelTurn
+    nextParallelTurn = false
     const controller = new AbortController()
     abort = controller
     emit('turn', 'start')
@@ -959,9 +960,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       onAgentsCollected: discardCollectedAgentNotes,
       askUser,
       signal: controller.signal,
-      maxAgentStarts: researchAgentLimit ? 100 : undefined,
-      requireAgentPlan: !!researchAgentLimit,
-      allowNames: researchAgentLimit ? AGENT_TOOLS : undefined,
+      allowNames: parallelTurn ? AGENT_TOOLS : undefined,
       // the tools the host turned off for this model, read at every turn
       denyNames: typeof boot.disabledTools === 'function' ? boot.disabledTools(state.model) : boot.disabledTools,
       onToolUpdate,
@@ -1554,8 +1553,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       return true
     }
     if (!modelAvailable(boot.researchModel)) return false
-    nextResearchAgentLimit = boot.researchAgentLimit
-    send(parallelPrompt(task, boot.researchAgentLimit, boot.prompts?.parallel?.request))
+    nextParallelTurn = true
+    send(parallelPrompt(task, boot.prompts?.parallel?.request))
     return true
   }
 

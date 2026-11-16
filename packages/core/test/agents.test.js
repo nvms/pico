@@ -65,19 +65,15 @@ test('returned agent errors are failures', async () => {
   assert.equal(agent.error, 'provider failed')
 })
 
-test('agent tools enforce a model-declared per-turn spawn limit', async () => {
+test('agent tools start as many workers as the task needs, with no plan first', async () => {
   const { createToolset } = await import('../src/tools/index.js')
   const started = []
   const agents = { start: (options) => { const agent = { id: String(started.length + 1), status: 'queued', ...options }; started.push(agent); return agent }, list: () => [], collect: async () => [], cancel: () => true }
-  const { tools } = createToolset({ cwd: process.cwd(), agents, sessionId: 'session-1', sessionFile: '/tmp/session-1.jsonl', maxAgentStarts: 10, requireAgentPlan: true, allowNames: ['agent_plan', 'agent_start'] })
-  const plan = tools.find((tool) => tool.name === 'agent_plan')
+  const { tools } = createToolset({ cwd: process.cwd(), agents, sessionId: 'session-1', sessionFile: '/tmp/session-1.jsonl' })
+  assert.ok(!tools.some((tool) => tool.name === 'agent_plan'))
   const start = tools.find((tool) => tool.name === 'agent_start')
-  await assert.rejects(() => start.execute({ prompt: 'early', description: 'early' }), /agent_plan/)
-  assert.deepEqual(await plan.execute({ count: 2, reason: 'the user requested two' }), { agentLimit: 2, reason: 'the user requested two' })
-  await start.execute({ prompt: 'one', description: 'one' })
-  await start.execute({ prompt: 'two', description: 'two' })
-  await assert.rejects(() => start.execute({ prompt: 'three', description: 'three' }), /agent limit reached.*2/)
-  assert.equal(started.length, 2)
+  for (const n of ['one', 'two', 'three', 'four', 'five']) await start.execute({ prompt: n, description: n })
+  assert.equal(started.length, 5)
   assert.equal(started[0].sessionId, 'session-1')
   assert.equal(started[0].sessionFile, '/tmp/session-1.jsonl')
 })

@@ -1,4 +1,4 @@
-import { createSignal, Button, Checkbox, ease, Field, FieldList, Menu, NumberInput, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
+import { createSignal, Button, Checkbox, ease, Field, FieldList, Menu, PickList, Radio, ScrollBox, TextInput, useAnimated, useFocus, useInput, useInterval, useLayout } from '@trendr/core'
 import { accent, FG, FG_SOFT, MUTED, PANEL_BG, SELECT_BG, RED, GREEN } from './theme.js'
 import { AnimatedValue } from './animated-value.jsx'
 import { contextBar } from './context-bar.js'
@@ -81,19 +81,6 @@ function ConfigField({ field, value, focused, onChange }) {
   )
 }
 
-function ConfigNumberField({ value, focused, onChange }) {
-  return (
-    <box style={{ flexDirection: 'column', marginBottom: 1 }}>
-      <box style={{ flexDirection: 'row' }}>
-        <NumberInput focused={focused} value={value} onChange={onChange} min={1} max={100} width={5} />
-        <text style={{ color: FG }}> Parallel agent limit</text>
-        <box style={{ flexGrow: 1 }} />
-        <text style={{ color: MUTED }}>research.agentLimit</text>
-      </box>
-      <text style={{ color: MUTED }}>    Maximum agents per parallel run (1-100)</text>
-    </box>
-  )
-}
 
 function ConfigModelField({ model, label, path, focused, onPick }) {
   return (
@@ -148,9 +135,6 @@ export function ConfigPanel({ values, focused, onChange, onPickResearchModel, on
           ))}
           <Field name="deliberationModel">
             {({ focused: fieldFocused }) => <ConfigModelField model={values.deliberationModel} label="Synthesis model" path="models.deliberation" focused={fieldFocused} onPick={onPickDeliberationModel} />}
-          </Field>
-          <Field name="researchAgentLimit">
-            {({ focused: fieldFocused }) => <ConfigNumberField value={values.researchAgentLimit} focused={fieldFocused} onChange={(value) => onChange('researchAgentLimit', value)} />}
           </Field>
         </FieldList>
       </box>

@@ -7,10 +7,8 @@ import { createGlob } from './glob.js'
 import { createGrep } from './grep.js'
 import { createView } from './view.js'
 
-export function createToolset({ toolResult, cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, peers, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, maxAgentStarts, requireAgentPlan = false, allowNames, denyNames, onToolUpdate, viewer }) {
+export function createToolset({ toolResult, cwd, env, tracker, skills, shells, sessionId, sessionFile, wakeups, memory, agents, peers, deliberations, onAgentsCollected, askUser, mcpTools = [], userTools = [], hostTools = [], signal, maxToolCalls, allowNames, denyNames, onToolUpdate, viewer }) {
   const recorder = createRecorder(onToolUpdate)
-  let agentStarts = 0
-  let plannedAgentStarts = requireAgentPlan ? null : maxAgentStarts
   const deps = { cwd, env, recorder, tracker, signal, shells, sessionId, sessionFile }
 
   const local = [
@@ -174,34 +172,15 @@ export function createToolset({ toolResult, cwd, env, tracker, skills, shells, s
   if (agents) {
     local.push(
       {
-        name: 'agent_plan',
-        description: 'Declare the background worker budget for the current assistant turn before starting any workers. The main agent is excluded. Set count to the number of workers you intend to start this turn; collecting a worker does not restore budget. Interpret any user-requested count semantically; otherwise use the configured default.',
-        schema: {
-          description: describeParam,
-          count: { type: 'integer', description: `background workers permitted this turn, excluding the main agent (1-${maxAgentStarts || 100})` },
-          reason: { type: 'string', description: 'brief explanation of how the count follows the user request or research scope' },
-        },
-        execute: ({ count, reason }) => {
-          const ceiling = maxAgentStarts || 100
-          if (!Number.isInteger(count) || count < 1 || count > ceiling) throw new Error(`agent budget must be between 1 and ${ceiling}`)
-          if (agentStarts > 0) throw new Error('agent budget must be declared before starting agents')
-          plannedAgentStarts = count
-          return { agentLimit: count, reason }
-        },
-      },
-      {
         name: 'agent_start',
-        description: 'Start one background worker, consuming one unit of the current turn\'s agent_plan budget. Workers do not receive the parent conversation, only the supplied prompt and their available project context and tools. Make the prompt self-contained by including all conversation-specific terms, goals, constraints, and decisions the worker cannot discover itself. Collected or completed workers do not restore budget within that turn. Continue only independent work until you collect its result with agent_collect.',
+        description: 'Start one background worker, as many as the task needs. Workers do not receive the parent conversation, only the supplied prompt and their available project context and tools. Make the prompt self-contained by including all conversation-specific terms, goals, constraints, and decisions the worker cannot discover itself. Continue only independent work until you collect its result with agent_collect.',
         schema: {
           prompt: { type: 'string', description: 'complete, self-contained task and desired output, including necessary context from the parent conversation' },
           description: describeParam,
           tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured worker tools', optional: true },
         },
         execute: ({ prompt, description, tools }) => {
-          if (plannedAgentStarts == null) throw new Error('call agent_plan before starting research agents')
-          if (agentStarts >= plannedAgentStarts) throw new Error(`agent limit reached for this turn (${plannedAgentStarts}); completed or collected workers do not restore budget within the turn`)
           const agent = agents.start({ prompt, description, tools, sessionId, sessionFile })
-          agentStarts++
           return { agentId: agent.id, status: agent.status, model: agent.model }
         },
       },

@@ -1,6 +1,6 @@
 export const INIT_PROMPT = `Initialize or improve this repository's AGENTS.md guidance for future pico sessions.
 
-Do this discovery yourself as the main agent. Do not call agent_plan, agent_start, agent_list, agent_collect, or delegate any part of this task to another agent.
+Do this discovery yourself as the main agent. Do not call agent_start, agent_list, agent_collect, or delegate any part of this task to another agent.
 
 Inspect the repository directly and then create or update its AGENTS.md files. Read enough of the actual project to understand its structure and workflows, including the relevant manifests, documentation, configuration, source layout, tests, scripts, and existing instruction files. Use targeted searches and representative files rather than exhaustively reading every file. If an AGENTS.md already exists, preserve useful human-authored guidance and improve it conservatively instead of replacing it blindly. Check CLAUDE.md files for useful repository guidance when relevant, but write canonical guidance to AGENTS.md.
 
