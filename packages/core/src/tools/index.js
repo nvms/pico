@@ -35,7 +35,7 @@ export function createToolset({ toolResult, cwd, env, tracker, skills, shells, s
   if (peers) local.push(
     {
       name: 'peer_list',
-      description: 'List the other connected pico sessions on this machine, across projects, and your own identity. Each has a session ID; a name, its unique address, which never changes; a title, what the user calls it, which several sessions may share; its working directory; and its status. When the user refers to a session by what they call it, find it by title (and by project when titles repeat) and address it by name. These are independent sessions, not background workers.',
+      description: 'List the other connected pico sessions on this machine, and on other machines the host reaches, across projects, and your own identity. Each has a session ID; a name, its unique address, which never changes; a title, what the user calls it, which several sessions may share; its working directory; and its status. When the user refers to a session by what they call it, find it by title (and by project when titles repeat) and address it by name. These are independent sessions, not background workers.',
       schema: { description: describeParam },
       execute: () => peers.list(),
     },

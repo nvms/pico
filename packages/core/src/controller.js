@@ -178,6 +178,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   const incomingPeers = new Map()
   const peers = createPeers({
     directory: peerDirectory,
+    // a host's way to sessions on other machines, read when used
+    bridge: boot.peerBridge ? { list: (self) => boot.peerBridge.list(self), deliver: (envelope) => boot.peerBridge.deliver(envelope) } : null,
     onMessage: async (message) => {
       const session = state.session
       if (shuttingDown || peerTransition || !session || session.id !== message.to.id || peers.identity?.id !== session.id) throw new Error('recipient session is disconnected')
@@ -1914,6 +1916,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
     // what peers call this session: the user's name for it, or the automatic one
     sessionName: () => state.derived.title || state.peerConnection?.name || null,
     peerAddress: () => state.peerConnection?.name ?? null,
+    // this session as other sessions reach it, and a message for it that a host carried from another machine
+    peerIdentity: () => peers.identity,
+    receivePeer: (envelope) => peers.receiveFromBridge(envelope),
     claimAddress,
     isWorking: () => state.busy || preparingTurn,
     ensureSession,

@@ -184,3 +184,23 @@ test('peer envelopes contain no urgency field', async t => {
   assert.equal('urgent' in sent, false)
   assert.equal('urgent' in received[0], false)
 })
+
+test('a host bridge lists sessions on other machines, carries messages to them, and brings theirs in', async (t) => {
+  const { make } = await fixture(t)
+  const carried = []
+  const received = []
+  const away = { id: 'far-1', name: 'far@other', cwd: '/elsewhere', status: 'idle' }
+  const here = make({
+    onMessage: async (envelope) => { received.push(envelope) },
+    bridge: { list: async () => [away], deliver: async (envelope) => { carried.push(envelope) } },
+  })
+  await connect(here, 'near-1', 'near')
+  assert.deepEqual((await here.list()).peers.map((p) => p.id), ['far-1'])
+  const sent = await here.send({ to: 'far@other', message: 'hello there' })
+  assert.equal(sent.status, 'delivered')
+  assert.equal(carried[0].to.id, 'far-1')
+  assert.equal(carried[0].from.id, 'near-1')
+  await here.receiveFromBridge({ id: 'm-1', from: { id: 'far-1', name: 'far@other' }, to: { id: 'near-1', name: 'near' }, message: 'and back' })
+  assert.equal(received[0].message, 'and back')
+  assert.equal(received[0].from.id, 'far-1')
+})

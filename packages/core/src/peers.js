@@ -79,7 +79,10 @@ export function automaticPeerName(root, id, length = 2) {
   return `${base}-${String(id).replace(/[^0-9a-f]/gi, '').slice(0, length).toLowerCase()}`
 }
 
-export function createPeers({ directory = defaultDirectory(), onMessage, onSend, onDelivery } = {}) {
+// bridge: a host's way to sessions this directory does not reach, on other machines: list(self) gives their public
+// identities, each with an id, a name unique among them and the machine it is on; deliver(envelope) hands a message
+// to one and resolves once it is delivered. A message the host brings in arrives through receiveFromBridge.
+export function createPeers({ directory = defaultDirectory(), onMessage, onSend, onDelivery, bridge = null } = {}) {
   if (typeof onMessage !== 'function') throw new TypeError('onMessage must be a function')
   let identity = null
   let server = null
@@ -257,7 +260,51 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
       if (record.instance === self.instance || !processAlive(record.pid)) continue
       try { peers.push(await exchange(record.socket, { v: VERSION, type: 'ping', to: record.id, instance: record.instance })) } catch {}
     }
+    if (bridge) {
+      const local = new Set(peers.map((p) => p.id))
+      for (const peer of await bridge.list(publicIdentity(self)).catch(() => [])) if (peer.id !== self.id && !local.has(peer.id)) peers.push(peer)
+    }
     return { self: publicIdentity(self), peers }
+  }
+
+  // a message from a session the bridge reaches, for this one
+  async function receiveFromBridge(envelope) {
+    const self = identity
+    if (!self) throw fail('peer session is disconnected')
+    if (envelope?.to?.id !== self.id) throw fail('peer session changed')
+    if (typeof envelope.id !== 'string' || !envelope.id || envelope.id.length > 100) throw fail('invalid message ID')
+    validateMessage(envelope.message)
+    if (envelope.from?.id === self.id) throw fail('cannot message yourself')
+    const key = `bridge:${envelope.from?.id}:${envelope.id}`
+    let delivery = deliveries.get(key)
+    if (delivery && delivery.message !== envelope.message) throw fail('message ID reused with different content')
+    if (!delivery) {
+      delivery = { message: envelope.message, promise: Promise.resolve().then(() => onMessage({ id: envelope.id, from: messageIdentity(envelope.from), to: messageIdentity(self), message: envelope.message })) }
+      deliveries.set(key, delivery)
+      activeDeliveries.add(delivery.promise)
+    }
+    try { await delivery.promise } catch (error) { deliveries.delete(key); throw error } finally { activeDeliveries.delete(delivery.promise) }
+    return { id: envelope.id, status: 'delivered' }
+  }
+
+  // a session no peer here matches, through the bridge
+  async function sendThroughBridge(self, to, message) {
+    const remote = (await bridge.list(publicIdentity(self)).catch(() => [])).filter((peer) => peer.id !== self.id)
+    let matches = remote.filter((peer) => peer.id === to || peer.name === to)
+    if (!matches.length) matches = remote.filter((peer) => peer.title === to)
+    if (!matches.length) throw fail(`peer "${to}" is offline`)
+    if (matches.length > 1) throw fail(`${matches.length} sessions are called "${to}": ${matches.map((peer) => `${peer.name} in ${peer.cwd}`).join('; ')}. Use one's name`)
+    const envelope = { id: randomUUID(), from: messageIdentity(self), to: messageIdentity(matches[0]), message }
+    await onSend?.(envelope)
+    try {
+      if (identity?.instance !== self.instance) throw fail('sender session changed')
+      await bridge.deliver(envelope)
+    } catch (error) {
+      await onDelivery?.({ id: envelope.id, status: 'failed', error: error.message })
+      throw error
+    }
+    await onDelivery?.({ id: envelope.id, status: 'delivered' })
+    return { ...envelope, status: 'delivered' }
   }
 
   async function send({ to, message }) {
@@ -272,6 +319,7 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     const live = records.filter(record => processAlive(record.pid) && record.id !== self.id)
     let matches = live.filter(record => record.id === to || record.name === to)
     if (!matches.length) matches = live.filter(record => record.title === to)
+    if (!matches.length && bridge) return sendThroughBridge(self, to, message)
     if (!matches.length) throw fail(`peer "${to}" is offline`)
     if (matches.length > 1) throw fail(`${matches.length} sessions are called "${to}": ${matches.map(record => `${record.name} in ${record.cwd}`).join('; ')}. Use one's name`)
     const peer = matches[0]
@@ -297,7 +345,7 @@ export function createPeers({ directory = defaultDirectory(), onMessage, onSend,
     if (identity) identity = { ...identity, status }
   }
 
-  return { connect, disconnect, list, send, setStatus, get identity() { return identity && publicIdentity(identity) } }
+  return { connect, disconnect, list, send, setStatus, receiveFromBridge, get identity() { return identity && publicIdentity(identity) } }
 }
 
 function validateMessage(message) {
