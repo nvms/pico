@@ -51,6 +51,13 @@ function unseen(history, synced) {
   return null
 }
 
+// what Claude Code is told about a pico tool that overlaps one of its own: pico's subagents run on other models, so
+// Claude reaches for them only for that, and keeps its own Task tool for Claude's work
+const FOR_CLAUDE = {
+  agent_start: 'For a worker on a model other than Claude, such as another provider\'s, when the user asked for one or a task needs it. For a subagent on Claude, use your own Task tool instead. ',
+}
+const forClaude = (tool) => (FOR_CLAUDE[tool.name] ? { ...tool, description: FOR_CLAUDE[tool.name] + tool.description } : tool)
+
 export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDLE_MS, spawn = spawnClaude, bridge = createBridge } = {}) {
   // per pico session: its process, bridge, and which Claude session holds
   // which history
@@ -211,7 +218,7 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     // it (same name, same arguments, oldest first), once every message
     // before it has been handled, since it reaches pico by another channel
     const covered = host.ownTools ? new Set(host.ownTools) : COVERED_TOOLS
-    entry.bridge.setTurn(tools.filter((tool) => !covered.has(tool.name)), async (name, args) => {
+    entry.bridge.setTurn(tools.filter((tool) => !covered.has(tool.name)).map(forClaude), async (name, args) => {
       await chain
       const at = unclaimed.findIndex((use) => use.name === name && JSON.stringify(use.args) === JSON.stringify(args ?? {}))
       const use = at >= 0 ? unclaimed.splice(at, 1)[0] : null

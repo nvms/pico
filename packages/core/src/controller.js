@@ -397,6 +397,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
   const agents = createAgentManager({
     concurrency: 8,
     defaults: () => ({ model: boot.researchModel }),
+    // the models a worker can be started on instead of the default, when one is asked for by name
+    models: () => boot.models.filter((m) => m.available !== false).map((m) => m.name),
     onChange: bumpActivity,
     onCreate: (agent) => persist(makeEvent('agent_start', { agentId: agent.id, description: agent.description, prompt: agent.prompt, model: agent.model, role: agent.role, sessionId: agent.sessionId, sessionFile: agent.sessionFile, tools: agent.tools, ...(agent.callId ? { callId: agent.callId } : {}), ...(agent.external ? { external: true } : {}) })),
     // what an agent wrote between its steps is saved as one message each time a step begins or it finishes, so a

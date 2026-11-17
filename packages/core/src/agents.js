@@ -73,7 +73,7 @@ export function reduceAgentEvents(events = []) {
   return restored
 }
 
-export function createAgentManager({ run, concurrency = 8, onChange = () => {}, onCreate = () => {}, onEvent = () => {}, onFinish = () => {}, defaults = () => ({}) } = {}) {
+export function createAgentManager({ run, concurrency = 8, onChange = () => {}, onCreate = () => {}, onEvent = () => {}, onFinish = () => {}, defaults = () => ({}), models = () => [] } = {}) {
   const agents = new Map()
   const queue = []
   let nextId = 1
@@ -241,6 +241,9 @@ export function createAgentManager({ run, concurrency = 8, onChange = () => {}, 
   return {
     start,
     track,
+    // the models a worker may run on, and the one it runs on unless another is named
+    models,
+    defaultModel: () => defaults().model ?? null,
     restore,
     clear: () => restore([]),
     get: (id) => agents.get(String(id)) || null,
