@@ -178,10 +178,18 @@ export function createToolset({ toolResult, cwd, env, tracker, skills, shells, s
           prompt: { type: 'string', description: 'complete, self-contained task and desired output, including necessary context from the parent conversation' },
           description: describeParam,
           tools: { type: 'array', items: { type: 'string' }, description: 'tool names to allow; omit for the configured worker tools', optional: true },
-          model: { type: 'string', description: `leave out to run on the default worker model${agents.defaultModel?.() ? ` (${agents.defaultModel()})` : ''}. Name a model only when the user asked for that model, or the task truly cannot be done well on the default one. One of: ${(agents.models?.() ?? []).join(', ')}`, optional: true },
+          model: { type: 'string', description: `leave out to run on the default worker model${agents.defaultModel?.() ? ` (${agents.defaultModel()})` : ''}. Name a model only when the user asked for that model, or the task truly cannot be done well on the default one; as provider/model, like ${agents.defaultModel?.() || 'codex/gpt-6.1-sol'}`, optional: true },
         },
         execute: ({ prompt, description, tools, model }) => {
-          if (model && !(agents.models?.() ?? []).includes(model)) throw new Error(`no model ${model}; available: ${(agents.models?.() ?? []).join(', ')}`)
+          // a name not known is answered with the known ones it most resembles: its provider's, else ones sharing a word
+          if (model && !(agents.models?.() ?? []).includes(model)) {
+            const known = agents.models?.() ?? []
+            const provider = model.split('/')[0]
+            const words = model.toLowerCase().split(/[^a-z0-9.]+/).filter((w) => w.length > 1)
+            const near = known.filter((m) => m.startsWith(`${provider}/`))
+            const alike = near.length ? near : known.filter((m) => words.some((w) => m.toLowerCase().includes(w)))
+            throw new Error(`no model ${model}${alike.length ? `; models like it: ${alike.slice(0, 20).join(', ')}` : ''}`)
+          }
           const agent = agents.start({ prompt, description, tools, sessionId, sessionFile, ...(model && { model }) })
           return { agentId: agent.id, status: agent.status, model: agent.model }
         },
