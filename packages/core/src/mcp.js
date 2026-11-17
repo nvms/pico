@@ -151,6 +151,10 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
 
   // the connections under way, which a turn about to start waits for
   const connecting = new Set()
+  // a server that failed is tried again before a later turn, once this long has passed since it last was: a network
+  // that dropped for a while, or a server that crashed, comes back without the session starting over
+  const RETRY_MS = 20000
+  const retryable = (s) => s.enabled && s.status === 'error' && Date.now() - (s.attempted ?? 0) >= RETRY_MS
   function connect(name) {
     const attempt = open(name)
     connecting.add(attempt)
@@ -163,10 +167,20 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     if (!server) return
     server.status = 'connecting'
     server.error = null
+    server.attempted = Date.now()
     onChange()
     try {
       const transport = await createMcpTransport(server.command)
       server.transport = transport
+      // a connection that ends on its own, its process gone or its address unreachable, is opened again before the
+      // next turn
+      transport.onclose = () => {
+        if (servers.get(name) !== server || server.transport !== transport || !server.enabled || server.status !== 'connected') return
+        server.status = 'idle'
+        server.connection = null
+        server.transport = null
+        onChange()
+      }
       // tools go under the server's name here, so two of the same program, like one per account, stay apart
       const connection = await connectMCP({
         name,
@@ -225,11 +239,11 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     // would otherwise go without servers still coming up
     // the switched-on servers not yet connected or failed, by name
     starting() {
-      return [...servers.values()].filter((s) => s.enabled && (s.status === 'idle' || s.status === 'connecting')).map((s) => s.name)
+      return [...servers.values()].filter((s) => s.enabled && (s.status === 'idle' || s.status === 'connecting' || retryable(s))).map((s) => s.name)
     },
     ready(ms) {
       for (const server of servers.values()) {
-        if (server.enabled && server.status === 'idle') connect(server.name).catch(() => {})
+        if ((server.enabled && server.status === 'idle') || retryable(server)) connect(server.name).catch(() => {})
       }
       if (!connecting.size) return Promise.resolve()
       let timer
