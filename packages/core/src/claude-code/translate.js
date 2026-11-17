@@ -18,10 +18,12 @@ const BRIDGE_PREFIX = `mcp__${BRIDGE_SERVER}__`
 // pico tools Claude Code already has its own version of; offering both
 // would only make the model choose between equivalent tools. Memory is
 // not among them: Claude Code's own is switched off, so every model in a
-// project keeps one store, pico's
+// project keeps one store, pico's. Deliberation is not either: Claude
+// Code has nothing like it. A host that decides this itself passes its
+// own list (boot.engineOwnTools)
 export const COVERED_TOOLS = new Set([
   'read', 'write', 'edit', 'bash', 'glob', 'grep', 'view', 'shell_output', 'shell_kill', 'tool_result',
-  'agent_start', 'agent_list', 'agent_collect', 'agent_cancel', 'deliberate',
+  'agent_start', 'agent_list', 'agent_collect', 'agent_cancel',
   'skill',
 ])
 

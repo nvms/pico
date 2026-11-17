@@ -799,6 +799,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
       env: boot.env,
       contextFiles: boot.startupContext?.files ?? [],
       engineState: savedEngineState(engine),
+      // the pico tools this engine's model is not offered, when the host decides that in place of the engine
+      ownTools: boot.engineOwnTools?.[engine.name] ?? null,
       // subagents the engine runs itself, shown in the activity list
       subagents: { start: (options) => agents.track({ ...options, sessionId: state.session?.id, sessionFile: state.session?.file }) },
     }

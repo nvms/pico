@@ -210,7 +210,8 @@ export function createClaudeCodeEngine({ command = claudeCommand(), idleMs = IDL
     // call through the bridge lands on the tool_use Claude announced for
     // it (same name, same arguments, oldest first), once every message
     // before it has been handled, since it reaches pico by another channel
-    entry.bridge.setTurn(tools.filter((tool) => !COVERED_TOOLS.has(tool.name)), async (name, args) => {
+    const covered = host.ownTools ? new Set(host.ownTools) : COVERED_TOOLS
+    entry.bridge.setTurn(tools.filter((tool) => !covered.has(tool.name)), async (name, args) => {
       await chain
       const at = unclaimed.findIndex((use) => use.name === name && JSON.stringify(use.args) === JSON.stringify(args ?? {}))
       const use = at >= 0 ? unclaimed.splice(at, 1)[0] : null
