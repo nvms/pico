@@ -167,8 +167,10 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
     try {
       const transport = await createMcpTransport(server.command)
       server.transport = transport
+      // tools go under the server's name here, so two of the same program, like one per account, stay apart
       const connection = await connectMCP({
         name,
+        prefix: name,
         transport: () => transport,
       })
       // switched off or replaced while it was connecting
