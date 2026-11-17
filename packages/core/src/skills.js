@@ -1,17 +1,30 @@
+import { parse as parseYaml } from 'yaml'
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { globalSkillsDir, projectSkillsDir } from './paths.js'
 
+// a file's frontmatter as YAML reads it, so multi-line and nested values keep their content; frontmatter that is not
+// valid YAML (an unquoted "key: Use when: ...") is read a line at a time, as key: value
 export function parseFrontmatter(text) {
   const match = text.match(/^---\n([\s\S]*?)\n---\n?/)
   if (!match) return { meta: {}, body: text }
+  return { meta: readMeta(match[1]), body: text.slice(match[0].length) }
+}
+
+function readMeta(source) {
+  try {
+    const parsed = parseYaml(source)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return Object.fromEntries(Object.entries(parsed).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]))
+    }
+  } catch {}
   const meta = {}
-  for (const line of match[1].split('\n')) {
+  for (const line of source.split('\n')) {
     const sep = line.indexOf(':')
-    if (sep === -1) continue
+    if (sep === -1 || /^\s/.test(line)) continue
     meta[line.slice(0, sep).trim()] = line.slice(sep + 1).trim()
   }
-  return { meta, body: text.slice(match[0].length) }
+  return meta
 }
 
 async function scanDir(dir, source) {
