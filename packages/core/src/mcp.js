@@ -382,7 +382,8 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
         sessionEnabled: sessionSettings.has(s.name) ? sessionSettings.get(s.name) : null,
         status: s.status,
         error: s.error,
-        signedIn: (() => { const spec = parseServerSpec(s.command); return spec.type === 'http' && hasSignIn(spec.url) })(),
+        // a server whose line cannot be read is listed with its error, and never hides the others
+        signedIn: (() => { try { const spec = parseServerSpec(s.command); return spec.type === 'http' && hasSignIn(spec.url) } catch { return false } })(),
         toolCount: s.connection?.tools.length || 0,
         tools: (s.connection?.tools || []).map((t) => ({ name: t.name, description: t.description || '', schema: t.schema ?? null })),
       }))
