@@ -853,8 +853,9 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
           const next = [...items]
           flushStream(next)
           const last = next.at(-1)
-          if (last?.kind === 'thoughts') last.text += event.content
-          else next.push({ kind: 'thoughts', text: event.content })
+          // when the thinking began and when its latest piece came, so a transcript can say how long it went on
+          if (last?.kind === 'thoughts') { last.text += event.content; last.endedAt = Date.now() }
+          else next.push({ kind: 'thoughts', text: event.content, startedAt: Date.now(), endedAt: Date.now() })
           return next
         })
         set({ turnPhase: 'thinking' })
