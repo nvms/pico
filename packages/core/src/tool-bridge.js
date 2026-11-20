@@ -1,9 +1,10 @@
 // pico's own tools (peers, questions, wake-ups, and whatever the host adds,
-// like kagent's terminals and browser) offered to Claude Code over MCP.
-// Claude Code starts mcp-server.js as a stdio MCP server; that process
-// relays each list and call over a private Unix socket back to this one,
-// where the tool runs with the live turn's toolset and recorder. The tool
-// set changes turn to turn, so the bridge holds whichever turn is current.
+// like kagent's terminals and browser) offered over MCP to a program an
+// engine runs, such as Claude Code or Antigravity. The program starts
+// tool-bridge-server.js as a stdio MCP server; that process relays each
+// list and call over a private Unix socket back to this one, where the
+// tool runs with the live turn's toolset and recorder. The tool set
+// changes turn to turn, so the bridge holds whichever turn is current.
 
 import { createServer } from 'node:net'
 import { mkdtemp, rm, chmod } from 'node:fs/promises'
@@ -11,12 +12,41 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { BRIDGE_SERVER, inputSchema } from './translate.js'
 
-const SHIM = fileURLToPath(new URL('./mcp-server.js', import.meta.url))
+const SHIM = fileURLToPath(new URL('./tool-bridge-server.js', import.meta.url))
+
+// the MCP server's name, so the program sees pico's tools under it, as
+// Claude Code's mcp__pico__<name>
+export const BRIDGE_SERVER = 'pico'
+
+// ---- pico tool schemas to JSON Schema ----
+
+function jsonProperty(prop) {
+  const out = { type: prop.type }
+  if (prop.description) out.description = prop.description
+  if (prop.enum) out.enum = prop.enum
+  if (prop.items) out.items = jsonProperty(prop.items)
+  if (prop.properties) {
+    out.properties = Object.fromEntries(Object.entries(prop.properties).map(([key, child]) => [key, jsonProperty(child)]))
+    if (prop.required) out.required = prop.required
+  }
+  return out
+}
+
+export function inputSchema(schema = {}) {
+  // a whole JSON Schema (an MCP server's) goes as it is
+  if (typeof schema.type === 'string') return schema
+  const properties = {}
+  const required = []
+  for (const [key, prop] of Object.entries(schema)) {
+    properties[key] = jsonProperty(prop)
+    if (!prop.optional) required.push(key)
+  }
+  return { type: 'object', properties, ...(required.length ? { required } : {}) }
+}
 
 export async function createBridge() {
-  const dir = await mkdtemp(join(tmpdir(), 'pico-claude-'))
+  const dir = await mkdtemp(join(tmpdir(), 'pico-bridge-'))
   await chmod(dir, 0o700)
   const path = join(dir, 'bridge.sock')
   const token = randomBytes(24).toString('hex')
@@ -80,12 +110,12 @@ export async function createBridge() {
   }
 
   return {
-    // the MCP server entry Claude Code is started with
-    mcpConfig() {
-      return { mcpServers: { [BRIDGE_SERVER]: { type: 'stdio', command: process.execPath, args: [SHIM], env: { PICO_BRIDGE_SOCKET: path, PICO_BRIDGE_TOKEN: token } } } }
+    // the stdio MCP server the program is started with
+    server() {
+      return { name: BRIDGE_SERVER, command: process.execPath, args: [SHIM], env: { PICO_BRIDGE_SOCKET: path, PICO_BRIDGE_TOKEN: token } }
     },
     // the tools a turn offers; `onClaim` ties an incoming call to the
-    // tool_use Claude announced for it
+    // tool call the program announced for it
     setTurn(next, onClaim) {
       tools = next
       claim = onClaim

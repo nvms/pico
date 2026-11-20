@@ -848,6 +848,8 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
 
   function streamHandler(recorder, controller) {
     return (event) => {
+      // a host that relays a turn as it happens (pico's ACP server) hears every event, whichever model runs it
+      boot.onTurnEvent?.(event, recorder)
       if (event.type === 'thinking') {
         updateOverlay((items) => {
           const next = [...items]

@@ -6,7 +6,8 @@ import { createCommandIndex } from './commands.js'
 import { createMcpRuntime } from './mcp.js'
 import { createMemory } from './memory.js'
 
-export async function buildProjectBoot(cwd, { onMcpChange = () => {} } = {}) {
+// `mcpServers` are the session's own MCP servers (name to command), from the app that opened it
+export async function buildProjectBoot(cwd, { onMcpChange = () => {}, mcpServers = {} } = {}) {
   const home = homedir()
   const root = findProjectRoot(cwd)
   const startupContext = loadStartupContext(cwd)
@@ -22,7 +23,7 @@ export async function buildProjectBoot(cwd, { onMcpChange = () => {} } = {}) {
     tracker,
     skills: await createSkillIndex(root),
     commands: await createCommandIndex(root),
-    mcp: await createMcpRuntime({ root, onChange: onMcpChange }),
+    mcp: await createMcpRuntime({ root, onChange: onMcpChange, sessionServers: mcpServers }),
     memory: createMemory(root),
   }
 }

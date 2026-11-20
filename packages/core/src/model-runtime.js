@@ -1,12 +1,19 @@
-import { discoverKeys, applyKeys, keyHint } from 'picocode-core/keys.js'
-import { loadCatalog, extractModels, adhocModel } from 'picocode-core/catalog.js'
-import { loadXAIModels } from 'picocode-core/xai-models.js'
-import { xaiConnected, xaiCredentials } from 'picocode-core/xai-auth.js'
-import { loadCodexModels } from 'picocode-core/codex-models.js'
-import { loadOpenRouterModels } from 'picocode-core/openrouter-models.js'
-import { openaiConnected, openaiCredentials } from 'picocode-core/openai-auth.js'
-import { defaultModel } from 'picocode-core/models.js'
-import { fuzzyScore } from 'picocode-core/fuzzy.js'
+// Every model this machine can run, and what each runs with: API keys,
+// the ChatGPT and SuperGrok sign-ins pico calls models with itself, and the
+// agents pico drives over ACP on their own sign-ins (Claude Code,
+// Antigravity). One list, whichever way pico is used.
+
+import { discoverKeys, applyKeys, keyHint } from './keys.js'
+import { loadCatalog, extractModels, adhocModel } from './catalog.js'
+import { loadXAIModels } from './xai-models.js'
+import { xaiConnected, xaiCredentials } from './xai-auth.js'
+import { loadCodexModels } from './codex-models.js'
+import { loadOpenRouterModels } from './openrouter-models.js'
+import { openaiConnected, openaiCredentials } from './openai-auth.js'
+import { defaultModel } from './models.js'
+import { fuzzyScore } from './fuzzy.js'
+import { CLAUDE_CODE_PROVIDER, claudeCodeModels, claudeCodeStatus } from './claude-code/models.js'
+import { ANTIGRAVITY_PROVIDER, antigravityModels, antigravityStatus } from './antigravity/models.js'
 
 const CATALOG_PROVIDERS = ['google', 'anthropic', 'openai', 'xai']
 
@@ -15,7 +22,10 @@ function codexContext(catalogData, model) {
   return model.context ?? entry?.limit?.input ?? entry?.limit?.context ?? null
 }
 
-async function buildModels({ providers, force }) {
+// the models of `providers` (the providers this machine has keys or
+// sign-ins for), each marked available or not
+export async function buildModels({ providers, force = false, agy = null }) {
+  if (providers.includes(ANTIGRAVITY_PROVIDER) && !agy) agy = await antigravityStatus().catch(() => ({ models: [] }))
   const has = (provider) => providers.includes(provider)
   const codexCredentials = has('codex') ? await openaiCredentials().catch(() => null) : null
   const subscriptionCredentials = has('grok') ? await xaiCredentials().catch(() => null) : null
@@ -39,15 +49,27 @@ async function buildModels({ providers, force }) {
     })),
     ...grok.map(model => ({ ...model, available: has('grok'), keyHint: '/connect' })),
     ...openrouter.map((model) => ({ ...model, available: true, keyHint: keyHint('openrouter') })),
+    ...(has(CLAUDE_CODE_PROVIDER) ? claudeCodeModels() : []),
+    ...(has(ANTIGRAVITY_PROVIDER) ? antigravityModels(agy.models) : []),
   ]
 }
 
 export async function loadModelRuntime() {
-  const chatgpt = await openaiConnected()
-  const grok = await xaiConnected()
-  const providers = [...applyKeys(discoverKeys()), ...(chatgpt ? ['codex'] : []), ...(grok.connected ? ['grok'] : [])]
+  const [chatgpt, grok, claude, agy] = await Promise.all([
+    openaiConnected(),
+    xaiConnected(),
+    claudeCodeStatus().catch(() => ({ connected: false })),
+    antigravityStatus().catch(() => ({ connected: false, models: [] })),
+  ])
+  const providers = [
+    ...applyKeys(discoverKeys()),
+    ...(chatgpt ? ['codex'] : []),
+    ...(grok.connected ? ['grok'] : []),
+    ...(claude.connected ? [CLAUDE_CODE_PROVIDER] : []),
+    ...(agy.connected ? [ANTIGRAVITY_PROVIDER] : []),
+  ]
   const codexCredentials = chatgpt ? await openaiCredentials().catch(() => null) : null
-  const loadModels = ({ force = false } = {}) => buildModels({ providers, force })
+  const loadModels = ({ force = false } = {}) => buildModels({ providers, force, agy })
   const subscriptionCredentials = grok.connected ? await xaiCredentials().catch(() => null) : null
   return { providers, models: await loadModels(), codexCredentials, xaiCredentials: subscriptionCredentials, loadModels }
 }

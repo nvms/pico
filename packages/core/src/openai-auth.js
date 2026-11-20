@@ -82,7 +82,8 @@ function storeTokens(auth, tokens) {
   return auth
 }
 
-export async function connectOpenAI({ openBrowser = true, timeoutMs = 5 * 60 * 1000, onUrl = () => {} } = {}) {
+// `signal` cancels a sign-in under way
+export async function connectOpenAI({ openBrowser = true, timeoutMs = 5 * 60 * 1000, onUrl = () => {}, signal } = {}) {
   const verifier = base64url(randomBytes(64))
   const challenge = base64url(createHash('sha256').update(verifier).digest())
   const state = base64url(randomBytes(24))
@@ -130,8 +131,15 @@ export async function connectOpenAI({ openBrowser = true, timeoutMs = 5 * 60 * 1
 
     function cleanup() {
       clearTimeout(timer)
+      signal?.removeEventListener('abort', cancelled)
       server.close()
     }
+    function cancelled() {
+      cleanup()
+      reject(new Error('cancelled'))
+    }
+    if (signal?.aborted) return cancelled()
+    signal?.addEventListener('abort', cancelled, { once: true })
 
     server.on('error', (err) => {
       cleanup()

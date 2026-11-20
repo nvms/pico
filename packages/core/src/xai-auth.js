@@ -116,11 +116,15 @@ function openInBrowser(url) {
   execFile(command, [url], () => {})
 }
 
-export async function connectXAI({ onUrl = () => {}, openBrowser = true, timeoutMs = 300000 } = {}) {
+// `signal` cancels a sign-in under way
+export async function connectXAI({ onUrl = () => {}, openBrowser = true, timeoutMs = 300000, signal } = {}) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('Invalid xAI sign-in timeout')
   const deadline = Date.now() + timeoutMs
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new Error('xAI sign-in timed out')), timeoutMs)
+  const cancel = () => controller.abort(new Error('cancelled'))
+  if (signal?.aborted) cancel()
+  signal?.addEventListener('abort', cancel, { once: true })
   try {
     return await locked(async (file, assertLock) => {
       controller.signal.throwIfAborted()
@@ -154,6 +158,7 @@ export async function connectXAI({ onUrl = () => {}, openBrowser = true, timeout
     })
   } finally {
     clearTimeout(timer)
+    signal?.removeEventListener('abort', cancel)
   }
 }
 

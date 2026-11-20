@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
 import { runTurn } from 'picocode-core/agent.js'
 import { readConfig } from 'picocode-core/config.js'
-import { loadModelRuntime, selectModel } from './model-runtime.js'
+import { loadModelRuntime, selectModel } from 'picocode-core/model-runtime.js'
 
 const SYSTEM = ({ platform, shell, cwd }) => `Generate exactly one shell command that satisfies the user's request. The output must be a valid shell command without Markdown formatting. If multiple steps are required, try to combine them together using &&.
 

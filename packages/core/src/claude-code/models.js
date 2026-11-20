@@ -8,6 +8,7 @@ import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { claudeEnv } from './cli.js'
+import { claudeToken } from './token.js'
 
 const exec = promisify(execFile)
 
@@ -15,7 +16,7 @@ export const CLAUDE_CODE_PROVIDER = 'claude-code'
 
 // the CLI's model aliases always name the newest model of each family;
 // every one of them has a 1M token context window
-const FAMILIES = [
+export const FAMILIES = [
   { alias: 'fable', label: 'Fable' },
   { alias: 'opus', label: 'Opus' },
   { alias: 'sonnet', label: 'Sonnet' },
@@ -56,16 +57,18 @@ export function claudeCommand(env = process.env) {
   return 'claude'
 }
 
-// whether `claude` is installed and signed in to claude.ai. A machine with
+// whether `claude` is installed and runs on a Claude subscription: its
+// own claude.ai login, or a long-lived token (token.js). A machine with
 // only an API key configured does not count: that is what pico's own
 // Anthropic models are for
 export async function claudeCodeStatus({ command = claudeCommand() } = {}) {
+  const token = !!claudeToken()
   try {
     const { stdout } = await exec(command, ['auth', 'status', '--json'], { env: claudeEnv(), timeout: 15000 })
     const status = JSON.parse(stdout)
     const subscribed = status.loggedIn === true && status.authMethod === 'claude.ai'
-    return { installed: true, connected: subscribed, email: subscribed ? status.email ?? null : null, plan: subscribed ? status.subscriptionType ?? null : null }
+    return { installed: true, connected: subscribed || token, email: subscribed ? status.email ?? null : null, plan: subscribed ? status.subscriptionType ?? null : null }
   } catch (error) {
-    return { installed: error.code !== 'ENOENT', connected: false, email: null, plan: null }
+    return { installed: error.code !== 'ENOENT', connected: error.code !== 'ENOENT' && token, email: null, plan: null }
   }
 }

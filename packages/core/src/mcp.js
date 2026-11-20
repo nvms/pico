@@ -130,7 +130,16 @@ export async function createMcpTransport(command) {
   })
 }
 
-export async function createMcpRuntime({ root, onChange = () => {} }) {
+// a server as parseServerSpec reads it, from its parts
+export function formatServerSpec(spec) {
+  const quote = (value) => (/^[^\s"']+$/.test(value) ? value : value.includes('"') ? `'${value}'` : `"${value}"`)
+  if (spec.type === 'http') return [spec.url, ...Object.entries(spec.headers ?? {}).map(([name, value]) => `${name}=${quote(value)}`)].join(' ')
+  return [...Object.entries(spec.env ?? {}).map(([name, value]) => `${name}=${quote(value)}`), quote(spec.command), ...(spec.args ?? []).map(quote)].join(' ')
+}
+
+// `sessionServers` (name to command) are this session's own, from the
+// app that opened it, and kept whatever the files say
+export async function createMcpRuntime({ root, onChange = () => {}, sessionServers = {} }) {
   let registry = await readRegistry()
   let projectConfig = await readProjectConfig(root)
   const servers = new Map()
@@ -148,6 +157,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
   }
   for (const [name, command] of Object.entries(registry.servers)) register(name, command, 'global')
   for (const [name, command] of Object.entries(projectConfig.servers)) register(name, command, 'project')
+  for (const [name, command] of Object.entries(sessionServers)) register(name, command, 'session')
 
   // the connections under way, which a turn about to start waits for
   const connecting = new Set()
@@ -267,6 +277,7 @@ export async function createMcpRuntime({ root, onChange = () => {} }) {
       const wanted = new Map([
         ...Object.entries(registry.servers).map(([name, command]) => [name, { command, scope: 'global' }]),
         ...Object.entries(projectConfig.servers).map(([name, command]) => [name, { command, scope: 'project' }]),
+        ...Object.entries(sessionServers).map(([name, command]) => [name, { command, scope: 'session' }]),
       ])
       for (const name of [...servers.keys()]) {
         if (wanted.has(name)) continue

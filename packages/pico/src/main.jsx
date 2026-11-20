@@ -4,7 +4,7 @@ import { ensureDaemon } from 'picocode-core/daemon-transport.js'
 import { createRemoteController } from 'picocode-core/remote-controller.js'
 import { mount } from '@trendr/core'
 import { parseArgs, USAGE } from './cli-args.js'
-import { loadModelRuntime } from './model-runtime.js'
+import { loadModelRuntime } from 'picocode-core/model-runtime.js'
 import { readConfig } from 'picocode-core/config.js'
 import { detectTerminalTheme } from 'picocode-core/terminal-theme.js'
 import { App } from './ui/app.jsx'
@@ -49,19 +49,35 @@ if (cli.mode === 'update') {
   process.exit(1)
 }
 if (cli.mode === 'connect') {
-  const grok = cli.connectProvider === 'xai'
-  const connect = grok
-    ? (await import('picocode-core/xai-auth.js')).connectXAI
-    : (await import('picocode-core/openai-auth.js')).connectOpenAI
+  const { signInFor } = await import('picocode-core/sign-in/index.js')
+  const signIn = signInFor(cli.connectProvider)
   try {
-    console.error(`opening your browser for ${grok ? 'SuperGrok' : 'ChatGPT'} sign-in...`)
-    const { email } = await connect({ onUrl: (url, code) => console.error(`${url}${code ? `\n${code}` : ''}`) })
-    console.log(`connected as ${email || (grok ? 'your SuperGrok account' : 'your ChatGPT account')}`)
+    const flow = await signIn.start()
+    const page = await flow.page
+    console.error(`sign in to ${signIn.label} on this page:\n${page.url}${page.code ? `\ncode: ${page.code}` : ''}`)
+    if (flow.input) {
+      const { createInterface } = await import('node:readline/promises')
+      const rl = createInterface({ input: process.stdin, output: process.stderr })
+      const asked = rl.question(flow.input === 'code' ? 'code from the page: ' : 'if the page ended on an address that did not load, paste it here: ')
+      flow.done.then(() => rl.close(), () => rl.close())
+      const text = await asked.catch(() => null)
+      if (text?.trim()) await flow.finish(text)
+    }
+    const { identity } = await flow.done
+    console.log(`signed in to ${signIn.label}${identity ? ` as ${identity}` : ''}`)
     process.exit(0)
   } catch (err) {
-    console.error(`connect failed: ${err.message}`)
+    console.error(`sign-in failed: ${err.message}`)
     process.exit(1)
   }
+}
+if (cli.mode === 'acp') {
+  // stdout carries only ACP messages; whatever pico would print goes to stderr
+  for (const level of ['log', 'info', 'warn', 'debug']) console[level] = (...args) => console.error(...args)
+  const { serveAgent } = await import('picocode-core/acp/connect.js')
+  const { createPicoAgent } = await import('picocode-core/acp/pico-agent.js')
+  await serveAgent((client, control) => createPicoAgent(client, control, { version: pkg.version }))
+  process.exit(0)
 }
 if (cli.mode === 'headless') {
   const { runHeadless } = await import('./headless.js')

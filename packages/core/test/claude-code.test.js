@@ -2,7 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { claudeArgs, claudeEnv } from '../src/claude-code/cli.js'
 import { cliModel, claudeCodeModels } from '../src/claude-code/models.js'
-import { fingerprint, inputSchema, picoTool, seedText, splitTurn, toolEntry, usageOf } from '../src/claude-code/translate.js'
+import { mcpConfig, picoTool, usageOf } from '../src/claude-code/translate.js'
+import { fingerprint, seedText, splitTurn } from '../src/engine-history.js'
+import { inputSchema } from '../src/tool-bridge.js'
 import { createClaudeCodeEngine } from '../src/claude-code/engine.js'
 import { createRecorder } from '../src/tools/recorder.js'
 
@@ -32,38 +34,20 @@ test('Claude tools render as the pico tools they correspond to', () => {
   assert.deepEqual(picoTool('Bash', { command: 'ls', description: 'List' }), { name: 'bash', args: { command: 'ls', description: 'List' } })
   assert.deepEqual(picoTool('Edit', { file_path: '/p/src/a.js', old_string: 'a', new_string: 'b' }, '/p'), { name: 'edit', args: { path: 'src/a.js', oldText: 'a', newText: 'b' } })
   assert.deepEqual(picoTool('Read', { file_path: '/elsewhere/a.js' }, '/p'), { name: 'read', args: { path: '/elsewhere/a.js' } })
-  assert.deepEqual(picoTool('mcp__pico__peer_send', { to: 'x', message: 'hi' }), { name: 'peer_send', args: { to: 'x', message: 'hi' }, bridged: true })
+  assert.deepEqual(picoTool('mcp__pico__peer_send', { to: 'x', message: 'hi' }, '/p', ['pico']), { name: 'peer_send', args: { to: 'x', message: 'hi' }, bridged: true })
+  assert.deepEqual(picoTool('mcp__other__thing', {}, '/p', ['pico']), { name: 'mcp__other__thing', args: {} })
   assert.deepEqual(picoTool('WebFetch', { url: 'u' }), { name: 'WebFetch', args: { url: 'u' } })
 })
 
-test('an edit keeps its diff and what rewind needs to undo it', () => {
-  const use = { id: 't1', name: 'Edit', input: { file_path: '/p/a.txt', old_string: 'beta', new_string: 'BETA' } }
-  const block = { tool_use_id: 't1', type: 'tool_result', content: 'updated' }
-  const extra = { filePath: '/p/a.txt', originalFile: 'alpha\nbeta\n', structuredPatch: [] }
-  const entry = toolEntry(use, block, extra, { cwd: '/p', after: 'alpha\nBETA\n' })
-  assert.equal(entry.name, 'edit')
-  assert.equal(entry.status, 'done')
-  assert.equal(entry.diff.path, 'a.txt')
-  assert.deepEqual([entry.diff.additions, entry.diff.deletions], [1, 1])
-  assert.equal(entry.revert.path, '/p/a.txt')
-  assert.deepEqual(entry.revert.splices, [{ start: 6, oldText: 'beta', newText: 'BETA' }])
-
-  const created = toolEntry({ id: 't2', name: 'Write', input: { file_path: '/p/b.txt', content: 'x' } }, { content: 'created' }, { type: 'create', filePath: '/p/b.txt', content: 'x', originalFile: null }, { cwd: '/p' })
-  assert.equal(created.created, true)
-  assert.equal(created.revert.before.exists, false)
-})
-
-test('a bash result shows its output, and an interrupted call is not an error', () => {
-  const use = { id: 't1', name: 'Bash', input: { command: 'make' } }
-  const done = toolEntry(use, { content: 'ok' }, { stdout: 'ok', stderr: 'warn' })
-  assert.equal(done.fullOutput, 'ok\nwarn')
-  const cut = toolEntry(use, { content: 'rejected', is_error: true }, null, { interrupted: true })
-  assert.equal(cut.status, 'interrupted')
-  assert.equal(cut.error, undefined)
-})
-
 test('usage counts every input token a request carried', () => {
-  assert.deepEqual(usageOf({ input_tokens: 2, cache_read_input_tokens: 100, cache_creation_input_tokens: 10, output_tokens: 5 }), { promptTokens: 112, completionTokens: 5, totalTokens: 117, cachedTokens: 100, thoughtTokens: 0 })
+  assert.deepEqual(usageOf({ input_tokens: 2, cache_read_input_tokens: 100, cache_creation_input_tokens: 10, output_tokens: 5 }), { inputTokens: 2, cachedReadTokens: 100, cachedWriteTokens: 10, outputTokens: 5, thoughtTokens: 0 })
+})
+
+test('the client\'s MCP servers reach Claude Code as its own config', () => {
+  assert.deepEqual(mcpConfig([
+    { name: 'pico', command: 'node', args: ['bridge.js'], env: [{ name: 'SOCKET', value: '/s' }] },
+    { type: 'http', name: 'docs', url: 'https://d', headers: [{ name: 'Authorization', value: 'k' }] },
+  ]), { mcpServers: { pico: { type: 'stdio', command: 'node', args: ['bridge.js'], env: { SOCKET: '/s' } }, docs: { type: 'http', url: 'https://d', headers: { Authorization: 'k' } } } })
 })
 
 test('a turn is what follows the last thing the model said', () => {
@@ -116,7 +100,7 @@ function fakeClaude(replies) {
 }
 
 const fakeBridge = () => {
-  const bridge = { turns: [], mcpConfig: () => ({ mcpServers: {} }), setTurn(tools, claim) { bridge.turns.push(tools); bridge.claim = claim }, close: async () => {} }
+  const bridge = { turns: [], server: () => ({ name: 'pico', command: 'node', args: [], env: {} }), setTurn(tools, claim) { bridge.turns.push(tools); bridge.claim = claim }, close: async () => {} }
   return bridge
 }
 
@@ -155,7 +139,8 @@ test('a turn streams, runs tools, and returns pico history', async (t) => {
   assert.deepEqual(result.usage, { promptTokens: 200, completionTokens: 14, totalTokens: 214, cachedTokens: 180, thoughtTokens: 0 })
   assert.equal(result.lastPromptTokens, 100)
   assert.equal(result.interrupted, false)
-  assert.equal(result.engineState.claudeSessionId, SESSION)
+  assert.equal(result.engineState.sessionId, spawned[0].options.sessionId)
+  assert.match(result.engineState.sessionId, /^[0-9a-f-]{36}$/)
 })
 
 test('the next turn sends only what is new to the same process', async (t) => {
@@ -179,12 +164,13 @@ test('a history Claude Code has not seen starts a new session seeded with it', a
   assert.equal(spawned.length, 2)
   assert.equal(spawned[1].options.resume, null)
   const [seed, input] = spawned[1].sent[0]
-  assert.equal(seed.text, seedText([{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'Something else.' }]))
+  assert.equal(seed.text, seedText([{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'Something else.' }], 'Claude Code'))
   assert.deepEqual(input, { type: 'text', text: 'go on' })
 })
 
 test('a restarted host resumes the saved Claude session, and a fork forks it', async (t) => {
   const history = [{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'Hi.' }]
+  // saved by the engine before the ACP layer, which named the session claudeSessionId
   const saved = { claudeSessionId: 'saved', owner: 'pico-1', synced: fingerprint(history) }
   const { spawn, spawned } = fakeClaude([text('m1', 'Back.'), text('m2', 'Forked.')])
   const engine = createClaudeCodeEngine({ spawn, bridge: async () => fakeBridge() })
@@ -304,7 +290,7 @@ test('a process that cannot start fails the turn with the reason', async (t) => 
   t.after(() => engine.releaseAll())
   const { result } = await turn(engine, [{ role: 'user', content: 'hi' }])
   assert.match(result.error, /claude not found/)
-  assert.equal(result.engineState.claudeSessionId, null)
+  assert.equal(result.engineState.sessionId, null)
 })
 
 test('Claude\'s subagents are tracked as pico agents while they work', async (t) => {
@@ -368,4 +354,41 @@ test('an mcp server\'s schema reaches Claude whole: a list-or-null parameter, an
   assert.equal(inputSchema(schema), schema)
   const bare = { type: 'object' }
   assert.equal(inputSchema(bare), bare)
+})
+
+test('an edit keeps its diff and what rewind needs to undo it', async (t) => {
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const dir = mkdtempSync(join(tmpdir(), 'pico-claude-edit-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const file = join(dir, 'a.txt')
+  writeFileSync(file, 'alpha\nbeta\n')
+  const edit = { type: 'assistant', message: { id: 'm1', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: file, old_string: 'beta', new_string: 'BETA' } }] } }
+  const { spawn } = fakeClaude([])
+  const engine = createClaudeCodeEngine({
+    spawn: (options) => {
+      const proc = spawn(options)
+      proc.send = () => {
+        setTimeout(() => {
+          options.onMessage(edit)
+          writeFileSync(file, 'alpha\nBETA\n')
+          options.onMessage({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'e1', content: 'updated' }] }, tool_use_result: { filePath: file, originalFile: 'alpha\nbeta\n', structuredPatch: [] } })
+          options.onMessage({ type: 'result', is_error: false, session_id: SESSION })
+        }, 1)
+        return true
+      }
+      return proc
+    },
+    bridge: async () => fakeBridge(),
+  })
+  t.after(() => engine.releaseAll())
+  const { recorder } = await turn(engine, [{ role: 'user', content: 'shout beta' }], { host: { sessionId: 'pico-1', cwd: dir, env: {} } })
+  const [entry] = recorder.entries
+  assert.equal(entry.name, 'edit')
+  assert.equal(entry.status, 'done')
+  assert.equal(entry.diff.path, 'a.txt')
+  assert.deepEqual([entry.diff.additions, entry.diff.deletions], [1, 1])
+  assert.equal(entry.revert.path, file)
+  assert.deepEqual(entry.revert.splices, [{ start: 6, oldText: 'beta', newText: 'BETA' }])
 })

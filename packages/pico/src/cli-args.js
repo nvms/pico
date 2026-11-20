@@ -5,6 +5,7 @@ usage:
   pico -p "prompt"           headless: run one agentic turn, print the answer
   pico -s "request"          generate one shell command, without running it
   cat log | pico -p "..."    stdin is appended to the prompt as context
+  pico acp                   serve pico to an ACP app (Zed and others) on stdin and stdout
 
 command flags:
   -p, --print <prompt>       run one agentic turn and print the answer
@@ -18,10 +19,13 @@ command flags:
   --max-tool-calls <n>       stop the agent after n tool calls (default 50)
   -q, --quiet                no progress output on stderr
 
-  --connect [openai|xai]     sign in with a ChatGPT or SuperGrok subscription
+  --connect <provider>       sign in to a subscription: codex (ChatGPT), grok (SuperGrok),
+                             claude-code or antigravity
   update, --update           update pico to the latest release from npm
   -h, --help                 show this help
   -v, --version              show version`
+
+export const CONNECT_PROVIDERS = ['codex', 'grok', 'claude-code', 'antigravity']
 
 export function parseArgs(argv) {
   const opts = { mode: 'interactive' }
@@ -74,11 +78,11 @@ export function parseArgs(argv) {
       i++
     } else if (arg === '--connect') {
       opts.mode = 'connect'
-      if (argv[i + 1] && !argv[i + 1].startsWith('-')) {
-        opts.connectProvider = argv[++i]
-        if (!['openai', 'xai'].includes(opts.connectProvider)) throw new Error('--connect provider must be openai or xai')
-      }
+      opts.connectProvider = takeValue(arg, i)
+      i++
+      if (!CONNECT_PROVIDERS.includes(opts.connectProvider)) throw new Error(`--connect provider must be one of ${CONNECT_PROVIDERS.join(', ')}`)
     }
+    else if (arg === 'acp' && i === 0) opts.mode = 'acp'
     else if (arg === 'update' || arg === '--update') opts.mode = 'update'
     else if (arg === '-q' || arg === '--quiet') opts.quiet = true
     else if (arg === '-h' || arg === '--help') opts.mode = 'help'

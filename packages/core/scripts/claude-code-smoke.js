@@ -28,7 +28,7 @@ const boot = {
   startupContext: { files: [], stopDir: root },
   tracker: createContextTracker({ stopDir: root, loaded: new Set() }),
   memory: { list: async () => [] }, skills: { list: () => [] },
-  mcp: { list: () => [], tools: () => [], terminateAll() {} },
+  mcp: { list: () => [], tools: () => [], starting: () => [], ready: async () => {}, terminateAll() {}, closeAll: async () => {} },
   shells: { killAll() {}, list: () => [] }, git: { refresh() {} },
   setMcpNotify() {}, setShellsNotify() {}, setWakeupsNotify() {}, setGitNotify() {}, setWakeupsFire() {}, setShellsExit() {},
 }
@@ -74,7 +74,7 @@ for (const item of ctl.state.derived.transcript) {
 console.log('\n--- activity')
 for (const agent of ctl.activity()) console.log(`agent ${agent.id} ${agent.status} ${agent.model}: ${agent.description} | ${agentTranscript(agent).map((i) => i.kind === 'tool' ? `${i.name}:${i.status}` : `${i.kind}:${String(i.text).slice(0, 40)}`).join(' | ')}`)
 const engine = ctl.state.events.filter((event) => event.type === 'engine_state').map((event) => event.data.state)
-console.log('\n--- engine states', engine.map((s) => s.claudeSessionId))
+console.log('\n--- engine states', engine.map((s) => s.sessionId))
 console.log('usage', JSON.stringify(ctl.state.derived.usage), 'last prompt', ctl.state.derived.lastPromptTokens)
 console.log('notes.txt', JSON.stringify(await readFile(join(root, 'notes.txt'), 'utf8')))
 await ctl.shutdown()

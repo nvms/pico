@@ -7,10 +7,15 @@ function fakeSpawn(seen) {
   return (options) => {
     seen.push(options)
     return {
-      send(text) {
-        seen.push(text)
-        options.onMessage({ type: 'stream_event', event: { delta: { type: 'text_delta', text: 'kv' } } })
-        options.onMessage({ type: 'result', is_error: false, result: '  kvault sync  ' })
+      alive: true,
+      send(content) {
+        seen.push(content.map((block) => block.text).join(''))
+        queueMicrotask(() => {
+          options.onMessage({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '  kvault' } } })
+          options.onMessage({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: ' sync  ' } } })
+          options.onMessage({ type: 'result', is_error: false, result: '  kvault sync  ' })
+        })
+        return true
       },
       close() {},
     }

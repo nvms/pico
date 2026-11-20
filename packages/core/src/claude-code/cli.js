@@ -6,6 +6,7 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { randomUUID } from 'node:crypto'
+import { claudeToken } from './token.js'
 
 // these make Claude Code bill an API key instead of the claude.ai login,
 // silently; a Claude Code session in pico always runs on the subscription
@@ -26,7 +27,7 @@ const DISALLOWED = ['AskUserQuestion', 'EnterWorktree', 'ExitWorktree']
 
 // `oneShot` is a bare run with no tools and nothing saved, for work like
 // summarizing that is not part of the conversation
-export function claudeArgs({ model, effort, resume, fork, mcpConfig, appendSystemPrompt, oneShot = false }) {
+export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, appendSystemPrompt, oneShot = false }) {
   const args = [
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     // pico and its hosts run without permission prompts, as the user runs
@@ -42,6 +43,8 @@ export function claudeArgs({ model, effort, resume, fork, mcpConfig, appendSyste
   if (effort) args.push('--effort', effort)
   if (resume) args.push('--resume', resume)
   if (resume && fork) args.push('--fork-session')
+  // the id the session is known by from now on: a new one's, or a fork's
+  if (sessionId && !oneShot) args.push('--session-id', sessionId)
   if (mcpConfig) args.push('--mcp-config', JSON.stringify(mcpConfig))
   if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
   return args
@@ -51,7 +54,8 @@ export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, .
   // background tasks keep running after a turn ends, where pico cannot see
   // them and the idle stop would kill them; in the foreground, subagents
   // still run in parallel, and the turn waits for them
-  const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }
+  const token = claudeToken({ ...process.env, ...env })
+  const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) }
   const child = spawn(command, claudeArgs(options), { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let stderr = ''

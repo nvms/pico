@@ -1,6 +1,6 @@
-// The stdio MCP server Claude Code starts for pico's tools. It holds no
-// tools itself: every list and call goes over the socket named in its
-// environment to the bridge in the pico process (see bridge.js).
+// The stdio MCP server a program an engine runs starts for pico's tools.
+// It holds no tools itself: every list and call goes over the socket named
+// in its environment to the bridge in the pico process (see tool-bridge.js).
 
 import { createConnection } from 'node:net'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'

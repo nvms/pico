@@ -14,8 +14,10 @@
 
 import { createClaudeCodeEngine } from './claude-code/engine.js'
 import { CLAUDE_CODE_PROVIDER } from './claude-code/models.js'
+import { createAntigravityEngine } from './antigravity/engine.js'
+import { ANTIGRAVITY_PROVIDER } from './antigravity/models.js'
 
-const factories = { [CLAUDE_CODE_PROVIDER]: createClaudeCodeEngine }
+const factories = { [CLAUDE_CODE_PROVIDER]: createClaudeCodeEngine, [ANTIGRAVITY_PROVIDER]: createAntigravityEngine }
 const engines = new Map()
 
 export function engineFor(model) {

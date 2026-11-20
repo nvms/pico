@@ -9,10 +9,11 @@ import { makeEvent } from 'picocode-core/events.js'
 import { deriveState } from 'picocode-core/derive.js'
 import { createToolset } from 'picocode-core/tools/index.js'
 import { runTurn } from 'picocode-core/agent.js'
+import { engineFor, releaseEngines } from 'picocode-core/engines.js'
 import { buildSystemPrompt } from 'picocode-core/system-prompt.js'
 import { memoryIndex } from 'picocode-core/memory.js'
 import { finalizeUserContent } from 'picocode-core/attachments.js'
-import { loadModelRuntime, selectModel } from './model-runtime.js'
+import { loadModelRuntime, selectModel } from 'picocode-core/model-runtime.js'
 
 async function readStdin() {
   if (process.stdin.isTTY) return ''
@@ -103,7 +104,11 @@ export async function runHeadless(opts) {
 
   log(`pico  ${model.name}${model.speed && speed === 'fast' ? '  Fast' : ''}${effort ? `  ${effort}` : ''}  session ${session.id}`)
   let thoughts = ''
-  const result = await runTurn({
+  // a model an agent of its own runs (Claude Code, Antigravity) plays the turn through its engine, as a session does
+  const engine = engineFor(model)
+  const memoryIndexText = memoryIndex(await boot.memory.list().catch(() => []), boot.root)
+  const engineState = engine ? events.findLast((event) => event.type === 'engine_state' && event.data.engine === engine.name)?.data.state ?? null : null
+  const result = await (engine?.run ?? runTurn)({
     history: derived.providerHistory,
     tools,
     recorder,
@@ -115,8 +120,9 @@ export async function runHeadless(opts) {
       cwd: boot.cwd,
       contextFiles: boot.startupContext.files,
       skills: boot.skills.list(),
-      memoryIndexText: memoryIndex(await boot.memory.list().catch(() => []), boot.root),
+      memoryIndexText,
     }),
+    ...(engine && { host: { sessionId: session.id, cwd: boot.cwd, env: {}, contextFiles: boot.startupContext.files, memoryIndexText, engineState } }),
     onStream: (event) => {
       if (event.type === 'thinking') thoughts += event.content
       if (event.type === 'tool_complete') {
@@ -135,6 +141,9 @@ export async function runHeadless(opts) {
   }
   if (result.usage) persist(makeEvent('usage', { model: model.name, usage: result.usage, lastPrompt: result.lastPromptTokens }))
   if (result.interrupted) persist(makeEvent('interrupt', {}))
+  if (result.error) log(`  error: ${result.error}`)
+  if (engine && result.engineState) persist(makeEvent('engine_state', { engine: engine.name, state: result.engineState }))
+  releaseEngines(session.id)
 
   const running = shells.running()
   if (running > 0) log(`  killing ${running} background shell${running === 1 ? '' : 's'}`)

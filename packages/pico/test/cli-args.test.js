@@ -66,8 +66,9 @@ test('parses speed independently of effort', () => {
 })
 
 test('subscription sign-in accepts an explicit provider and preserves the OpenAI default', () => {
-  assert.deepEqual(parseArgs(['--connect']), { mode: 'connect' })
-  assert.deepEqual(parseArgs(['--connect', 'xai']), { mode: 'connect', connectProvider: 'xai' })
-  assert.deepEqual(parseArgs(['--connect', 'openai']), { mode: 'connect', connectProvider: 'openai' })
+  assert.throws(() => parseArgs(['--connect']), /requires a value/)
+  assert.deepEqual(parseArgs(['--connect', 'grok']), { mode: 'connect', connectProvider: 'grok' })
+  assert.deepEqual(parseArgs(['--connect', 'claude-code']), { mode: 'connect', connectProvider: 'claude-code' })
   assert.throws(() => parseArgs(['--connect', 'other']), /provider must be/)
+  assert.deepEqual(parseArgs(['acp']), { mode: 'acp' })
 })
