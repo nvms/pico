@@ -891,6 +891,7 @@ export function createController({ boot, run = runTurn, compactRun = compactHist
             kind: 'tool',
             callId: event.call.id,
             name: event.call.function.name,
+            args,
             description: args.description,
             title: defaultTitle(event.call.function.name, args),
             titleLang: event.call.function.name === 'bash' ? 'bash' : null,
