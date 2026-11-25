@@ -26,8 +26,9 @@ export function claudeEnv(env = process.env) {
 const DISALLOWED = ['AskUserQuestion', 'EnterWorktree', 'ExitWorktree']
 
 // `oneShot` is a bare run with no tools and nothing saved, for work like
-// summarizing that is not part of the conversation
-export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, appendSystemPrompt, oneShot = false }) {
+// summarizing that is not part of the conversation; `systemPrompt` takes the
+// place of Claude Code's own, `appendSystemPrompt` goes after it
+export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, systemPrompt, appendSystemPrompt, oneShot = false }) {
   const args = [
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     // pico and its hosts run without permission prompts, as the user runs
@@ -38,7 +39,7 @@ export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, 
     // show what it is doing
     '--forward-subagent-text',
   ]
-  if (oneShot) args.push('--tools', '', '--no-session-persistence', '--strict-mcp-config')
+  if (oneShot) args.push('--tools', '', '--no-session-persistence', '--strict-mcp-config', '--setting-sources', '')
   if (model) args.push('--model', model)
   if (effort) args.push('--effort', effort)
   if (resume) args.push('--resume', resume)
@@ -46,6 +47,7 @@ export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, 
   // the id the session is known by from now on: a new one's, or a fork's
   if (sessionId && !oneShot) args.push('--session-id', sessionId)
   if (mcpConfig) args.push('--mcp-config', JSON.stringify(mcpConfig))
+  if (systemPrompt) args.push('--system-prompt', systemPrompt)
   if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
   return args
 }

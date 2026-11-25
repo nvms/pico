@@ -22,13 +22,14 @@ function fakeSpawn(seen) {
   }
 }
 
-test('Claude Code answers one question in a bare run, its system prompt added to its own', async () => {
+test('Claude Code answers one question in a bare run, from its system prompt alone', async () => {
   const seen = []
   const engine = createClaudeCodeEngine({ spawn: fakeSpawn(seen) })
   const answer = await engine.ask({ modelName: 'claude-code/opus', system: 'Name it', prompt: 'about kvault', effort: 'low' })
   assert.equal(answer, 'kvault sync')
   assert.equal(seen[0].oneShot, true)
-  assert.equal(seen[0].appendSystemPrompt, 'Name it')
+  assert.equal(seen[0].systemPrompt, 'Name it')
+  assert.equal(seen[0].appendSystemPrompt, undefined)
   assert.equal(seen[0].effort, 'low')
   assert.equal(seen[1], 'about kvault')
 })

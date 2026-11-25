@@ -14,6 +14,7 @@
 // agent can.
 
 import { existsSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { hydrateImages } from '../agent.js'
 import { makeDiff } from '../tools/diff.js'
 import { makeWriteEdit } from '../reversible-edit.js'
@@ -463,11 +464,13 @@ export function createAcpEngine({ provider, label, connect, systemPrompt, covere
   // allowed and nothing kept afterward; `system` is added to the agent's
   // own instructions
   async function ask({ modelName, system = '', prompt, effort = null, signal, onStream = () => {} }) {
+    // a question asked outside any session belongs to no project, so the agent is not given one to read
+    const cwd = tmpdir()
     let text = ''
     let sessionId = null
     let exit = null
     const conn = connect({
-      cwd: process.cwd(),
+      cwd,
       onNotification: (method, params) => {
         const update = params.update ?? {}
         if (method === 'session/update' && params.sessionId === sessionId && update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text' && !picoMeta(update).parentToolCallId) {
@@ -485,7 +488,7 @@ export function createAcpEngine({ provider, label, connect, systemPrompt, covere
     signal?.addEventListener('abort', onAbort, { once: true })
     try {
       await initialize(conn)
-      const session = await conn.request('session/new', { cwd: process.cwd(), mcpServers: [], _meta: { pico: { ephemeral: true, ...(system ? { systemPrompt: system } : {}) } } })
+      const session = await conn.request('session/new', { cwd, mcpServers: [], _meta: { pico: { ephemeral: true, ...(system ? { systemPrompt: system } : {}) } } })
         .catch((error) => { throw isSignInRequired(error) ? new Error(signInRequired) : error })
       sessionId = session.sessionId
       await configure({ conn, sessionId, configOptions: session.configOptions ?? [] }, local(modelName), effort)

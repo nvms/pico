@@ -86,7 +86,8 @@ export function createClaudeCodeAgent(client, { exit = () => {} } = {}, { comman
       sessionId: entry.resume && !entry.fork ? null : entry.id,
       oneShot: entry.ephemeral,
       ...(entry.ephemeral ? {} : { mcpConfig: mcpConfig(entry.servers) }),
-      ...(entry.systemPrompt ? { appendSystemPrompt: entry.systemPrompt } : {}),
+      // a one-shot question is answered from its own instructions alone, not as a coding agent in a project
+      ...(entry.systemPrompt ? { [entry.ephemeral ? 'systemPrompt' : 'appendSystemPrompt']: entry.systemPrompt } : {}),
       onMessage: (message) => { if (entry.proc === proc) onMessage(entry, message) },
       onExit: (ended) => {
         if (entry.proc !== proc) return
