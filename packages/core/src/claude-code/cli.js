@@ -4,6 +4,9 @@
 // Claude Agent SDK uses to drive the CLI.
 
 import { spawn } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { claudeToken } from './token.js'
@@ -26,9 +29,11 @@ export function claudeEnv(env = process.env) {
 const DISALLOWED = ['AskUserQuestion', 'EnterWorktree', 'ExitWorktree']
 
 // `oneShot` is a bare run with no tools and nothing saved, for work like
-// summarizing that is not part of the conversation; `systemPrompt` takes the
-// place of Claude Code's own, `appendSystemPrompt` goes after it
-export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, systemPrompt, appendSystemPrompt, oneShot = false }) {
+// summarizing that is not part of the conversation; `systemPromptFile` takes
+// the place of Claude Code's own prompt, `appendSystemPromptFile` goes after
+// it. Prompts and the MCP config go by file because Linux refuses a single
+// argument over 128 KB, which a project's AGENTS.md alone can pass
+export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfigFile, systemPromptFile, appendSystemPromptFile, oneShot = false }) {
   const args = [
     '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
     // pico and its hosts run without permission prompts, as the user runs
@@ -46,19 +51,38 @@ export function claudeArgs({ model, effort, resume, fork, sessionId, mcpConfig, 
   if (resume && fork) args.push('--fork-session')
   // the id the session is known by from now on: a new one's, or a fork's
   if (sessionId && !oneShot) args.push('--session-id', sessionId)
-  if (mcpConfig) args.push('--mcp-config', JSON.stringify(mcpConfig))
-  if (systemPrompt) args.push('--system-prompt', systemPrompt)
-  if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
+  if (mcpConfigFile) args.push('--mcp-config', mcpConfigFile)
+  if (systemPromptFile) args.push('--system-prompt-file', systemPromptFile)
+  if (appendSystemPromptFile) args.push('--append-system-prompt-file', appendSystemPromptFile)
   return args
 }
 
-export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, ...options }) {
+// the files claudeArgs points at, in a folder of their own the caller removes
+function writeArgFiles({ mcpConfig, systemPrompt, appendSystemPrompt }) {
+  const dir = mkdtempSync(join(tmpdir(), 'pico-claude-'))
+  const write = (name, content) => {
+    const path = join(dir, name)
+    writeFileSync(path, content, { mode: 0o600 })
+    return path
+  }
+  return {
+    dir,
+    files: {
+      ...(mcpConfig ? { mcpConfigFile: write('mcp.json', JSON.stringify(mcpConfig)) } : {}),
+      ...(systemPrompt ? { systemPromptFile: write('system-prompt.md', systemPrompt) } : {}),
+      ...(appendSystemPrompt ? { appendSystemPromptFile: write('append-system-prompt.md', appendSystemPrompt) } : {}),
+    },
+  }
+}
+
+export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, mcpConfig, systemPrompt, appendSystemPrompt, ...options }) {
   // background tasks keep running after a turn ends, where pico cannot see
   // them and the idle stop would kill them; in the foreground, subagents
   // still run in parallel, and the turn waits for them
   const token = claudeToken({ ...process.env, ...env })
   const childEnv = { ...claudeEnv({ ...process.env, ...env }), CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: '1', CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', ...(token ? { CLAUDE_CODE_OAUTH_TOKEN: token } : {}) }
-  const child = spawn(command, claudeArgs(options), { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
+  const argFiles = writeArgFiles({ mcpConfig, systemPrompt, appendSystemPrompt })
+  const child = spawn(command, claudeArgs({ ...options, ...argFiles.files }), { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] })
   const pending = new Map()
   let stderr = ''
   let exited = false
@@ -99,6 +123,7 @@ export function spawnClaude({ command = 'claude', cwd, env, onMessage, onExit, .
   const finish = (error) => {
     if (exited) return
     exited = true
+    rmSync(argFiles.dir, { recursive: true, force: true })
     for (const waiter of pending.values()) waiter.reject(new Error('Claude Code exited'))
     pending.clear()
     onExit?.({ error, stderr: stderr.trim() })

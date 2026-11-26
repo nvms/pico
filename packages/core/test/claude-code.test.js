@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { claudeArgs, claudeEnv } from '../src/claude-code/cli.js'
+import { claudeArgs, claudeEnv, spawnClaude } from '../src/claude-code/cli.js'
+import { chmodSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { cliModel, claudeCodeModels } from '../src/claude-code/models.js'
 import { mcpConfig, picoTool, usageOf } from '../src/claude-code/translate.js'
 import { fingerprint, seedText, splitTurn } from '../src/engine-history.js'
@@ -21,6 +24,22 @@ test('Claude Code runs without permission prompts and with pico taking questions
   assert.deepEqual(args.slice(args.indexOf('--model'), args.indexOf('--model') + 6), ['--model', 'opus', '--effort', 'high', '--resume', 'abc'])
   assert.ok(args.includes('--fork-session'))
   assert.ok(!claudeArgs({ fork: true }).includes('--fork-session'), 'nothing to fork without a session to resume')
+})
+
+test('a prompt larger than Linux allows in one argument reaches Claude Code by file, removed once it exits', async () => {
+  const fake = join(mkdtempSync(join(tmpdir(), 'pico-test-')), 'claude')
+  writeFileSync(fake, `#!/bin/sh
+while [ "$1" != --append-system-prompt-file ]; do shift; done
+printf '{"type":"seen","file":"%s","size":%s}\n' "$2" "$(wc -c < "$2")"
+`)
+  chmodSync(fake, 0o755)
+  const prompt = 'x'.repeat(200000)
+  const seen = await new Promise((resolve, reject) => {
+    let message
+    spawnClaude({ command: fake, cwd: tmpdir(), env: {}, appendSystemPrompt: prompt, onMessage: (m) => { message = m }, onExit: ({ error }) => (error ? reject(error) : resolve(message)) })
+  })
+  assert.equal(seen.size, prompt.length)
+  assert.ok(!existsSync(seen.file))
 })
 
 test('models are named by provider and reach the CLI by alias', () => {
